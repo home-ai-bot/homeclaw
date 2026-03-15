@@ -1,0 +1,15 @@
+{
+  "_comment": "HomeClaw 专属配置文件，与 PicoClaw 的 config.json 完全独立。",
+  "_comment2": "将此文件复制到 Agent workspace 目录（与 config.json 同级）并重命名为 homeclaw.json。",
+
+  "enabled": true,
+
+  "confidence_threshold": 0.7,
+
+  "intent_model": {
+    "_comment": "方式一：直接内嵌模型连接信息（完全独立，不依赖 PicoClaw model_list）",
+    "api_base": "http://localhost:11434/v1",
+    "api_key": "ollama",
+    "model": "openai/qwen2.5:1.5b"
+  }
+}

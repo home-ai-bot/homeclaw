@@ -24,6 +24,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/commands"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/constants"
+	"github.com/sipeed/picoclaw/pkg/homeclaw"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/mcp"
 	"github.com/sipeed/picoclaw/pkg/media"
@@ -48,6 +49,8 @@ type AgentLoop struct {
 	mediaStore     media.MediaStore
 	transcriber    voice.Transcriber
 	cmdRegistry    *commands.Registry
+	// HomeClaw subsystem (nil when HomeClaw is not configured)
+	homeclaw *homeclaw.HomeClaw
 }
 
 // processOptions configures how a message is processed
@@ -61,6 +64,10 @@ type processOptions struct {
 	EnableSummary   bool     // Whether to trigger summarization
 	SendResponse    bool     // Whether to send response via bus
 	NoHistory       bool     // If true, don't load session history (for heartbeat)
+	// ExtraContext holds additional context strings injected by pre-processing
+	// steps (e.g. HomeClaw intent results with ForwardToLLM=true) that should
+	// be prepended to the large-model conversation.
+	ExtraContext []string
 }
 
 const (
@@ -102,6 +109,27 @@ func NewAgentLoop(
 		summarizing: sync.Map{},
 		fallback:    fallbackChain,
 		cmdRegistry: commands.NewRegistry(commands.BuiltinDefinitions()),
+	}
+
+	// Attempt to load HomeClaw configuration from the default agent's workspace.
+	// If homeclaw.json is absent or HomeClaw is disabled, hc remains nil and
+	// handleIntent becomes a no-op.
+	if defaultAgent != nil {
+		hc, err := homeclaw.New(defaultAgent.Workspace, cfg, msgBus)
+		if err != nil {
+			logger.ErrorCF("agent", "HomeClaw init failed, continuing without HomeClaw",
+				map[string]any{"error": err.Error()})
+		} else {
+			al.homeclaw = hc
+			// Register HomeClaw tools (device / space / member / workflow) into every agent.
+			for _, agentID := range registry.ListAgentIDs() {
+				agent, ok := registry.GetAgent(agentID)
+				if !ok {
+					continue
+				}
+				hc.RegisterTools(agent.Tools)
+			}
+		}
 	}
 
 	return al
@@ -621,6 +649,20 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 	// "unavailable" when the required capability is nil.
 	if response, handled := al.handleCommand(ctx, msg, agent, &opts); handled {
 		return response, nil
+	}
+
+	// HomeClaw intent recognition and dispatching.
+	// When HomeClaw is not configured, this is a no-op and falls through.
+	if response, handled, forwardToLLM, err := al.handleIntent(ctx, msg, opts); handled {
+		if forwardToLLM {
+			// Small model handled the intent and produced context; inject it
+			// into the agent loop as additional context for the large model.
+			if response != "" {
+				opts.ExtraContext = append(opts.ExtraContext, response)
+			}
+		} else {
+			return response, err
+		}
 	}
 
 	return al.runAgentLoop(ctx, agent, opts)
@@ -1806,4 +1848,24 @@ func extractParentPeer(msg bus.InboundMessage) *routing.RoutePeer {
 		return nil
 	}
 	return &routing.RoutePeer{Kind: parentKind, ID: parentID}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HomeClaw intent processing
+// ─────────────────────────────────────────────────────────────────────────────
+
+// handleIntent delegates to the HomeClaw subsystem for intent recognition and
+// dispatching.  When HomeClaw is not configured (hc == nil) this is a no-op.
+func (al *AgentLoop) handleIntent(
+	ctx context.Context,
+	msg bus.InboundMessage,
+	opts processOptions,
+) (string, bool, bool, error) {
+	return al.homeclaw.RunIntent(ctx, homeclaw.RunIntentInput{
+		UserInput:  msg.Content,
+		Channel:    msg.Channel,
+		ChatID:     msg.ChatID,
+		SenderID:   msg.SenderID,
+		SessionKey: opts.SessionKey,
+	})
 }
