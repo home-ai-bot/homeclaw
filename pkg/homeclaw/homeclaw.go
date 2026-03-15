@@ -43,6 +43,8 @@ type HomeClaw struct {
 	bus *bus.MessageBus
 	// cfg is the PicoClaw configuration.
 	cfg *config.Config
+	// hcfg is the HomeClaw-specific configuration.
+	hcfg *homeclawconfig.HomeclawConfig
 }
 
 // New creates a HomeClaw instance from the given workspace directory,
@@ -116,6 +118,7 @@ func New(workspace string, picolawerCfg *config.Config, msgBus *bus.MessageBus) 
 		workflowStore: workflowStore,
 		bus:           msgBus,
 		cfg:           picolawerCfg,
+		hcfg:          hcfg,
 	}, nil
 }
 
@@ -140,6 +143,11 @@ type RunIntentInput struct {
 // through safely.
 func (hc *HomeClaw) RunIntent(ctx context.Context, in RunIntentInput) (response string, handled bool, forwardToLLM bool, err error) {
 	if hc == nil {
+		return "", false, false, nil
+	}
+
+	// Skip intent processing if IntentEnabled is false
+	if hc.hcfg != nil && !hc.hcfg.IntentEnabled {
 		return "", false, false, nil
 	}
 
@@ -216,6 +224,12 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	toolRegistry.Register(homeclawtool.NewDeleteWorkflowTool(hc.workflowStore))
 	toolRegistry.Register(homeclawtool.NewEnableWorkflowTool(hc.workflowStore))
 	toolRegistry.Register(homeclawtool.NewDisableWorkflowTool(hc.workflowStore))
+
+	// Mi Home (miio) tools
+	toolRegistry.Register(homeclawtool.NewMijiaLoginTool(hc.deviceStore))
+	toolRegistry.Register(homeclawtool.NewMijiaTokenExtractorTool(hc.deviceStore))
+	toolRegistry.Register(homeclawtool.NewMiioGetPropsTool(hc.deviceStore))
+	toolRegistry.Register(homeclawtool.NewMiioSetPropsTool(hc.deviceStore))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

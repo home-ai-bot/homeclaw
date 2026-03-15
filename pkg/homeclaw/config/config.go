@@ -23,6 +23,11 @@ type HomeclawConfig struct {
 	// When false (or homeclaw.json is absent), handleIntent is a no-op.
 	Enabled bool `json:"enabled"`
 
+	// IntentEnabled controls whether the intent classification and dispatching
+	// logic (RunIntent) should be executed. When false, RunIntent will skip
+	// processing and return immediately, falling through to the large model.
+	IntentEnabled bool `json:"intent_enabled"`
+
 	// ConfidenceThreshold is the minimum intent confidence score required to
 	// dispatch to an Intent handler. Inputs scoring below this value fall through
 	// to the large-model agent loop. Default: 0.7.
