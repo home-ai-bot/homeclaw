@@ -226,10 +226,7 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	toolRegistry.Register(homeclawtool.NewDisableWorkflowTool(hc.workflowStore))
 
 	// Mi Home (miio) tools
-	toolRegistry.Register(homeclawtool.NewMijiaLoginTool(hc.deviceStore))
-	toolRegistry.Register(homeclawtool.NewMijiaTokenExtractorTool(hc.deviceStore))
-	toolRegistry.Register(homeclawtool.NewMiioGetPropsTool(hc.deviceStore))
-	toolRegistry.Register(homeclawtool.NewMiioSetPropsTool(hc.deviceStore))
+
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
