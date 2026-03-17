@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	common "github.com/sipeed/picoclaw/pkg/homeclaw/common"
 )
 
 const (
@@ -63,7 +65,7 @@ func NewMIoTOauthClient(clientID, redirectURL, cloudServer, uuid string) (*MIoTO
 		cloudServer = DefaultCloudServer
 	}
 	if uuid == "" {
-		uuid = generateUUID()
+		uuid = common.GenerateUUID()
 	}
 
 	oauthHost := DefaultOAuth2APIHost
@@ -94,6 +96,11 @@ func (c *MIoTOauthClient) GetState() string {
 // GetDeviceID 获取设备ID
 func (c *MIoTOauthClient) GetDeviceID() string {
 	return c.deviceID
+}
+
+// GetClientID 获取客户端ID
+func (c *MIoTOauthClient) GetClientID() string {
+	return c.clientID
 }
 
 // SetRedirectURL 设置回调地址
@@ -258,9 +265,4 @@ func generateState(deviceID string) string {
 	h := sha1.New()
 	h.Write([]byte("d=" + deviceID))
 	return hex.EncodeToString(h.Sum(nil))
-}
-
-// generateUUID 生成简单的UUID
-func generateUUID() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
 }

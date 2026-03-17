@@ -7,24 +7,43 @@ import "time"
 type Space struct {
 	ID       string  `json:"id"`
 	Name     string  `json:"name"`
-	Type     string  `json:"type"` // "floor", "room", "area"
+	Type     string  `json:"type"`             // "floor", "room", "area"
+	Source   string  `json:"source,omitempty"` // 来源: "xiaomi", "manual" 等
 	Children []Space `json:"children"`
 }
 
 // Device represents a smart device in the home
 type Device struct {
-	ID           string                 `json:"id"`
-	Name         string                 `json:"name"`
-	Brand        string                 `json:"brand"`    // "mijia", "tuya", "homekit", "matter"
-	Protocol     string                 `json:"protocol"` // "miio", "local", "hap", "matter"
-	Model        string                 `json:"model"`
-	SpaceID      string                 `json:"space_id"`
-	IP           string                 `json:"ip"`
-	Token        string                 `json:"token"`
-	Capabilities []string               `json:"capabilities"`
-	State        map[string]interface{} `json:"state"`
-	LastSeen     time.Time              `json:"last_seen"`
-	AddedAt      time.Time              `json:"added_at"`
+	ID       string            `json:"id"`
+	Name     string            `json:"name"`
+	Brand    string            `json:"brand"`    // "mijia", "tuya", "homekit", "matter"
+	Protocol string            `json:"protocol"` // "miio", "local", "hap", "matter"
+	Model    string            `json:"model"`
+	SpaceID  string            `json:"space_id"`
+	IP       string            `json:"ip"`
+	Token    string            `json:"token"`
+	Props    map[string]string `json:"props"`
+	LastSeen time.Time         `json:"last_seen"`
+	AddedAt  time.Time         `json:"added_at"`
+
+	// Xiaomi device fields (synced from Mi Home)
+	DID          string             `json:"did,omitempty"`
+	UID          string             `json:"uid,omitempty"`
+	URN          string             `json:"urn,omitempty"`
+	ConnectType  int                `json:"connect_type,omitempty"`
+	Online       bool               `json:"online,omitempty"`
+	Icon         string             `json:"icon,omitempty"`
+	ParentID     string             `json:"parent_id,omitempty"`
+	Manufacturer string             `json:"manufacturer,omitempty"`
+	VoiceCtrl    int                `json:"voice_ctrl,omitempty"`
+	SSID         string             `json:"ssid,omitempty"`
+	BSSID        string             `json:"bssid,omitempty"`
+	OrderTime    int64              `json:"order_time,omitempty"`
+	FWVersion    string             `json:"fw_version,omitempty"`
+	SubDevices   map[string]*Device `json:"sub_devices,omitempty"`
+	RoomID       string             `json:"room_id,omitempty"`
+	RoomName     string             `json:"room_name,omitempty"`
+	GroupID      string             `json:"group_id,omitempty"`
 }
 
 // Member represents a family member

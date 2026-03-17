@@ -5,13 +5,17 @@ package homeclaw
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
+	common "github.com/sipeed/picoclaw/pkg/homeclaw/common"
 	homeclawconfig "github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/intent"
+	"github.com/sipeed/picoclaw/pkg/homeclaw/miio"
 	homeclawtool "github.com/sipeed/picoclaw/pkg/homeclaw/tool"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
@@ -34,10 +38,14 @@ type HomeClaw struct {
 	modelName string
 
 	// data stores – kept for tool registration
-	deviceStore   data.DeviceStore
-	spaceStore    data.SpaceStore
-	memberStore   data.MemberStore
-	workflowStore data.WorkflowStore
+	deviceStore        data.DeviceStore
+	spaceStore         data.SpaceStore
+	memberStore        data.MemberStore
+	workflowStore      data.WorkflowStore
+	xiaomiAccountStore data.XiaomiAccountStore
+
+	// miio OAuth client for Xiaomi tools
+	oauthClient *miio.MIoTOauthClient
 
 	// bus is the message bus for publishing outbound messages.
 	bus *bus.MessageBus
@@ -68,8 +76,8 @@ func New(workspace string, picolawerCfg *config.Config, msgBus *bus.MessageBus) 
 
 	classifier := intent.NewLLMClassifier(smallProvider, hcfg, modelName)
 
-	// Initialise data stores backed by the workspace directory.
-	jsonStore, err := data.NewJSONStore(workspace)
+	// Initialise data stores backed by the workspace/data directory.
+	jsonStore, err := data.NewJSONStore(filepath.Join(workspace, "data"))
 	if err != nil {
 		return nil, fmt.Errorf("HomeClaw data store init failed: %w", err)
 	}
@@ -92,6 +100,27 @@ func New(workspace string, picolawerCfg *config.Config, msgBus *bus.MessageBus) 
 		return nil, fmt.Errorf("HomeClaw workflow store init failed: %w", err)
 	}
 
+	// Initialise Xiaomi account store.
+	xiaomiAccountStore, err := data.NewXiaomiAccountStore(jsonStore)
+	if err != nil {
+		return nil, fmt.Errorf("HomeClaw xiaomi account store init failed: %w", err)
+	}
+	// 获取 xiaomiAccount 信息
+	xiaomiAccount, err := xiaomiAccountStore.Get()
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			xiaomiAccount = &data.XiaomiAccount{}
+			xiaomiAccount.ClientID = miio.OAuth2ClientID
+			xiaomiAccount.ID = common.GenerateUUID()
+		}
+
+	}
+	// Initialise MIoT OAuth client for Xiaomi tools.
+	oauthClient, err := miio.NewMIoTOauthClient("", "", "", "")
+	if err != nil {
+		return nil, fmt.Errorf("HomeClaw MIoT OAuth client init failed: %w", err)
+	}
+
 	chatHandler := &intent.ChatIntent{}
 	deviceControlHandler := intent.NewDeviceControlIntent(nil, nil, smallProvider, modelName)
 	router := intent.NewRouter(
@@ -107,18 +136,20 @@ func New(workspace string, picolawerCfg *config.Config, msgBus *bus.MessageBus) 
 		map[string]any{"workspace": workspace, "model": modelName})
 
 	return &HomeClaw{
-		classifier:    classifier,
-		router:        router,
-		workspace:     workspace,
-		provider:      smallProvider,
-		modelName:     modelName,
-		deviceStore:   deviceStore,
-		spaceStore:    spaceStore,
-		memberStore:   memberStore,
-		workflowStore: workflowStore,
-		bus:           msgBus,
-		cfg:           picolawerCfg,
-		hcfg:          hcfg,
+		classifier:         classifier,
+		router:             router,
+		workspace:          workspace,
+		provider:           smallProvider,
+		modelName:          modelName,
+		deviceStore:        deviceStore,
+		spaceStore:         spaceStore,
+		memberStore:        memberStore,
+		workflowStore:      workflowStore,
+		xiaomiAccountStore: xiaomiAccountStore,
+		oauthClient:        oauthClient,
+		bus:                msgBus,
+		cfg:                picolawerCfg,
+		hcfg:               hcfg,
 	}, nil
 }
 
@@ -226,7 +257,14 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	toolRegistry.Register(homeclawtool.NewDisableWorkflowTool(hc.workflowStore))
 
 	// Mi Home (miio) tools
-
+	toolRegistry.Register(homeclawtool.NewGetXiaomiAccountTool(hc.xiaomiAccountStore, hc.oauthClient))
+	toolRegistry.Register(homeclawtool.NewUpdateXiaomiTokenTool(hc.xiaomiAccountStore))
+	toolRegistry.Register(homeclawtool.NewUpdateXiaomiHomeTool(hc.xiaomiAccountStore))
+	toolRegistry.Register(homeclawtool.NewGetXiaomiOAuthURLTool(hc.oauthClient))
+	toolRegistry.Register(homeclawtool.NewGetXiaomiAccessTokenTool(hc.xiaomiAccountStore, hc.oauthClient))
+	toolRegistry.Register(homeclawtool.NewSyncXiaomiHomesTool(hc.xiaomiAccountStore, hc.oauthClient))
+	toolRegistry.Register(homeclawtool.NewSyncXiaomiRoomsTool(hc.xiaomiAccountStore, hc.spaceStore, hc.oauthClient))
+	toolRegistry.Register(homeclawtool.NewSyncXiaomiDevicesTool(hc.xiaomiAccountStore, hc.deviceStore, hc.oauthClient))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -204,11 +204,15 @@ func (t *UpdateDeviceStateTool) Execute(_ context.Context, args map[string]any) 
 	if !ok {
 		return &tools.ToolResult{ForLLM: "state is required", IsError: true}
 	}
-	state, ok := stateRaw.(map[string]interface{})
+	stateAny, ok := stateRaw.(map[string]interface{})
 	if !ok {
 		return &tools.ToolResult{ForLLM: "state must be an object", IsError: true}
 	}
-	if err := t.store.UpdateState(id, state); err != nil {
+	props := make(map[string]string, len(stateAny))
+	for k, v := range stateAny {
+		props[k] = fmt.Sprintf("%v", v)
+	}
+	if err := t.store.UpdateProps(id, props); err != nil {
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to update device state: %v", err), IsError: true}
 	}
 	return tools.NewToolResult(fmt.Sprintf("device %q state updated", id))

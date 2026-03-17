@@ -83,7 +83,7 @@ func TestNewMIoTOauthClient(t *testing.T) {
 
 			// 验证海外服务器主机名
 			if tt.cloudServer != "" && tt.cloudServer != "cn" {
-				expectedHost := tt.cloudServer + "." + defaultOAuth2APIHost
+				expectedHost := tt.cloudServer + "." + DefaultOAuth2APIHost
 				if client.oauthHost != expectedHost {
 					t.Errorf("oauthHost = %s, want %s", client.oauthHost, expectedHost)
 				}
@@ -501,22 +501,6 @@ func TestGenerateState(t *testing.T) {
 	state3 := generateState("ha.different-device")
 	if state1 == state3 {
 		t.Error("generateState should return different result for different input")
-	}
-}
-
-func TestGenerateUUID(t *testing.T) {
-	uuid1 := generateUUID()
-	time.Sleep(1 * time.Millisecond) // 确保时间不同
-	uuid2 := generateUUID()
-
-	// 两次生成的 UUID 应该不同
-	if uuid1 == uuid2 {
-		t.Error("generateUUID should return different values")
-	}
-
-	// UUID 不应该为空
-	if uuid1 == "" || uuid2 == "" {
-		t.Error("generateUUID should not return empty string")
 	}
 }
 

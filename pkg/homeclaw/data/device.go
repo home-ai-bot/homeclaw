@@ -6,9 +6,8 @@ type DeviceStore interface {
 	GetAll() ([]Device, error)
 	GetByID(id string) (*Device, error)
 	GetBySpace(spaceID string) ([]Device, error)
-	GetByCapability(capability string) ([]Device, error)
 	Save(device Device) error
-	UpdateState(id string, state map[string]interface{}) error
+	UpdateProps(id string, props map[string]string) error
 	Delete(id string) error
 }
 
@@ -64,20 +63,6 @@ func (s *deviceStore) GetBySpace(spaceID string) ([]Device, error) {
 	return result, nil
 }
 
-// GetByCapability returns all devices with a specific capability
-func (s *deviceStore) GetByCapability(capability string) ([]Device, error) {
-	var result []Device
-	for _, d := range s.data.Devices {
-		for _, c := range d.Capabilities {
-			if c == capability {
-				result = append(result, d)
-				break
-			}
-		}
-	}
-	return result, nil
-}
-
 // Save saves a device (insert or update)
 func (s *deviceStore) Save(device Device) error {
 	for i := range s.data.Devices {
@@ -90,11 +75,11 @@ func (s *deviceStore) Save(device Device) error {
 	return s.save()
 }
 
-// UpdateState updates only the state of a device
-func (s *deviceStore) UpdateState(id string, state map[string]interface{}) error {
+// UpdateProps updates only the props of a device
+func (s *deviceStore) UpdateProps(id string, props map[string]string) error {
 	for i := range s.data.Devices {
 		if s.data.Devices[i].ID == id {
-			s.data.Devices[i].State = state
+			s.data.Devices[i].Props = props
 			return s.save()
 		}
 	}

@@ -114,13 +114,12 @@ func TestDeviceStore(t *testing.T) {
 
 	// Save device
 	device := Device{
-		ID:           "light-001",
-		Name:         "客厅灯",
-		Brand:        "mijia",
-		SpaceID:      "living-room",
-		Capabilities: []string{"on_off", "brightness"},
-		State:        map[string]interface{}{"on": true},
-		AddedAt:      time.Now(),
+		ID:      "light-001",
+		Name:    "客厅灯",
+		Brand:   "mijia",
+		SpaceID: "living-room",
+		Props:   map[string]string{"on": "true"},
+		AddedAt: time.Now(),
 	}
 	if err := deviceStore.Save(device); err != nil {
 		t.Fatalf("Failed to save device: %v", err)
@@ -135,23 +134,14 @@ func TestDeviceStore(t *testing.T) {
 		t.Errorf("Expected 1 device, got %d", len(devices))
 	}
 
-	// Get by capability
-	devices, err = deviceStore.GetByCapability("on_off")
-	if err != nil {
-		t.Fatalf("Failed to get devices by capability: %v", err)
-	}
-	if len(devices) != 1 {
-		t.Errorf("Expected 1 device with on_off capability, got %d", len(devices))
-	}
-
-	// Update state
-	newState := map[string]interface{}{"on": false, "brightness": 50}
-	if err := deviceStore.UpdateState("light-001", newState); err != nil {
-		t.Fatalf("Failed to update state: %v", err)
+	// Update props
+	newProps := map[string]string{"on": "false", "brightness": "50"}
+	if err := deviceStore.UpdateProps("light-001", newProps); err != nil {
+		t.Fatalf("Failed to update props: %v", err)
 	}
 	found, _ := deviceStore.GetByID("light-001")
-	if found.State["on"] != false {
-		t.Error("Expected state on=false")
+	if found.Props["on"] != "false" {
+		t.Error("Expected props on=false")
 	}
 }
 
