@@ -22,6 +22,11 @@ import (
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
 
+// ErrDisabled is returned by New when HomeClaw is explicitly disabled or
+// homeclaw.json is absent. Callers can use errors.Is(err, ErrDisabled) to
+// distinguish a deliberate no-op from a real initialisation failure.
+var ErrDisabled = errors.New("homeclaw is disabled")
+
 // HomeClaw holds all HomeClaw subsystem objects and exposes a single
 // RunIntent method that the agent loop calls from processMessage.
 type HomeClaw struct {
@@ -66,7 +71,7 @@ func New(workspace string, picolawerCfg *config.Config, msgBus *bus.MessageBus) 
 		return nil, fmt.Errorf("HomeClaw config load error: %w", err)
 	}
 	if hcfg == nil || !hcfg.Enabled {
-		return nil, nil
+		return nil, ErrDisabled
 	}
 
 	smallProvider, modelName, provErr := resolveIntentProvider(hcfg, picolawerCfg)
@@ -105,33 +110,38 @@ func New(workspace string, picolawerCfg *config.Config, msgBus *bus.MessageBus) 
 	if err != nil {
 		return nil, fmt.Errorf("HomeClaw xiaomi account store init failed: %w", err)
 	}
-	// 获取 xiaomiAccount 信息
+	// 获取 xiaomiAccount 信息，若记录不存在则创建默认值；其他错误直接返回。
 	xiaomiAccount, err := xiaomiAccountStore.Get()
 	if err != nil {
-		if errors.Is(err, data.ErrRecordNotFound) {
-			xiaomiAccount = &data.XiaomiAccount{}
-			xiaomiAccount.ClientID = miio.OAuth2ClientID
-			xiaomiAccount.ID = common.GenerateUUID()
+		if !errors.Is(err, data.ErrRecordNotFound) {
+			return nil, fmt.Errorf("HomeClaw xiaomi account load failed: %w", err)
 		}
-
+		xiaomiAccount = &data.XiaomiAccount{
+			ClientID: miio.OAuth2ClientID,
+			ID:       common.GenerateUUID(),
+		}
+		if saveErr := xiaomiAccountStore.Save(*xiaomiAccount); saveErr != nil {
+			return nil, fmt.Errorf("HomeClaw xiaomi account save failed: %w", saveErr)
+		}
 	}
 	// Initialise MIoT OAuth client for Xiaomi tools.
-	oauthClient, err := miio.NewMIoTOauthClient("", "", "", "")
+	oauthClient, err := miio.NewMIoTOauthClient(xiaomiAccount.ClientID, "", "cn", xiaomiAccount.ID)
 	if err != nil {
 		return nil, fmt.Errorf("HomeClaw MIoT OAuth client init failed: %w", err)
 	}
-
-	chatHandler := &intent.ChatIntent{}
-	deviceControlHandler := intent.NewDeviceControlIntent(nil, nil, smallProvider, modelName)
-	router := intent.NewRouter(
-		chatHandler,
-		deviceControlHandler,
-		intent.NewDeviceMgmtIntent(deviceStore, spaceStore),
-		intent.NewSpaceMgmtIntent(spaceStore),
-		intent.NewUserMgmtIntent(memberStore),
-		&intent.SystemConfigIntent{},
-	)
-
+	var router *intent.Router
+	if hcfg.IntentEnabled {
+		chatHandler := &intent.ChatIntent{}
+		deviceControlHandler := intent.NewDeviceControlIntent(nil, nil, smallProvider, modelName)
+		router = intent.NewRouter(
+			chatHandler,
+			deviceControlHandler,
+			intent.NewDeviceMgmtIntent(deviceStore, spaceStore),
+			intent.NewSpaceMgmtIntent(spaceStore),
+			intent.NewUserMgmtIntent(memberStore),
+			&intent.SystemConfigIntent{},
+		)
+	}
 	logger.InfoCF("homeclaw", "HomeClaw intent processing enabled",
 		map[string]any{"workspace": workspace, "model": modelName})
 
