@@ -112,13 +112,17 @@ func NewAgentLoop(
 	}
 
 	// Attempt to load HomeClaw configuration from the default agent's workspace.
-	// If homeclaw.json is absent or HomeClaw is disabled, hc remains nil and
-	// handleIntent becomes a no-op.
+	// ErrDisabled means HomeClaw is intentionally off — log at info level and skip.
+	// Any other error is a real failure and is logged at error level.
 	if defaultAgent != nil {
 		hc, err := homeclaw.New(defaultAgent.Workspace, cfg, msgBus)
 		if err != nil {
-			logger.ErrorCF("agent", "HomeClaw init failed, continuing without HomeClaw",
-				map[string]any{"error": err.Error()})
+			if errors.Is(err, homeclaw.ErrDisabled) {
+				logger.InfoCF("agent", "HomeClaw is disabled, skipping", nil)
+			} else {
+				logger.ErrorCF("agent", "HomeClaw init failed, continuing without HomeClaw",
+					map[string]any{"error": err.Error()})
+			}
 		} else {
 			al.homeclaw = hc
 			// Register HomeClaw tools (device / space / member / workflow) into every agent.
