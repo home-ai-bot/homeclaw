@@ -242,9 +242,6 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	// Device tools
 	toolRegistry.Register(homeclawtool.NewListDevicesTool(hc.deviceStore))
 	toolRegistry.Register(homeclawtool.NewGetDeviceTool(hc.deviceStore))
-	toolRegistry.Register(homeclawtool.NewSaveDeviceTool(hc.deviceStore))
-	toolRegistry.Register(homeclawtool.NewUpdateDeviceStateTool(hc.deviceStore))
-	toolRegistry.Register(homeclawtool.NewDeleteDeviceTool(hc.deviceStore))
 
 	// Space tools
 	toolRegistry.Register(homeclawtool.NewListSpacesTool(hc.spaceStore))
