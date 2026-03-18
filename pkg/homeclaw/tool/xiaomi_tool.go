@@ -18,6 +18,38 @@ var syncTimestamp = time.Now().Unix()
 // tokenRefreshThreshold 距离过期不足此时长时自动刷新
 const tokenRefreshThreshold = 5 * time.Hour
 
+// checkToken 从 store 获取小米账号并校验 token 有效性。
+// 返回 (acc, nil) 表示 token 有效；返回 (nil, result) 表示校验失败，调用方应直接返回 result。
+const authGuide = "Please follow these steps to authorize: " +
+	"1) Call mi_get_oauth_url to get the login URL. " +
+	"2) Open the URL in a browser and complete the Xiaomi login. " +
+	"3) After login, you will be redirected to a callback URL that contains a 'code_value' parameter. " +
+	"4) Call mi_get_access_token with that code to save the token."
+
+func checkToken(store data.XiaomiAccountStore) (*data.XiaomiAccount, *tools.ToolResult) {
+	acc, err := store.Get()
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			return nil, tools.SilentResult(`{"account":null,"reason":"not_configured","guide":"` + authGuide + `"}`)
+		}
+		return nil, tools.ErrorResult(fmt.Sprintf("failed to get xiaomi account: %v", err))
+	}
+
+	// token 为空视为未配置
+	if acc.AccessToken == "" || acc.RefreshToken == "" {
+		return nil, tools.SilentResult(`{"account":null,"reason":"token_missing","guide":"` + authGuide + `"}`)
+	}
+
+	now := time.Now()
+
+	// 已过期
+	if !acc.TokenExpiresAt.IsZero() && now.After(acc.TokenExpiresAt) {
+		return nil, tools.SilentResult(`{"account":null,"reason":"token_expired","guide":"` + authGuide + `"}`)
+	}
+
+	return acc, nil
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // mi_get_account
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,25 +84,12 @@ func (t *GetXiaomiAccountTool) Parameters() map[string]any {
 }
 
 func (t *GetXiaomiAccountTool) Execute(_ context.Context, _ map[string]any) *tools.ToolResult {
-	acc, err := t.store.Get()
-	if err != nil {
-		if errors.Is(err, data.ErrRecordNotFound) {
-			return tools.SilentResult(`{"account":null,"reason":"not_configured"}`)
-		}
-		return tools.ErrorResult(fmt.Sprintf("failed to get xiaomi account: %v", err))
-	}
-
-	// token 为空视为未配置
-	if acc.AccessToken == "" || acc.RefreshToken == "" {
-		return tools.SilentResult(`{"account":null,"reason":"token_missing"}`)
+	acc, result := checkToken(t.store)
+	if result != nil {
+		return result
 	}
 
 	now := time.Now()
-
-	// 已过期
-	if !acc.TokenExpiresAt.IsZero() && now.After(acc.TokenExpiresAt) {
-		return tools.SilentResult(`{"account":null,"reason":"token_expired"}`)
-	}
 
 	// 距过期不足 5 小时 → 自动刷新
 	if !acc.TokenExpiresAt.IsZero() && acc.TokenExpiresAt.Sub(now) < tokenRefreshThreshold {
@@ -408,16 +427,9 @@ func (t *SyncXiaomiHomesTool) Parameters() map[string]any {
 }
 
 func (t *SyncXiaomiHomesTool) Execute(_ context.Context, _ map[string]any) *tools.ToolResult {
-	acc, err := t.store.Get()
-	if err != nil {
-		if errors.Is(err, data.ErrRecordNotFound) {
-			return tools.SilentResult(`{"success":false,"reason":"account_not_configured"}`)
-		}
-		return tools.ErrorResult(fmt.Sprintf("failed to get xiaomi account: %v", err))
-	}
-
-	if acc.AccessToken == "" {
-		return tools.SilentResult(`{"success":false,"reason":"token_missing"}`)
+	acc, tokenErr := checkToken(t.store)
+	if tokenErr != nil {
+		return tokenErr
 	}
 
 	// 创建 CloudClient
@@ -514,16 +526,9 @@ func (t *SyncXiaomiRoomsTool) Execute(_ context.Context, args map[string]any) *t
 		return tools.ErrorResult("home_id is required")
 	}
 
-	acc, err := t.store.Get()
-	if err != nil {
-		if errors.Is(err, data.ErrRecordNotFound) {
-			return tools.SilentResult(`{"synced":false,"reason":"account_not_configured"}`)
-		}
-		return tools.ErrorResult(fmt.Sprintf("failed to get xiaomi account: %v", err))
-	}
-
-	if acc.AccessToken == "" {
-		return tools.SilentResult(`{"synced":false,"reason":"token_missing"}`)
+	acc, tokenErr := checkToken(t.store)
+	if tokenErr != nil {
+		return tokenErr
 	}
 
 	// 创建 CloudClient
@@ -669,16 +674,9 @@ func (t *SyncXiaomiDevicesTool) Execute(_ context.Context, args map[string]any) 
 		return tools.ErrorResult("home_id is required")
 	}
 
-	acc, err := t.store.Get()
-	if err != nil {
-		if errors.Is(err, data.ErrRecordNotFound) {
-			return tools.SilentResult(`{"synced":false,"reason":"account_not_configured"}`)
-		}
-		return tools.ErrorResult(fmt.Sprintf("failed to get xiaomi account: %v", err))
-	}
-
-	if acc.AccessToken == "" {
-		return tools.SilentResult(`{"synced":false,"reason":"token_missing"}`)
+	acc, tokenErr := checkToken(t.store)
+	if tokenErr != nil {
+		return tokenErr
 	}
 
 	// 创建 CloudClient
