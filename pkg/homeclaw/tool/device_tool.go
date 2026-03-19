@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/tools"
@@ -35,24 +36,42 @@ func NewListDevicesTool(store data.DeviceStore) *ListDevicesTool {
 func (t *ListDevicesTool) Name() string { return "hc_list_devices" }
 
 func (t *ListDevicesTool) Description() string {
-	return "List all registered HomeClaw smart devices. Returns device ID, name, brand and room name for each device."
+	return "List registered HomeClaw smart devices. Optionally filter by room_name and/or brand. Returns device ID, name, brand and room name for each matched device."
 }
 
 func (t *ListDevicesTool) Parameters() map[string]any {
 	return map[string]any{
-		"type":       "object",
-		"properties": map[string]any{},
-		"required":   []string{},
+		"type": "object",
+		"properties": map[string]any{
+			"room_name": map[string]any{
+				"type":        "string",
+				"description": "Optional. Filter devices by room name (case-insensitive).",
+			},
+			"brand": map[string]any{
+				"type":        "string",
+				"description": "Optional. Filter devices by brand (case-insensitive), e.g. \"mijia\", \"tuya\".",
+			},
+		},
+		"required": []string{},
 	}
 }
 
-func (t *ListDevicesTool) Execute(_ context.Context, _ map[string]any) *tools.ToolResult {
+func (t *ListDevicesTool) Execute(_ context.Context, args map[string]any) *tools.ToolResult {
+	filterRoom, _ := args["room_name"].(string)
+	filterBrand, _ := args["brand"].(string)
+
 	devices, err := t.store.GetAll()
 	if err != nil {
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to list devices: %v", err), IsError: true}
 	}
 	summaries := make([]deviceSummary, 0, len(devices))
 	for _, d := range devices {
+		if filterRoom != "" && !strings.EqualFold(d.RoomName, filterRoom) {
+			continue
+		}
+		if filterBrand != "" && !strings.EqualFold(d.Brand, filterBrand) {
+			continue
+		}
 		summaries = append(summaries, deviceSummary{
 			ID:       d.ID,
 			Name:     d.Name,
