@@ -300,10 +300,10 @@ func (m *MipsMDNS) callServiceChange(state MipsMDNSState, svcData *MipsMDNSServi
 	data := svcData.toMap()
 
 	// 发布到全局事件中心
-	evt := event.NewEventWithData(mipsMDNSEventType, "mdns", map[string]any{
-		"state":    state.String(),
-		"group_id": svcData.GroupID,
-		"service":  data,
+	evt := event.NewEvent(mipsMDNSEventType, "mdns", &event.MDNSData{
+		State:   state.String(),
+		GroupID: svcData.GroupID,
+		Service: data,
 	})
 	event.GetCenter().Publish(evt)
 

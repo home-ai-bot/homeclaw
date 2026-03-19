@@ -143,8 +143,8 @@ func (c *Center) Publish(event Event) {
 }
 
 // PublishWithData creates and publishes an event with the given data
-func (c *Center) PublishWithData(eventType EventType, source string, data map[string]any) {
-	event := NewEventWithData(eventType, source, data)
+func (c *Center) PublishWithData(eventType EventType, source string, data any) {
+	event := NewEvent(eventType, source, data)
 	c.Publish(event)
 }
 

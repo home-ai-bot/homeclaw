@@ -149,36 +149,35 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	f := hc.f
 
 	// Device tools
-	registerTool(toolRegistry, f.NewListDevicesTool)
-	registerTool(toolRegistry, f.NewGetDeviceTool)
+	registerTool(toolRegistry, f.GetListDevicesTool)
+	registerTool(toolRegistry, f.GetGetDeviceTool)
 
 	// Space tools
-	registerTool(toolRegistry, f.NewListSpacesTool)
-	registerTool(toolRegistry, f.NewGetSpaceTool)
-	registerTool(toolRegistry, f.NewSaveSpaceTool)
-	registerTool(toolRegistry, f.NewDeleteSpaceTool)
+	registerTool(toolRegistry, f.GetListSpacesTool)
+	registerTool(toolRegistry, f.GetGetSpaceTool)
+	registerTool(toolRegistry, f.GetSaveSpaceTool)
+	registerTool(toolRegistry, f.GetDeleteSpaceTool)
 
 	// Member tools
-	registerTool(toolRegistry, f.NewListMembersTool)
-	registerTool(toolRegistry, f.NewGetMemberTool)
-	registerTool(toolRegistry, f.NewSaveMemberTool)
-	registerTool(toolRegistry, f.NewDeleteMemberTool)
+	registerTool(toolRegistry, f.GetListMembersTool)
+	registerTool(toolRegistry, f.GetGetMemberTool)
+	registerTool(toolRegistry, f.GetSaveMemberTool)
+	registerTool(toolRegistry, f.GetDeleteMemberTool)
 
 	// Workflow tools
-	registerTool(toolRegistry, f.NewListWorkflowsTool)
-	registerTool(toolRegistry, f.NewGetWorkflowTool)
-	registerTool(toolRegistry, f.NewSaveWorkflowTool)
-	registerTool(toolRegistry, f.NewDeleteWorkflowTool)
-	registerTool(toolRegistry, f.NewEnableWorkflowTool)
-	registerTool(toolRegistry, f.NewDisableWorkflowTool)
+	registerTool(toolRegistry, f.GetListWorkflowsTool)
+	registerTool(toolRegistry, f.GetGetWorkflowTool)
+	registerTool(toolRegistry, f.GetSaveWorkflowTool)
+	registerTool(toolRegistry, f.GetDeleteWorkflowTool)
+	registerTool(toolRegistry, f.GetEnableWorkflowTool)
+	registerTool(toolRegistry, f.GetDisableWorkflowTool)
 
 	// Mi Home (miio) tools
-	registerTool(toolRegistry, f.NewGetXiaomiAccountTool)
-	registerTool(toolRegistry, f.NewUpdateXiaomiTokenTool)
-	registerTool(toolRegistry, f.NewUpdateXiaomiHomeTool)
-	registerTool(toolRegistry, f.NewGetXiaomiOAuthURLTool)
-	registerTool(toolRegistry, f.NewGetXiaomiAccessTokenTool)
-	registerTool(toolRegistry, f.NewSyncXiaomiHomesTool)
-	registerTool(toolRegistry, f.NewSyncXiaomiRoomsTool)
-	registerTool(toolRegistry, f.NewSyncXiaomiDevicesTool)
+	registerTool(toolRegistry, f.GetGetXiaomiAccountTool)
+	registerTool(toolRegistry, f.GetUpdateXiaomiHomeTool)
+	registerTool(toolRegistry, f.GetGetXiaomiOAuthURLTool)
+	registerTool(toolRegistry, f.GetGetXiaomiAccessTokenTool)
+	registerTool(toolRegistry, f.GetSyncXiaomiHomesTool)
+	registerTool(toolRegistry, f.GetSyncXiaomiRoomsTool)
+	registerTool(toolRegistry, f.GetSyncXiaomiDevicesTool)
 }

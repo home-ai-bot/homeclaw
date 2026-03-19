@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewEvent(t *testing.T) {
-	e := NewEvent(EventTypeDevice, "test-source")
+	e := NewEvent(EventTypeDevice, "test-source", nil)
 
 	if e.Type != EventTypeDevice {
 		t.Errorf("expected type %s, got %s", EventTypeDevice, e.Type)
@@ -15,50 +15,56 @@ func TestNewEvent(t *testing.T) {
 	if e.Source != "test-source" {
 		t.Errorf("expected source test-source, got %s", e.Source)
 	}
-	if e.Data == nil {
-		t.Error("expected Data to be initialized")
+}
+
+func TestEventDataTypes(t *testing.T) {
+	// Test TokenData
+	tokenData := &TokenData{
+		AccessToken:    "test-token",
+		RefreshToken:   "refresh-token",
+		TokenExpiresAt: time.Now().Add(time.Hour),
+	}
+	e := NewEvent(EventTypeToken, "test", tokenData)
+
+	if got := e.TokenData(); got == nil {
+		t.Error("expected TokenData to be returned")
+	} else if got.AccessToken != "test-token" {
+		t.Errorf("expected access_token test-token, got %s", got.AccessToken)
+	}
+
+	// Test NetData
+	netData := &NetData{
+		Kind:   "status",
+		Online: true,
+	}
+	e2 := NewEvent(EventTypeNet, "test", netData)
+	if got := e2.NetData(); got == nil {
+		t.Error("expected NetData to be returned")
+	} else if got.Kind != "status" {
+		t.Errorf("expected kind status, got %s", got.Kind)
+	}
+
+	// Test type mismatch returns nil
+	if e.NetData() != nil {
+		t.Error("expected nil for wrong type")
 	}
 }
 
-func TestEventSetGet(t *testing.T) {
-	e := NewEvent(EventTypeRoom, "test")
-	e.Set("key1", "value1")
-	e.Set("key2", 123)
+func TestEventMapData(t *testing.T) {
+	mapData := map[string]any{"key": "value"}
+	e := NewEvent(EventTypeDevice, "test", mapData)
 
-	val1, ok := e.Get("key1")
-	if !ok || val1 != "value1" {
-		t.Errorf("expected value1, got %v", val1)
+	got := e.MapData()
+	if got == nil {
+		t.Error("expected map data")
 	}
-
-	val2, ok := e.Get("key2")
-	if !ok || val2 != 123 {
-		t.Errorf("expected 123, got %v", val2)
-	}
-
-	_, ok = e.Get("nonexistent")
-	if ok {
-		t.Error("expected nonexistent key to return false")
-	}
-}
-
-func TestEventGetString(t *testing.T) {
-	e := NewEvent(EventTypeDevice, "test")
-	e.Set("str", "value")
-	e.Set("int", 123)
-
-	str, ok := e.GetString("str")
-	if !ok || str != "value" {
-		t.Errorf("expected value, got %s", str)
-	}
-
-	_, ok = e.GetString("int")
-	if ok {
-		t.Error("expected int to not be convertible to string")
+	if got["key"] != "value" {
+		t.Errorf("expected value, got %v", got["key"])
 	}
 }
 
 func TestEventIsType(t *testing.T) {
-	e := NewEvent(EventTypeDevice, "test")
+	e := NewEvent(EventTypeDevice, "test", nil)
 
 	if !e.IsType(EventTypeDevice) {
 		t.Error("expected IsType to return true for Device")
@@ -84,8 +90,8 @@ func TestCenterSubscribeAndPublish(t *testing.T) {
 
 	center.Subscribe(EventTypeDevice, listener)
 
-	event := NewEvent(EventTypeDevice, "test-source")
-	event.Set("device_id", "123")
+	eventData := map[string]any{"device_id": "123"}
+	event := NewEvent(EventTypeDevice, "test-source", eventData)
 	center.Publish(event)
 
 	// Wait for async dispatch
@@ -116,9 +122,9 @@ func TestCenterWildcardListener(t *testing.T) {
 
 	center.SubscribeAll(listener)
 
-	center.Publish(NewEvent(EventTypeDevice, "test"))
-	center.Publish(NewEvent(EventTypeRoom, "test"))
-	center.Publish(NewEvent(EventTypeToken, "test"))
+	center.Publish(NewEvent(EventTypeDevice, "test", nil))
+	center.Publish(NewEvent(EventTypeRoom, "test", nil))
+	center.Publish(NewEvent(EventTypeToken, "test", nil))
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -144,9 +150,9 @@ func TestCenterMultiTypeListener(t *testing.T) {
 
 	center.SubscribeTypes(listener, EventTypeDevice, EventTypeRoom)
 
-	center.Publish(NewEvent(EventTypeDevice, "test"))
-	center.Publish(NewEvent(EventTypeRoom, "test"))
-	center.Publish(NewEvent(EventTypeToken, "test"))
+	center.Publish(NewEvent(EventTypeDevice, "test", nil))
+	center.Publish(NewEvent(EventTypeRoom, "test", nil))
+	center.Publish(NewEvent(EventTypeToken, "test", nil))
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -171,12 +177,12 @@ func TestCenterUnsubscribe(t *testing.T) {
 	})
 
 	center.Subscribe(EventTypeDevice, listener)
-	center.Publish(NewEvent(EventTypeDevice, "test"))
+	center.Publish(NewEvent(EventTypeDevice, "test", nil))
 
 	time.Sleep(50 * time.Millisecond)
 
 	center.Unsubscribe(EventTypeDevice, listener)
-	center.Publish(NewEvent(EventTypeDevice, "test"))
+	center.Publish(NewEvent(EventTypeDevice, "test", nil))
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -204,7 +210,7 @@ func TestCenterAsyncMode(t *testing.T) {
 
 	center.Subscribe(EventTypeDevice, listener)
 
-	center.Publish(NewEvent(EventTypeDevice, "test"))
+	center.Publish(NewEvent(EventTypeDevice, "test", nil))
 
 	time.Sleep(100 * time.Millisecond)
 

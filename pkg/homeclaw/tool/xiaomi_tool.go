@@ -8,9 +8,15 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
+	"github.com/sipeed/picoclaw/pkg/homeclaw/event"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/miio"
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
+
+// CloudClientFactory defines the interface for creating CloudClient
+type CloudClientFactory interface {
+	GetCloudClient() (*miio.CloudClient, error)
+}
 
 // syncTimestamp 用于标记本次同步时间，用于识别已删除的项目
 var syncTimestamp = time.Now().Unix()
@@ -105,95 +111,18 @@ func (t *GetXiaomiAccountTool) Execute(_ context.Context, _ map[string]any) *too
 		if saveErr := t.store.Save(*acc); saveErr != nil {
 			return tools.ErrorResult(fmt.Sprintf("token refreshed but failed to save: %v", saveErr))
 		}
+
+		// 发送 token 更新事件
+		evt := event.NewEvent(event.EventTypeToken, "mi_get_account", &event.TokenData{
+			AccessToken:    acc.AccessToken,
+			RefreshToken:   acc.RefreshToken,
+			TokenExpiresAt: acc.TokenExpiresAt,
+		})
+		event.GetCenter().Publish(evt)
 	}
 
 	b, _ := json.Marshal(acc)
 	return tools.SilentResult(string(b))
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// mi_update_token
-// ─────────────────────────────────────────────────────────────────────────────
-
-// UpdateXiaomiTokenTool 更新小米账号的 token 相关字段
-// （access_token / refresh_token / expires_in / token_expires_at）。
-type UpdateXiaomiTokenTool struct {
-	store data.XiaomiAccountStore
-}
-
-func NewUpdateXiaomiTokenTool(store data.XiaomiAccountStore) *UpdateXiaomiTokenTool {
-	return &UpdateXiaomiTokenTool{store: store}
-}
-
-func (t *UpdateXiaomiTokenTool) Name() string { return "mi_update_token" }
-
-func (t *UpdateXiaomiTokenTool) Description() string {
-	return "Update the Xiaomi account token fields (access_token, refresh_token, expires_in). " +
-		"token_expires_at is calculated automatically from expires_in. " +
-		"The account must already exist (use mi_get_account first)."
-}
-
-func (t *UpdateXiaomiTokenTool) Parameters() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"access_token": map[string]any{
-				"type":        "string",
-				"description": "New access token",
-			},
-			"refresh_token": map[string]any{
-				"type":        "string",
-				"description": "New refresh token",
-			},
-			"expires_in": map[string]any{
-				"type":        "integer",
-				"description": "Token lifetime in seconds",
-			},
-		},
-		"required": []string{"access_token", "refresh_token", "expires_in"},
-	}
-}
-
-func (t *UpdateXiaomiTokenTool) Execute(_ context.Context, args map[string]any) *tools.ToolResult {
-	accessToken, ok := args["access_token"].(string)
-	if !ok || accessToken == "" {
-		return tools.ErrorResult("access_token is required")
-	}
-	refreshToken, ok := args["refresh_token"].(string)
-	if !ok || refreshToken == "" {
-		return tools.ErrorResult("refresh_token is required")
-	}
-
-	var expiresIn int
-	switch v := args["expires_in"].(type) {
-	case float64:
-		expiresIn = int(v)
-	case int:
-		expiresIn = v
-	default:
-		return tools.ErrorResult("expires_in must be an integer")
-	}
-	if expiresIn <= 0 {
-		return tools.ErrorResult("expires_in must be positive")
-	}
-
-	acc, err := t.store.Get()
-	if err != nil {
-		if errors.Is(err, data.ErrRecordNotFound) {
-			return tools.ErrorResult("xiaomi account not configured, cannot update token")
-		}
-		return tools.ErrorResult(fmt.Sprintf("failed to get xiaomi account: %v", err))
-	}
-
-	acc.AccessToken = accessToken
-	acc.RefreshToken = refreshToken
-	acc.ExpiresIn = expiresIn
-	acc.TokenExpiresAt = time.Now().Add(time.Duration(expiresIn) * time.Second)
-
-	if err := t.store.Save(*acc); err != nil {
-		return tools.ErrorResult(fmt.Sprintf("failed to save xiaomi account: %v", err))
-	}
-	return tools.NewToolResult(fmt.Sprintf("xiaomi token updated, expires at %s", acc.TokenExpiresAt.Format(time.RFC3339)))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -402,12 +331,12 @@ func (t *GetXiaomiAccessTokenTool) Execute(_ context.Context, args map[string]an
 
 // SyncXiaomiHomesTool 查询小米家庭列表
 type SyncXiaomiHomesTool struct {
-	store       data.XiaomiAccountStore
-	oauthClient *miio.MIoTOauthClient
+	store   data.XiaomiAccountStore
+	factory CloudClientFactory
 }
 
-func NewSyncXiaomiHomesTool(store data.XiaomiAccountStore, oauthClient *miio.MIoTOauthClient) *SyncXiaomiHomesTool {
-	return &SyncXiaomiHomesTool{store: store, oauthClient: oauthClient}
+func NewSyncXiaomiHomesTool(store data.XiaomiAccountStore, factory CloudClientFactory) *SyncXiaomiHomesTool {
+	return &SyncXiaomiHomesTool{store: store, factory: factory}
 }
 
 func (t *SyncXiaomiHomesTool) Name() string { return "mi_sync_homes" }
@@ -427,13 +356,13 @@ func (t *SyncXiaomiHomesTool) Parameters() map[string]any {
 }
 
 func (t *SyncXiaomiHomesTool) Execute(_ context.Context, _ map[string]any) *tools.ToolResult {
-	acc, tokenErr := checkToken(t.store)
+	_, tokenErr := checkToken(t.store)
 	if tokenErr != nil {
 		return tokenErr
 	}
 
 	// 创建 CloudClient
-	client, err := miio.NewCloudClient("cn", t.oauthClient.GetClientID(), acc.AccessToken)
+	client, err := t.factory.GetCloudClient()
 	if err != nil {
 		return tools.ErrorResult(fmt.Sprintf("failed to create cloud client: %v", err))
 	}
@@ -490,13 +419,13 @@ func (t *SyncXiaomiHomesTool) Execute(_ context.Context, _ map[string]any) *tool
 
 // SyncXiaomiRoomsTool 同步指定家庭的房间信息
 type SyncXiaomiRoomsTool struct {
-	store       data.XiaomiAccountStore
-	spaceStore  data.SpaceStore
-	oauthClient *miio.MIoTOauthClient
+	store      data.XiaomiAccountStore
+	spaceStore data.SpaceStore
+	factory    CloudClientFactory
 }
 
-func NewSyncXiaomiRoomsTool(store data.XiaomiAccountStore, spaceStore data.SpaceStore, oauthClient *miio.MIoTOauthClient) *SyncXiaomiRoomsTool {
-	return &SyncXiaomiRoomsTool{store: store, spaceStore: spaceStore, oauthClient: oauthClient}
+func NewSyncXiaomiRoomsTool(store data.XiaomiAccountStore, spaceStore data.SpaceStore, factory CloudClientFactory) *SyncXiaomiRoomsTool {
+	return &SyncXiaomiRoomsTool{store: store, spaceStore: spaceStore, factory: factory}
 }
 
 func (t *SyncXiaomiRoomsTool) Name() string { return "mi_sync_rooms" }
@@ -526,13 +455,13 @@ func (t *SyncXiaomiRoomsTool) Execute(_ context.Context, args map[string]any) *t
 		return tools.ErrorResult("home_id is required")
 	}
 
-	acc, tokenErr := checkToken(t.store)
+	_, tokenErr := checkToken(t.store)
 	if tokenErr != nil {
 		return tokenErr
 	}
 
 	// 创建 CloudClient
-	client, err := miio.NewCloudClient("cn", t.oauthClient.GetClientID(), acc.AccessToken)
+	client, err := t.factory.GetCloudClient()
 	if err != nil {
 		return tools.ErrorResult(fmt.Sprintf("failed to create cloud client: %v", err))
 	}
@@ -640,11 +569,11 @@ func (t *SyncXiaomiRoomsTool) Execute(_ context.Context, args map[string]any) *t
 type SyncXiaomiDevicesTool struct {
 	store       data.XiaomiAccountStore
 	deviceStore data.DeviceStore
-	oauthClient *miio.MIoTOauthClient
+	factory     CloudClientFactory
 }
 
-func NewSyncXiaomiDevicesTool(store data.XiaomiAccountStore, deviceStore data.DeviceStore, oauthClient *miio.MIoTOauthClient) *SyncXiaomiDevicesTool {
-	return &SyncXiaomiDevicesTool{store: store, deviceStore: deviceStore, oauthClient: oauthClient}
+func NewSyncXiaomiDevicesTool(store data.XiaomiAccountStore, deviceStore data.DeviceStore, factory CloudClientFactory) *SyncXiaomiDevicesTool {
+	return &SyncXiaomiDevicesTool{store: store, deviceStore: deviceStore, factory: factory}
 }
 
 func (t *SyncXiaomiDevicesTool) Name() string { return "mi_sync_devices" }
@@ -674,13 +603,13 @@ func (t *SyncXiaomiDevicesTool) Execute(_ context.Context, args map[string]any) 
 		return tools.ErrorResult("home_id is required")
 	}
 
-	acc, tokenErr := checkToken(t.store)
+	_, tokenErr := checkToken(t.store)
 	if tokenErr != nil {
 		return tokenErr
 	}
 
 	// 创建 CloudClient
-	client, err := miio.NewCloudClient("cn", t.oauthClient.GetClientID(), acc.AccessToken)
+	client, err := t.factory.GetCloudClient()
 	if err != nil {
 		return tools.ErrorResult(fmt.Sprintf("failed to create cloud client: %v", err))
 	}

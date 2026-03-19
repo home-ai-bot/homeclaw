@@ -57,6 +57,32 @@ type Factory struct {
 	// Initialization tracking
 	storeOnce sync.Once
 	storeErr  error
+
+	// Tool singleton instances - lazy loaded
+	listDevicesTool          *homeclawtool.ListDevicesTool
+	getDeviceTool            *homeclawtool.GetDeviceTool
+	listSpacesTool           *homeclawtool.ListSpacesTool
+	getSpaceTool             *homeclawtool.GetSpaceTool
+	saveSpaceTool            *homeclawtool.SaveSpaceTool
+	deleteSpaceTool          *homeclawtool.DeleteSpaceTool
+	listMembersTool          *homeclawtool.ListMembersTool
+	getMemberTool            *homeclawtool.GetMemberTool
+	saveMemberTool           *homeclawtool.SaveMemberTool
+	deleteMemberTool         *homeclawtool.DeleteMemberTool
+	listWorkflowsTool        *homeclawtool.ListWorkflowsTool
+	getWorkflowTool          *homeclawtool.GetWorkflowTool
+	saveWorkflowTool         *homeclawtool.SaveWorkflowTool
+	deleteWorkflowTool       *homeclawtool.DeleteWorkflowTool
+	enableWorkflowTool       *homeclawtool.EnableWorkflowTool
+	disableWorkflowTool      *homeclawtool.DisableWorkflowTool
+	getXiaomiAccountTool     *homeclawtool.GetXiaomiAccountTool
+	updateXiaomiHomeTool     *homeclawtool.UpdateXiaomiHomeTool
+	getXiaomiOAuthURLTool    *homeclawtool.GetXiaomiOAuthURLTool
+	getXiaomiAccessTokenTool *homeclawtool.GetXiaomiAccessTokenTool
+	syncXiaomiHomesTool      *homeclawtool.SyncXiaomiHomesTool
+	syncXiaomiRoomsTool      *homeclawtool.SyncXiaomiRoomsTool
+	syncXiaomiDevicesTool    *homeclawtool.SyncXiaomiDevicesTool
+	cloudClient              *miio.CloudClient
 }
 
 // NewFactory creates a new Factory instance.
@@ -354,152 +380,219 @@ func (f *Factory) GetMIoTOAuthClient() (*miio.MIoTOauthClient, error) {
 // Tool factory methods
 // ─────────────────────────────────────────────────────────────────────────────
 
-// NewListDevicesTool creates a ListDevicesTool
-func (f *Factory) NewListDevicesTool() (*homeclawtool.ListDevicesTool, error) {
+// GetListDevicesTool returns the singleton ListDevicesTool instance (lazy initialized)
+func (f *Factory) GetListDevicesTool() (*homeclawtool.ListDevicesTool, error) {
+	if f.listDevicesTool != nil {
+		return f.listDevicesTool, nil
+	}
 	store, err := f.GetDeviceStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewListDevicesTool(store), nil
+	f.listDevicesTool = homeclawtool.NewListDevicesTool(store)
+	return f.listDevicesTool, nil
 }
 
-// NewGetDeviceTool creates a GetDeviceTool
-func (f *Factory) NewGetDeviceTool() (*homeclawtool.GetDeviceTool, error) {
+// GetGetDeviceTool returns the singleton GetDeviceTool instance (lazy initialized)
+func (f *Factory) GetGetDeviceTool() (*homeclawtool.GetDeviceTool, error) {
+	if f.getDeviceTool != nil {
+		return f.getDeviceTool, nil
+	}
 	store, err := f.GetDeviceStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewGetDeviceTool(store), nil
+	f.getDeviceTool = homeclawtool.NewGetDeviceTool(store)
+	return f.getDeviceTool, nil
 }
 
-// NewListSpacesTool creates a ListSpacesTool
-func (f *Factory) NewListSpacesTool() (*homeclawtool.ListSpacesTool, error) {
+// GetListSpacesTool returns the singleton ListSpacesTool instance (lazy initialized)
+func (f *Factory) GetListSpacesTool() (*homeclawtool.ListSpacesTool, error) {
+	if f.listSpacesTool != nil {
+		return f.listSpacesTool, nil
+	}
 	store, err := f.GetSpaceStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewListSpacesTool(store), nil
+	f.listSpacesTool = homeclawtool.NewListSpacesTool(store)
+	return f.listSpacesTool, nil
 }
 
-// NewGetSpaceTool creates a GetSpaceTool
-func (f *Factory) NewGetSpaceTool() (*homeclawtool.GetSpaceTool, error) {
+// GetGetSpaceTool returns the singleton GetSpaceTool instance (lazy initialized)
+func (f *Factory) GetGetSpaceTool() (*homeclawtool.GetSpaceTool, error) {
+	if f.getSpaceTool != nil {
+		return f.getSpaceTool, nil
+	}
 	store, err := f.GetSpaceStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewGetSpaceTool(store), nil
+	f.getSpaceTool = homeclawtool.NewGetSpaceTool(store)
+	return f.getSpaceTool, nil
 }
 
-// NewSaveSpaceTool creates a SaveSpaceTool
-func (f *Factory) NewSaveSpaceTool() (*homeclawtool.SaveSpaceTool, error) {
+// GetSaveSpaceTool returns the singleton SaveSpaceTool instance (lazy initialized)
+func (f *Factory) GetSaveSpaceTool() (*homeclawtool.SaveSpaceTool, error) {
+	if f.saveSpaceTool != nil {
+		return f.saveSpaceTool, nil
+	}
 	store, err := f.GetSpaceStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewSaveSpaceTool(store), nil
+	f.saveSpaceTool = homeclawtool.NewSaveSpaceTool(store)
+	return f.saveSpaceTool, nil
 }
 
-// NewDeleteSpaceTool creates a DeleteSpaceTool
-func (f *Factory) NewDeleteSpaceTool() (*homeclawtool.DeleteSpaceTool, error) {
+// GetDeleteSpaceTool returns the singleton DeleteSpaceTool instance (lazy initialized)
+func (f *Factory) GetDeleteSpaceTool() (*homeclawtool.DeleteSpaceTool, error) {
+	if f.deleteSpaceTool != nil {
+		return f.deleteSpaceTool, nil
+	}
 	store, err := f.GetSpaceStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewDeleteSpaceTool(store), nil
+	f.deleteSpaceTool = homeclawtool.NewDeleteSpaceTool(store)
+	return f.deleteSpaceTool, nil
 }
 
-// NewListMembersTool creates a ListMembersTool
-func (f *Factory) NewListMembersTool() (*homeclawtool.ListMembersTool, error) {
+// GetListMembersTool returns the singleton ListMembersTool instance (lazy initialized)
+func (f *Factory) GetListMembersTool() (*homeclawtool.ListMembersTool, error) {
+	if f.listMembersTool != nil {
+		return f.listMembersTool, nil
+	}
 	store, err := f.GetMemberStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewListMembersTool(store), nil
+	f.listMembersTool = homeclawtool.NewListMembersTool(store)
+	return f.listMembersTool, nil
 }
 
-// NewGetMemberTool creates a GetMemberTool
-func (f *Factory) NewGetMemberTool() (*homeclawtool.GetMemberTool, error) {
+// GetGetMemberTool returns the singleton GetMemberTool instance (lazy initialized)
+func (f *Factory) GetGetMemberTool() (*homeclawtool.GetMemberTool, error) {
+	if f.getMemberTool != nil {
+		return f.getMemberTool, nil
+	}
 	store, err := f.GetMemberStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewGetMemberTool(store), nil
+	f.getMemberTool = homeclawtool.NewGetMemberTool(store)
+	return f.getMemberTool, nil
 }
 
-// NewSaveMemberTool creates a SaveMemberTool
-func (f *Factory) NewSaveMemberTool() (*homeclawtool.SaveMemberTool, error) {
+// GetSaveMemberTool returns the singleton SaveMemberTool instance (lazy initialized)
+func (f *Factory) GetSaveMemberTool() (*homeclawtool.SaveMemberTool, error) {
+	if f.saveMemberTool != nil {
+		return f.saveMemberTool, nil
+	}
 	store, err := f.GetMemberStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewSaveMemberTool(store), nil
+	f.saveMemberTool = homeclawtool.NewSaveMemberTool(store)
+	return f.saveMemberTool, nil
 }
 
-// NewDeleteMemberTool creates a DeleteMemberTool
-func (f *Factory) NewDeleteMemberTool() (*homeclawtool.DeleteMemberTool, error) {
+// GetDeleteMemberTool returns the singleton DeleteMemberTool instance (lazy initialized)
+func (f *Factory) GetDeleteMemberTool() (*homeclawtool.DeleteMemberTool, error) {
+	if f.deleteMemberTool != nil {
+		return f.deleteMemberTool, nil
+	}
 	store, err := f.GetMemberStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewDeleteMemberTool(store), nil
+	f.deleteMemberTool = homeclawtool.NewDeleteMemberTool(store)
+	return f.deleteMemberTool, nil
 }
 
-// NewListWorkflowsTool creates a ListWorkflowsTool
-func (f *Factory) NewListWorkflowsTool() (*homeclawtool.ListWorkflowsTool, error) {
+// GetListWorkflowsTool returns the singleton ListWorkflowsTool instance (lazy initialized)
+func (f *Factory) GetListWorkflowsTool() (*homeclawtool.ListWorkflowsTool, error) {
+	if f.listWorkflowsTool != nil {
+		return f.listWorkflowsTool, nil
+	}
 	store, err := f.GetWorkflowStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewListWorkflowsTool(store), nil
+	f.listWorkflowsTool = homeclawtool.NewListWorkflowsTool(store)
+	return f.listWorkflowsTool, nil
 }
 
-// NewGetWorkflowTool creates a GetWorkflowTool
-func (f *Factory) NewGetWorkflowTool() (*homeclawtool.GetWorkflowTool, error) {
+// GetGetWorkflowTool returns the singleton GetWorkflowTool instance (lazy initialized)
+func (f *Factory) GetGetWorkflowTool() (*homeclawtool.GetWorkflowTool, error) {
+	if f.getWorkflowTool != nil {
+		return f.getWorkflowTool, nil
+	}
 	store, err := f.GetWorkflowStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewGetWorkflowTool(store), nil
+	f.getWorkflowTool = homeclawtool.NewGetWorkflowTool(store)
+	return f.getWorkflowTool, nil
 }
 
-// NewSaveWorkflowTool creates a SaveWorkflowTool
-func (f *Factory) NewSaveWorkflowTool() (*homeclawtool.SaveWorkflowTool, error) {
+// GetSaveWorkflowTool returns the singleton SaveWorkflowTool instance (lazy initialized)
+func (f *Factory) GetSaveWorkflowTool() (*homeclawtool.SaveWorkflowTool, error) {
+	if f.saveWorkflowTool != nil {
+		return f.saveWorkflowTool, nil
+	}
 	store, err := f.GetWorkflowStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewSaveWorkflowTool(store), nil
+	f.saveWorkflowTool = homeclawtool.NewSaveWorkflowTool(store)
+	return f.saveWorkflowTool, nil
 }
 
-// NewDeleteWorkflowTool creates a DeleteWorkflowTool
-func (f *Factory) NewDeleteWorkflowTool() (*homeclawtool.DeleteWorkflowTool, error) {
+// GetDeleteWorkflowTool returns the singleton DeleteWorkflowTool instance (lazy initialized)
+func (f *Factory) GetDeleteWorkflowTool() (*homeclawtool.DeleteWorkflowTool, error) {
+	if f.deleteWorkflowTool != nil {
+		return f.deleteWorkflowTool, nil
+	}
 	store, err := f.GetWorkflowStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewDeleteWorkflowTool(store), nil
+	f.deleteWorkflowTool = homeclawtool.NewDeleteWorkflowTool(store)
+	return f.deleteWorkflowTool, nil
 }
 
-// NewEnableWorkflowTool creates an EnableWorkflowTool
-func (f *Factory) NewEnableWorkflowTool() (*homeclawtool.EnableWorkflowTool, error) {
+// GetEnableWorkflowTool returns the singleton EnableWorkflowTool instance (lazy initialized)
+func (f *Factory) GetEnableWorkflowTool() (*homeclawtool.EnableWorkflowTool, error) {
+	if f.enableWorkflowTool != nil {
+		return f.enableWorkflowTool, nil
+	}
 	store, err := f.GetWorkflowStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewEnableWorkflowTool(store), nil
+	f.enableWorkflowTool = homeclawtool.NewEnableWorkflowTool(store)
+	return f.enableWorkflowTool, nil
 }
 
-// NewDisableWorkflowTool creates a DisableWorkflowTool
-func (f *Factory) NewDisableWorkflowTool() (*homeclawtool.DisableWorkflowTool, error) {
+// GetDisableWorkflowTool returns the singleton DisableWorkflowTool instance (lazy initialized)
+func (f *Factory) GetDisableWorkflowTool() (*homeclawtool.DisableWorkflowTool, error) {
+	if f.disableWorkflowTool != nil {
+		return f.disableWorkflowTool, nil
+	}
 	store, err := f.GetWorkflowStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewDisableWorkflowTool(store), nil
+	f.disableWorkflowTool = homeclawtool.NewDisableWorkflowTool(store)
+	return f.disableWorkflowTool, nil
 }
 
-// NewGetXiaomiAccountTool creates a GetXiaomiAccountTool
-func (f *Factory) NewGetXiaomiAccountTool() (*homeclawtool.GetXiaomiAccountTool, error) {
+// GetGetXiaomiAccountTool returns the singleton GetXiaomiAccountTool instance (lazy initialized)
+func (f *Factory) GetGetXiaomiAccountTool() (*homeclawtool.GetXiaomiAccountTool, error) {
+	if f.getXiaomiAccountTool != nil {
+		return f.getXiaomiAccountTool, nil
+	}
 	store, err := f.GetXiaomiAccountStore()
 	if err != nil {
 		return nil, err
@@ -508,51 +601,41 @@ func (f *Factory) NewGetXiaomiAccountTool() (*homeclawtool.GetXiaomiAccountTool,
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewGetXiaomiAccountTool(store, oauthClient), nil
+	f.getXiaomiAccountTool = homeclawtool.NewGetXiaomiAccountTool(store, oauthClient)
+	return f.getXiaomiAccountTool, nil
 }
 
-// NewUpdateXiaomiTokenTool creates an UpdateXiaomiTokenTool
-func (f *Factory) NewUpdateXiaomiTokenTool() (*homeclawtool.UpdateXiaomiTokenTool, error) {
+// GetUpdateXiaomiHomeTool returns the singleton UpdateXiaomiHomeTool instance (lazy initialized)
+func (f *Factory) GetUpdateXiaomiHomeTool() (*homeclawtool.UpdateXiaomiHomeTool, error) {
+	if f.updateXiaomiHomeTool != nil {
+		return f.updateXiaomiHomeTool, nil
+	}
 	store, err := f.GetXiaomiAccountStore()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewUpdateXiaomiTokenTool(store), nil
+	f.updateXiaomiHomeTool = homeclawtool.NewUpdateXiaomiHomeTool(store)
+	return f.updateXiaomiHomeTool, nil
 }
 
-// NewUpdateXiaomiHomeTool creates an UpdateXiaomiHomeTool
-func (f *Factory) NewUpdateXiaomiHomeTool() (*homeclawtool.UpdateXiaomiHomeTool, error) {
-	store, err := f.GetXiaomiAccountStore()
-	if err != nil {
-		return nil, err
-	}
-	return homeclawtool.NewUpdateXiaomiHomeTool(store), nil
-}
-
-// NewGetXiaomiOAuthURLTool creates a GetXiaomiOAuthURLTool
-func (f *Factory) NewGetXiaomiOAuthURLTool() (*homeclawtool.GetXiaomiOAuthURLTool, error) {
-	oauthClient, err := f.GetMIoTOAuthClient()
-	if err != nil {
-		return nil, err
-	}
-	return homeclawtool.NewGetXiaomiOAuthURLTool(oauthClient), nil
-}
-
-// NewGetXiaomiAccessTokenTool creates a GetXiaomiAccessTokenTool
-func (f *Factory) NewGetXiaomiAccessTokenTool() (*homeclawtool.GetXiaomiAccessTokenTool, error) {
-	store, err := f.GetXiaomiAccountStore()
-	if err != nil {
-		return nil, err
+// GetGetXiaomiOAuthURLTool returns the singleton GetXiaomiOAuthURLTool instance (lazy initialized)
+func (f *Factory) GetGetXiaomiOAuthURLTool() (*homeclawtool.GetXiaomiOAuthURLTool, error) {
+	if f.getXiaomiOAuthURLTool != nil {
+		return f.getXiaomiOAuthURLTool, nil
 	}
 	oauthClient, err := f.GetMIoTOAuthClient()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewGetXiaomiAccessTokenTool(store, oauthClient), nil
+	f.getXiaomiOAuthURLTool = homeclawtool.NewGetXiaomiOAuthURLTool(oauthClient)
+	return f.getXiaomiOAuthURLTool, nil
 }
 
-// NewSyncXiaomiHomesTool creates a SyncXiaomiHomesTool
-func (f *Factory) NewSyncXiaomiHomesTool() (*homeclawtool.SyncXiaomiHomesTool, error) {
+// GetGetXiaomiAccessTokenTool returns the singleton GetXiaomiAccessTokenTool instance (lazy initialized)
+func (f *Factory) GetGetXiaomiAccessTokenTool() (*homeclawtool.GetXiaomiAccessTokenTool, error) {
+	if f.getXiaomiAccessTokenTool != nil {
+		return f.getXiaomiAccessTokenTool, nil
+	}
 	store, err := f.GetXiaomiAccountStore()
 	if err != nil {
 		return nil, err
@@ -561,11 +644,28 @@ func (f *Factory) NewSyncXiaomiHomesTool() (*homeclawtool.SyncXiaomiHomesTool, e
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewSyncXiaomiHomesTool(store, oauthClient), nil
+	f.getXiaomiAccessTokenTool = homeclawtool.NewGetXiaomiAccessTokenTool(store, oauthClient)
+	return f.getXiaomiAccessTokenTool, nil
 }
 
-// NewSyncXiaomiRoomsTool creates a SyncXiaomiRoomsTool
-func (f *Factory) NewSyncXiaomiRoomsTool() (*homeclawtool.SyncXiaomiRoomsTool, error) {
+// GetSyncXiaomiHomesTool returns the singleton SyncXiaomiHomesTool instance (lazy initialized)
+func (f *Factory) GetSyncXiaomiHomesTool() (*homeclawtool.SyncXiaomiHomesTool, error) {
+	if f.syncXiaomiHomesTool != nil {
+		return f.syncXiaomiHomesTool, nil
+	}
+	store, err := f.GetXiaomiAccountStore()
+	if err != nil {
+		return nil, err
+	}
+	f.syncXiaomiHomesTool = homeclawtool.NewSyncXiaomiHomesTool(store, f)
+	return f.syncXiaomiHomesTool, nil
+}
+
+// GetSyncXiaomiRoomsTool returns the singleton SyncXiaomiRoomsTool instance (lazy initialized)
+func (f *Factory) GetSyncXiaomiRoomsTool() (*homeclawtool.SyncXiaomiRoomsTool, error) {
+	if f.syncXiaomiRoomsTool != nil {
+		return f.syncXiaomiRoomsTool, nil
+	}
 	store, err := f.GetXiaomiAccountStore()
 	if err != nil {
 		return nil, err
@@ -574,15 +674,15 @@ func (f *Factory) NewSyncXiaomiRoomsTool() (*homeclawtool.SyncXiaomiRoomsTool, e
 	if err != nil {
 		return nil, err
 	}
-	oauthClient, err := f.GetMIoTOAuthClient()
-	if err != nil {
-		return nil, err
-	}
-	return homeclawtool.NewSyncXiaomiRoomsTool(store, spaceStore, oauthClient), nil
+	f.syncXiaomiRoomsTool = homeclawtool.NewSyncXiaomiRoomsTool(store, spaceStore, f)
+	return f.syncXiaomiRoomsTool, nil
 }
 
-// NewSyncXiaomiDevicesTool creates a SyncXiaomiDevicesTool
-func (f *Factory) NewSyncXiaomiDevicesTool() (*homeclawtool.SyncXiaomiDevicesTool, error) {
+// GetSyncXiaomiDevicesTool returns the singleton SyncXiaomiDevicesTool instance (lazy initialized)
+func (f *Factory) GetSyncXiaomiDevicesTool() (*homeclawtool.SyncXiaomiDevicesTool, error) {
+	if f.syncXiaomiDevicesTool != nil {
+		return f.syncXiaomiDevicesTool, nil
+	}
 	store, err := f.GetXiaomiAccountStore()
 	if err != nil {
 		return nil, err
@@ -591,9 +691,35 @@ func (f *Factory) NewSyncXiaomiDevicesTool() (*homeclawtool.SyncXiaomiDevicesToo
 	if err != nil {
 		return nil, err
 	}
+	f.syncXiaomiDevicesTool = homeclawtool.NewSyncXiaomiDevicesTool(store, deviceStore, f)
+	return f.syncXiaomiDevicesTool, nil
+}
+
+// GetCloudClient returns the singleton CloudClient instance (lazy initialized)
+// The CloudClient manages its own token refresh internally
+func (f *Factory) GetCloudClient() (*miio.CloudClient, error) {
+	if f.cloudClient != nil {
+		return f.cloudClient, nil
+	}
+
+	acc, err := f.GetXiaomiAccountStore()
+	if err != nil {
+		return nil, err
+	}
+
+	account, err := acc.Get()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get xiaomi account: %w", err)
+	}
+
 	oauthClient, err := f.GetMIoTOAuthClient()
 	if err != nil {
 		return nil, err
 	}
-	return homeclawtool.NewSyncXiaomiDevicesTool(store, deviceStore, oauthClient), nil
+
+	f.cloudClient, err = miio.NewCloudClient("cn", oauthClient.GetClientID(), account.AccessToken)
+	if err != nil {
+		return nil, err
+	}
+	return f.cloudClient, nil
 }

@@ -317,9 +317,9 @@ func (n *LocalNet) updateStatusAndInfo() {
 	if n.networkStatus != status {
 		n.networkStatus = status
 		// Publish EventTypeNet event via the event center
-		evt := event.NewEventWithData(event.EventTypeNet, "local_net", map[string]any{
-			"kind":   "status",
-			"online": status,
+		evt := event.NewEvent(event.EventTypeNet, "local_net", &event.NetData{
+			Kind:   "status",
+			Online: status,
 		})
 		event.GetCenter().Publish(evt)
 	}
@@ -352,13 +352,13 @@ func (n *LocalNet) updateStatusAndInfo() {
 // callNetworkInfoChange 通知所有订阅者接口变更（需持有写锁）
 func (n *LocalNet) callNetworkInfoChange(status InterfaceStatus, info NetworkInterfaceInfo) {
 	// Publish EventTypeNet event via the event center
-	evt := event.NewEventWithData(event.EventTypeNet, "local_net", map[string]any{
-		"kind":    "interface",
-		"status":  int(status),
-		"name":    info.Name,
-		"ip":      info.IP,
-		"netmask": info.Netmask,
-		"netseg":  info.NetSeg,
+	evt := event.NewEvent(event.EventTypeNet, "local_net", &event.NetData{
+		Kind:    "interface",
+		Status:  int(status),
+		Name:    info.Name,
+		IP:      info.IP,
+		Netmask: info.Netmask,
+		NetSeg:  info.NetSeg,
 	})
 	event.GetCenter().Publish(evt)
 }
