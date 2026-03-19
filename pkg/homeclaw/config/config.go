@@ -46,9 +46,9 @@ type HomeclawConfig struct {
 //  2. Inline (APIBase + APIKey + Model) – fully self-contained; does not require
 //     any entry in PicoClaw's model_list.
 type IntentModelConfig struct {
-	// ModelRef references a model_name entry in PicoClaw's model_list.
+	// ModelName references a model_name entry in PicoClaw's model_list.
 	// When set, APIBase / APIKey / Model below are ignored.
-	ModelRef string `json:"model_ref,omitempty"`
+	ModelName string `json:"model_ref,omitempty"`
 
 	// APIBase is the OpenAI-compatible API endpoint, e.g. "http://localhost:11434/v1".
 	APIBase string `json:"api_base,omitempty"`
@@ -61,14 +61,14 @@ type IntentModelConfig struct {
 }
 
 // IsModelRef returns true when the config uses a PicoClaw model_list reference.
-func (m IntentModelConfig) IsModelRef() bool {
-	return m.ModelRef != ""
+func (m IntentModelConfig) IsModelName() bool {
+	return m.ModelName != ""
 }
 
 // Validate checks that the IntentModelConfig has sufficient information to
 // build a provider.
 func (m IntentModelConfig) Validate() error {
-	if m.ModelRef != "" {
+	if m.ModelName != "" {
 		return nil
 	}
 	if m.Model == "" {
