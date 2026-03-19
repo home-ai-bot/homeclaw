@@ -108,18 +108,23 @@ type NetworkMonitor interface {
 }
 
 // NetworkInterfaceInfo 网络接口信息
+// 对应 Python 版 NetworkInfo
 type NetworkInterfaceInfo struct {
-	Name string
-	IP   string
-	IsUp bool
+	Name    string // 接口名称
+	IP      string // IPv4 地址
+	Netmask string // 子网掩码
+	NetSeg  string // 网络段地址
 }
 
 // InterfaceStatus 网络接口状态
+// 对应 Python 版 InterfaceStatus
 type InterfaceStatus int
 
 const (
 	// InterfaceStatusAdd 接口添加
 	InterfaceStatusAdd InterfaceStatus = iota
+	// InterfaceStatusUpdate 接口更新（IP 或子网掩码变更）
+	InterfaceStatusUpdate
 	// InterfaceStatusRemove 接口移除
 	InterfaceStatusRemove
 )
