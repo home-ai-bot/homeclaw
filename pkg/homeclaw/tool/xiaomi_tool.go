@@ -18,6 +18,11 @@ type CloudClientFactory interface {
 	GetCloudClient() (*miio.CloudClient, error)
 }
 
+// SpecFetcherFactory defines the interface for creating SpecFetcher
+type SpecFetcherFactory interface {
+	GetSpecFetcher() *miio.SpecFetcher
+}
+
 // syncTimestamp 用于标记本次同步时间，用于识别已删除的项目
 var syncTimestamp = time.Now().Unix()
 
@@ -726,4 +731,274 @@ func (t *SyncXiaomiDevicesTool) Execute(_ context.Context, args map[string]any) 
 	}
 	b, _ := json.Marshal(result)
 	return tools.SilentResult(string(b))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mi_get_spec
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GetXiaomiSpecTool 获取设备 MIoT Spec 规范
+type GetXiaomiSpecTool struct {
+	specFetcher *miio.SpecFetcher
+}
+
+// NewGetXiaomiSpecTool creates a new GetXiaomiSpecTool
+func NewGetXiaomiSpecTool(specFetcher *miio.SpecFetcher) *GetXiaomiSpecTool {
+	return &GetXiaomiSpecTool{specFetcher: specFetcher}
+}
+
+func (t *GetXiaomiSpecTool) Name() string { return "mi_get_spec" }
+
+func (t *GetXiaomiSpecTool) Description() string {
+	return "Get the MIoT specification for a Xiaomi device by its URN. " +
+		"Returns the raw JSON spec containing services, properties, actions and events. " +
+		"The result is cached locally for 14 days."
+}
+
+func (t *GetXiaomiSpecTool) Parameters() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"urn": map[string]any{
+				"type":        "string",
+				"description": "Device URN (e.g., urn:miot-spec-v2:device:light:0000A001:yeelink-v1)",
+			},
+		},
+		"required": []string{"urn"},
+	}
+}
+
+func (t *GetXiaomiSpecTool) Execute(_ context.Context, args map[string]any) *tools.ToolResult {
+	urn, ok := args["urn"].(string)
+	if !ok || urn == "" {
+		return tools.ErrorResult("urn is required")
+	}
+
+	specJSON, err := t.specFetcher.GetSpec(urn)
+	if err != nil {
+		return tools.ErrorResult(fmt.Sprintf("failed to get spec: %v", err))
+	}
+
+	return tools.SilentResult(specJSON)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mi_action
+// ─────────────────────────────────────────────────────────────────────────────
+
+// XiaomiActionTool executes a device action via Mi Home cloud
+type XiaomiActionTool struct {
+	store   data.XiaomiAccountStore
+	factory CloudClientFactory
+}
+
+func NewXiaomiActionTool(store data.XiaomiAccountStore, factory CloudClientFactory) *XiaomiActionTool {
+	return &XiaomiActionTool{store: store, factory: factory}
+}
+
+func (t *XiaomiActionTool) Name() string { return "mi_action" }
+
+func (t *XiaomiActionTool) Description() string {
+	return "Trigger a predefined action (task) on a Xiaomi Mi Home device. " +
+		"Actions are collections of operations designed for specific scenarios, encapsulating multiple steps into one command. " +
+		"Typical scenarios: start robot vacuum cleaning, start camera video stream, factory reset device. " +
+		"Operation: Tell the device 'execute start-cleaning action'. The device auto-executes internal steps like checking battery, lowering brushes, starting fan and wheels. " +
+		"Example: action(siid=3,aiid=1) start-cleaning may internally check battery, set fan property, set wheel property, etc. " +
+		"For directly setting individual states (e.g., turn on/off, set brightness level), use mi_set_prop instead. " +
+		"Parameters: did (device ID), siid (service ID), aiid (action ID), and optional input parameters."
+}
+
+func (t *XiaomiActionTool) Parameters() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"did": map[string]any{
+				"type":        "string",
+				"description": "Device ID (DID)",
+			},
+			"siid": map[string]any{
+				"type":        "integer",
+				"description": "Service ID (SIID)",
+			},
+			"aiid": map[string]any{
+				"type":        "integer",
+				"description": "Action ID (AIID)",
+			},
+			"in": map[string]any{
+				"type":        "array",
+				"description": "Action input parameters (optional)",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"value": map[string]any{
+							"description": "Parameter value",
+						},
+					},
+				},
+			},
+		},
+		"required": []string{"did", "siid", "aiid"},
+	}
+}
+
+func (t *XiaomiActionTool) Execute(_ context.Context, args map[string]any) *tools.ToolResult {
+	did, ok := args["did"].(string)
+	if !ok || did == "" {
+		return tools.ErrorResult("did is required")
+	}
+
+	siidFloat, ok := args["siid"].(float64)
+	if !ok {
+		return tools.ErrorResult("siid is required and must be an integer")
+	}
+	siid := int(siidFloat)
+
+	aiidFloat, ok := args["aiid"].(float64)
+	if !ok {
+		return tools.ErrorResult("aiid is required and must be an integer")
+	}
+	aiid := int(aiidFloat)
+
+	var inList []map[string]interface{}
+	if rawIn, ok := args["in"].([]any); ok && len(rawIn) > 0 {
+		inList = make([]map[string]interface{}, 0, len(rawIn))
+		for _, item := range rawIn {
+			if m, ok := item.(map[string]any); ok {
+				inList = append(inList, m)
+			}
+		}
+	}
+	if inList == nil {
+		inList = []map[string]interface{}{}
+	}
+
+	_, tokenErr := checkToken(t.store)
+	if tokenErr != nil {
+		return tokenErr
+	}
+
+	// Create CloudClient
+	client, err := t.factory.GetCloudClient()
+	if err != nil {
+		return tools.ErrorResult(fmt.Sprintf("failed to create cloud client: %v", err))
+	}
+	defer client.Close()
+
+	// Execute action
+	result, err := client.Action(did, siid, aiid, inList)
+	if err != nil {
+		return tools.ErrorResult(fmt.Sprintf("failed to execute action: %v", err))
+	}
+
+	b, _ := json.Marshal(result)
+	return tools.NewToolResult(string(b))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mi_set_prop
+// ─────────────────────────────────────────────────────────────────────────────
+
+// SetXiaomiPropTool 设置设备属性
+// 包装 CloudClient.SetProps 方法
+type SetXiaomiPropTool struct {
+	store   data.XiaomiAccountStore
+	factory CloudClientFactory
+}
+
+func NewSetXiaomiPropTool(store data.XiaomiAccountStore, factory CloudClientFactory) *SetXiaomiPropTool {
+	return &SetXiaomiPropTool{store: store, factory: factory}
+}
+
+func (t *SetXiaomiPropTool) Name() string { return "mi_set_prop" }
+
+func (t *SetXiaomiPropTool) Description() string {
+	return "Directly set a single property (state) on a Xiaomi Mi Home device. " +
+		"Properties are the smallest unit describing device current state. " +
+		"Typical scenarios: turn on/off a lamp, adjust fan speed, set air purifier target humidity. " +
+		"Operation: Tell the device 'set switch property to on' or 'set brightness to 80'. " +
+		"Examples: set prop(siid=2,piid=1) switch to true; set prop(siid=2,piid=2) brightness to 60. " +
+		"For triggering multi-step tasks (e.g., start cleaning, start video stream), use mi_action instead. " +
+		"Parameters: did (device ID), siid (service ID), piid (property ID), and value."
+}
+
+func (t *SetXiaomiPropTool) Parameters() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"did": map[string]any{
+				"type":        "string",
+				"description": "Device ID (DID)",
+			},
+			"siid": map[string]any{
+				"type":        "integer",
+				"description": "Service ID (SIID)",
+			},
+			"piid": map[string]any{
+				"type":        "integer",
+				"description": "Property ID (PIID)",
+			},
+			"value": map[string]any{
+				"type":        "any",
+				"description": "Property value to set",
+			},
+		},
+		"required": []string{"did", "siid", "piid", "value"},
+	}
+}
+
+func (t *SetXiaomiPropTool) Execute(_ context.Context, args map[string]any) *tools.ToolResult {
+	did, ok := args["did"].(string)
+	if !ok || did == "" {
+		return tools.ErrorResult("did is required")
+	}
+
+	siidFloat, ok := args["siid"].(float64)
+	if !ok {
+		return tools.ErrorResult("siid is required and must be an integer")
+	}
+	siid := int(siidFloat)
+
+	piidFloat, ok := args["piid"].(float64)
+	if !ok {
+		return tools.ErrorResult("piid is required and must be an integer")
+	}
+	piid := int(piidFloat)
+
+	value, ok := args["value"]
+	if !ok {
+		return tools.ErrorResult("value is required")
+	}
+
+	_, tokenErr := checkToken(t.store)
+	if tokenErr != nil {
+		return tokenErr
+	}
+
+	// Create CloudClient
+	client, err := t.factory.GetCloudClient()
+	if err != nil {
+		return tools.ErrorResult(fmt.Sprintf("failed to create cloud client: %v", err))
+	}
+	defer client.Close()
+
+	// Build params and execute setProps
+	params := []map[string]interface{}{
+		{
+			"did":   did,
+			"siid":  siid,
+			"piid":  piid,
+			"value": value,
+		},
+	}
+
+	result, err := client.SetProps(params)
+	if err != nil {
+		return tools.ErrorResult(fmt.Sprintf("failed to set property: %v", err))
+	}
+
+	b, _ := json.Marshal(map[string]interface{}{
+		"success": true,
+		"result":  result,
+	})
+	return tools.NewToolResult(string(b))
 }

@@ -60,7 +60,6 @@ type Factory struct {
 
 	// Tool singleton instances - lazy loaded
 	listDevicesTool          *homeclawtool.ListDevicesTool
-	getDeviceTool            *homeclawtool.GetDeviceTool
 	listSpacesTool           *homeclawtool.ListSpacesTool
 	getSpaceTool             *homeclawtool.GetSpaceTool
 	saveSpaceTool            *homeclawtool.SaveSpaceTool
@@ -83,13 +82,17 @@ type Factory struct {
 	syncXiaomiRoomsTool      *homeclawtool.SyncXiaomiRoomsTool
 	syncXiaomiDevicesTool    *homeclawtool.SyncXiaomiDevicesTool
 	cloudClient              *miio.CloudClient
+	specFetcher              *miio.SpecFetcher
+	getXiaomiSpecTool        *homeclawtool.GetXiaomiSpecTool
+	xiaomiActionTool         *homeclawtool.XiaomiActionTool
+	setXiaomiPropTool        *homeclawtool.SetXiaomiPropTool
 }
 
 // NewFactory creates a new Factory instance.
 // workspace is the data root used for all HomeClaw data files.
 // Returns error when HomeClaw is disabled or homeclaw.json is absent.
 func NewFactory(workspace string, picoclawCfg *config.Config, msgBus *bus.MessageBus) (*Factory, error) {
-	hcfg, err := homeclawconfig.LoadFromDir(workspace)
+	hcfg, err := common.LoadHomeclawConfig()
 	if err != nil {
 		return nil, fmt.Errorf("homeclaw config load error: %w", err)
 	}
@@ -391,19 +394,6 @@ func (f *Factory) GetListDevicesTool() (*homeclawtool.ListDevicesTool, error) {
 	}
 	f.listDevicesTool = homeclawtool.NewListDevicesTool(store)
 	return f.listDevicesTool, nil
-}
-
-// GetGetDeviceTool returns the singleton GetDeviceTool instance (lazy initialized)
-func (f *Factory) GetGetDeviceTool() (*homeclawtool.GetDeviceTool, error) {
-	if f.getDeviceTool != nil {
-		return f.getDeviceTool, nil
-	}
-	store, err := f.GetDeviceStore()
-	if err != nil {
-		return nil, err
-	}
-	f.getDeviceTool = homeclawtool.NewGetDeviceTool(store)
-	return f.getDeviceTool, nil
 }
 
 // GetListSpacesTool returns the singleton ListSpacesTool instance (lazy initialized)
@@ -712,14 +702,53 @@ func (f *Factory) GetCloudClient() (*miio.CloudClient, error) {
 		return nil, fmt.Errorf("failed to get xiaomi account: %w", err)
 	}
 
-	oauthClient, err := f.GetMIoTOAuthClient()
-	if err != nil {
-		return nil, err
-	}
-
-	f.cloudClient, err = miio.NewCloudClient("cn", oauthClient.GetClientID(), account.AccessToken)
+	f.cloudClient, err = miio.NewCloudClient("cn", miio.OAuth2ClientID, account.AccessToken)
 	if err != nil {
 		return nil, err
 	}
 	return f.cloudClient, nil
+}
+
+// GetSpecFetcher returns the singleton SpecFetcher instance (lazy initialized)
+func (f *Factory) GetSpecFetcher() *miio.SpecFetcher {
+	if f.specFetcher != nil {
+		return f.specFetcher
+	}
+	f.specFetcher = miio.NewSpecFetcher(f.Workspace)
+	return f.specFetcher
+}
+
+// GetGetXiaomiSpecTool returns the singleton GetXiaomiSpecTool instance (lazy initialized)
+func (f *Factory) GetGetXiaomiSpecTool() (*homeclawtool.GetXiaomiSpecTool, error) {
+	if f.getXiaomiSpecTool != nil {
+		return f.getXiaomiSpecTool, nil
+	}
+	f.getXiaomiSpecTool = homeclawtool.NewGetXiaomiSpecTool(f.GetSpecFetcher())
+	return f.getXiaomiSpecTool, nil
+}
+
+// GetXiaomiActionTool returns the singleton XiaomiActionTool instance (lazy initialized)
+func (f *Factory) GetXiaomiActionTool() (*homeclawtool.XiaomiActionTool, error) {
+	if f.xiaomiActionTool != nil {
+		return f.xiaomiActionTool, nil
+	}
+	store, err := f.GetXiaomiAccountStore()
+	if err != nil {
+		return nil, err
+	}
+	f.xiaomiActionTool = homeclawtool.NewXiaomiActionTool(store, f)
+	return f.xiaomiActionTool, nil
+}
+
+// GetSetXiaomiPropTool returns the singleton SetXiaomiPropTool instance (lazy initialized)
+func (f *Factory) GetSetXiaomiPropTool() (*homeclawtool.SetXiaomiPropTool, error) {
+	if f.setXiaomiPropTool != nil {
+		return f.setXiaomiPropTool, nil
+	}
+	store, err := f.GetXiaomiAccountStore()
+	if err != nil {
+		return nil, err
+	}
+	f.setXiaomiPropTool = homeclawtool.NewSetXiaomiPropTool(store, f)
+	return f.setXiaomiPropTool, nil
 }

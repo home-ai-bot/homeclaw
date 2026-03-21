@@ -150,7 +150,6 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 
 	// Device tools
 	registerTool(toolRegistry, f.GetListDevicesTool)
-	registerTool(toolRegistry, f.GetGetDeviceTool)
 
 	// Space tools
 	registerTool(toolRegistry, f.GetListSpacesTool)
@@ -180,4 +179,7 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	registerTool(toolRegistry, f.GetSyncXiaomiHomesTool)
 	registerTool(toolRegistry, f.GetSyncXiaomiRoomsTool)
 	registerTool(toolRegistry, f.GetSyncXiaomiDevicesTool)
+	registerTool(toolRegistry, f.GetGetXiaomiSpecTool)
+	registerTool(toolRegistry, f.GetXiaomiActionTool)
+	registerTool(toolRegistry, f.GetSetXiaomiPropTool)
 }

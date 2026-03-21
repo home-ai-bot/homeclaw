@@ -60,47 +60,6 @@ func (s MipsMDNSState) String() string {
 	}
 }
 
-// ---------- 服务数据 ----------
-
-// MipsMDNSServiceData 从 mDNS 解析的 MIPS 网关服务数据
-// 对应 Python 版 MipsServiceData
-type MipsMDNSServiceData struct {
-	// mDNS 原始字段
-	Name      string   // 服务实例名
-	Addresses []string // IPv4 地址列表
-	Port      int      // 端口
-	Type      string   // 服务类型（如 _miot-central._tcp.local.）
-	Server    string   // 主机名
-
-	// 从 profile TXT 字段解析
-	DID       string // 设备 DID（十进制字符串）
-	GroupID   string // 家庭组 ID（十六进制字符串）
-	Role      int    // 角色（1 = 主节点）
-	SuiteMQTT bool   // 是否支持 MQTT 连接
-}
-
-// validService 返回该服务是否为可用的主节点网关
-// 对应 Python MipsServiceData.valid_service()
-func (d *MipsMDNSServiceData) validService() bool {
-	return d.Role == 1 && d.SuiteMQTT
-}
-
-// toMap 将服务数据转换为 map（用于事件 Data 载荷）
-// 对应 Python MipsServiceData.to_dict()
-func (d *MipsMDNSServiceData) toMap() map[string]any {
-	return map[string]any{
-		"name":       d.Name,
-		"addresses":  d.Addresses,
-		"port":       d.Port,
-		"type":       d.Type,
-		"server":     d.Server,
-		"did":        d.DID,
-		"group_id":   d.GroupID,
-		"role":       d.Role,
-		"suite_mqtt": d.SuiteMQTT,
-	}
-}
-
 // ---------- MipsMDNS ----------
 
 // MipsMDNS MIPS 中枢网关 mDNS 服务发现
@@ -118,7 +77,7 @@ type MipsMDNS struct {
 	mu sync.RWMutex
 
 	// 已发现的服务缓存，key = GroupID
-	services map[string]*MipsMDNSServiceData
+	services map[string]*event.MipsMDNSServiceData
 
 	// 运行控制
 	ctx    context.Context
@@ -128,7 +87,7 @@ type MipsMDNS struct {
 // NewMipsMDNS 创建 MipsMDNS 实例
 func NewMipsMDNS() *MipsMDNS {
 	return &MipsMDNS{
-		services: make(map[string]*MipsMDNSServiceData),
+		services: make(map[string]*event.MipsMDNSServiceData),
 	}
 }
 
@@ -161,7 +120,7 @@ func (m *MipsMDNS) Stop() {
 		m.cancel = nil
 	}
 
-	m.services = make(map[string]*MipsMDNSServiceData)
+	m.services = make(map[string]*event.MipsMDNSServiceData)
 
 	logger.InfoC("mdns", "MIPS mDNS service discovery stopped")
 }
@@ -178,7 +137,7 @@ func (m *MipsMDNS) GetServices(groupID string) map[string]map[string]any {
 		if groupID != "" && gid != groupID {
 			continue
 		}
-		result[gid] = svc.toMap()
+		result[gid] = svc.ToMap()
 	}
 	return result
 }
@@ -250,7 +209,7 @@ func (m *MipsMDNS) onServiceEntry(entry *zeroconf.ServiceEntry) {
 		return
 	}
 
-	if !svcData.validService() {
+	if !svcData.ValidService() {
 		logger.DebugCF("mdns", "skip: not primary role or no MQTT support", map[string]any{
 			"name":     svcData.Name,
 			"role":     svcData.Role,
@@ -296,14 +255,12 @@ func (m *MipsMDNS) onServiceEntry(entry *zeroconf.ServiceEntry) {
 }
 
 // callServiceChange 触发事件
-func (m *MipsMDNS) callServiceChange(state MipsMDNSState, svcData *MipsMDNSServiceData) {
-	data := svcData.toMap()
-
+func (m *MipsMDNS) callServiceChange(state MipsMDNSState, svcData *event.MipsMDNSServiceData) {
 	// 发布到全局事件中心
 	evt := event.NewEvent(mipsMDNSEventType, "mdns", &event.MDNSData{
 		State:   state.String(),
 		GroupID: svcData.GroupID,
-		Service: data,
+		Service: *svcData,
 	})
 	event.GetCenter().Publish(evt)
 
@@ -315,7 +272,7 @@ func (m *MipsMDNS) callServiceChange(state MipsMDNSState, svcData *MipsMDNSServi
 
 // ---------- 解析 ----------
 
-// parseMipsMDNSEntry 将 zeroconf.ServiceEntry 解析为 MipsMDNSServiceData
+// parseMipsMDNSEntry 将 zeroconf.ServiceEntry 解析为 event.MipsMDNSServiceData
 //
 // profile TXT 字段二进制布局（对应 Python MipsServiceData.__init__）:
 //
@@ -326,7 +283,7 @@ func (m *MipsMDNS) callServiceChange(state MipsMDNSState, svcData *MipsMDNSServi
 //	[20]     高 4 位 = role
 //	[21]     保留
 //	[22]     bit1 = suite_mqtt
-func parseMipsMDNSEntry(entry *zeroconf.ServiceEntry) (*MipsMDNSServiceData, error) {
+func parseMipsMDNSEntry(entry *zeroconf.ServiceEntry) (*event.MipsMDNSServiceData, error) {
 	if entry == nil {
 		return nil, fmt.Errorf("nil entry")
 	}
@@ -385,7 +342,7 @@ func parseMipsMDNSEntry(entry *zeroconf.ServiceEntry) (*MipsMDNSServiceData, err
 
 	svcType := entry.Service + "." + entry.Domain
 
-	return &MipsMDNSServiceData{
+	return &event.MipsMDNSServiceData{
 		Name:      entry.ServiceInstanceName(),
 		Addresses: addrs,
 		Port:      entry.Port,

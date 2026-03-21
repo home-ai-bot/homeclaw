@@ -480,7 +480,7 @@ func (c *CloudClient) GetHomeInfos() (*HomeInfoResult, error) {
 
 			homeIDRaw := home["id"]
 			homeID := fmt.Sprintf("%v", homeIDRaw)
-			uidRaw := fmt.Sprintf("%v", home["uid"])
+			uidRaw := intValStr(home["uid"])
 
 			if uid == "" && deviceSource == "homelist" {
 				uid = uidRaw
@@ -680,7 +680,7 @@ func (c *CloudClient) getDeviceListPage(dids []string, startDID string) (map[str
 
 		deviceInfos[did] = &DeviceInfo{
 			DID:          did,
-			UID:          strVal(device["uid"]),
+			UID:          intValStr(device["uid"]),
 			Name:         name,
 			URN:          urn,
 			Model:        model,
@@ -1193,6 +1193,31 @@ func strVal(v interface{}) string {
 		return fmt.Sprintf("%v", v)
 	}
 	return s
+}
+
+// intValStr 将 interface{} 转为整数字符串（避免科学计数法）
+// 用于处理 JSON 反序列化后的 float64 类型大整数
+func intValStr(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	// JSON numbers are unmarshaled as float64
+	if f, ok := v.(float64); ok {
+		return fmt.Sprintf("%.0f", f)
+	}
+	if f, ok := v.(float32); ok {
+		return fmt.Sprintf("%.0f", f)
+	}
+	if i, ok := v.(int64); ok {
+		return fmt.Sprintf("%d", i)
+	}
+	if i, ok := v.(int); ok {
+		return fmt.Sprintf("%d", i)
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // boolVal 安全地将 interface{} 转为 bool

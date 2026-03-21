@@ -1,4 +1,4 @@
-package homeclaw
+package common
 
 import (
 	"fmt"
@@ -40,7 +40,7 @@ func LoadConfig() (*config.Config, error) {
 	return config.LoadConfig(GetConfigPath())
 }
 
-func loadHomeclawConfig() (*homeclawconfig.HomeclawConfig, error) {
+func LoadHomeclawConfig() (*homeclawconfig.HomeclawConfig, error) {
 	return homeclawconfig.LoadFromDir(GetPicoclawHome())
 }
 

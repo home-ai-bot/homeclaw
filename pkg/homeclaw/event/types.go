@@ -37,9 +37,50 @@ type NetData struct {
 
 // MDNSData represents mDNS discovery event payload
 type MDNSData struct {
-	State   string         `json:"state"`
-	GroupID string         `json:"group_id"`
-	Service map[string]any `json:"service"`
+	State   string              `json:"state"`
+	GroupID string              `json:"group_id"`
+	Service MipsMDNSServiceData `json:"service"`
+}
+
+// ---------- 服务数据 ----------
+
+// MipsMDNSServiceData 从 mDNS 解析的 MIPS 网关服务数据
+// 对应 Python 版 MipsServiceData
+type MipsMDNSServiceData struct {
+	// mDNS 原始字段
+	Name      string   // 服务实例名
+	Addresses []string // IPv4 地址列表
+	Port      int      // 端口
+	Type      string   // 服务类型（如 _miot-central._tcp.local.）
+	Server    string   // 主机名
+
+	// 从 profile TXT 字段解析
+	DID       string // 设备 DID（十进制字符串）
+	GroupID   string // 家庭组 ID（十六进制字符串）
+	Role      int    // 角色（1 = 主节点）
+	SuiteMQTT bool   // 是否支持 MQTT 连接
+}
+
+// validService 返回该服务是否为可用的主节点网关
+// 对应 Python MipsServiceData.valid_service()
+func (d *MipsMDNSServiceData) ValidService() bool {
+	return d.Role == 1 && d.SuiteMQTT
+}
+
+// toMap 将服务数据转换为 map（用于事件 Data 载荷）
+// 对应 Python MipsServiceData.to_dict()
+func (d *MipsMDNSServiceData) ToMap() map[string]any {
+	return map[string]any{
+		"name":       d.Name,
+		"addresses":  d.Addresses,
+		"port":       d.Port,
+		"type":       d.Type,
+		"server":     d.Server,
+		"did":        d.DID,
+		"group_id":   d.GroupID,
+		"role":       d.Role,
+		"suite_mqtt": d.SuiteMQTT,
+	}
 }
 
 // ==================== Event Structure ====================
