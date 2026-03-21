@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -31,6 +32,9 @@ func init() {
 	}
 	uniqueIDPrefix = hex.EncodeToString(b[:])
 }
+
+// audioAnnotationRe matches audio/voice annotations injected by channels (e.g. [voice], [audio: file.ogg]).
+var audioAnnotationRe = regexp.MustCompile(`\[(voice|audio)(?::[^\]]*)?\]`)
 
 // uniqueID generates a process-unique ID using a random prefix and an atomic counter.
 // This ID is intended for internal correlation (e.g. media scope keys) and is NOT
@@ -271,23 +275,32 @@ func (c *BaseChannel) HandleMessage(
 
 	// Auto-trigger typing indicator, message reaction, and placeholder before publishing.
 	// Each capability is independent — all three may fire for the same message.
+	// Note: even when streaming is available, we still show typing + placeholder on inbound.
+	// If streaming actually activates, preSend will skip the placeholder edit (streamActive map)
+	// and the typing stop will still be called. This avoids the problem of compile-time interface
+	// checks incorrectly skipping indicators when streaming may not work at runtime.
 	if c.owner != nil && c.placeholderRecorder != nil {
-		// Typing — independent pipeline
+		// Typing
 		if tc, ok := c.owner.(TypingCapable); ok {
 			if stop, err := tc.StartTyping(ctx, chatID); err == nil {
 				c.placeholderRecorder.RecordTypingStop(c.name, chatID, stop)
 			}
 		}
-		// Reaction — independent pipeline
+		// Reaction
 		if rc, ok := c.owner.(ReactionCapable); ok && messageID != "" {
 			if undo, err := rc.ReactToMessage(ctx, chatID, messageID); err == nil {
 				c.placeholderRecorder.RecordReactionUndo(c.name, chatID, undo)
 			}
 		}
-		// Placeholder — independent pipeline
-		if pc, ok := c.owner.(PlaceholderCapable); ok {
-			if phID, err := pc.SendPlaceholder(ctx, chatID); err == nil && phID != "" {
-				c.placeholderRecorder.RecordPlaceholder(c.name, chatID, phID)
+		// Placeholder — independent pipeline.
+		// Skip when the message contains audio: the agent will send the
+		// placeholder after transcription completes, so the user sees
+		// "Thinking…" only once the voice has been processed.
+		if !audioAnnotationRe.MatchString(content) {
+			if pc, ok := c.owner.(PlaceholderCapable); ok {
+				if phID, err := pc.SendPlaceholder(ctx, chatID); err == nil && phID != "" {
+					c.placeholderRecorder.RecordPlaceholder(c.name, chatID, phID)
+				}
 			}
 		}
 	}

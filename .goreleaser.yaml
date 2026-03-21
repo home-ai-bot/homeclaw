@@ -18,15 +18,16 @@ builds:
       - stdjson
     ldflags:
       - -s -w
-      - -X github.com/sipeed/picoclaw/cmd/picoclaw/internal.version={{ .Version }}
-      - -X github.com/sipeed/picoclaw/cmd/picoclaw/internal.gitCommit={{ .ShortCommit }}
-      - -X github.com/sipeed/picoclaw/cmd/picoclaw/internal.buildTime={{ .Date }}
-      - -X github.com/sipeed/picoclaw/cmd/picoclaw/internal.goVersion={{ .Env.GOVERSION }}
+      - -X github.com/sipeed/picoclaw/pkg/config.Version={{ .Version }}
+      - -X github.com/sipeed/picoclaw/pkg/config.GitCommit={{ .ShortCommit }}
+      - -X github.com/sipeed/picoclaw/pkg/config.BuildTime={{ .Date }}
+      - -X github.com/sipeed/picoclaw/pkg/config.GoVersion={{ .Env.GOVERSION }}
     goos:
       - linux
       - windows
       - darwin
       - freebsd
+      - netbsd
     goarch:
       - amd64
       - arm64
@@ -44,6 +45,12 @@ builds:
     ignore:
       - goos: windows
         goarch: arm
+      - goos: netbsd
+        goarch: s390x
+      - goos: netbsd
+        goarch: mips64
+      - goos: netbsd
+        goarch: arm
 
   - id: picoclaw-launcher
     binary: picoclaw-launcher
@@ -58,6 +65,7 @@ builds:
       - windows
       - darwin
       - freebsd
+      - netbsd
     goarch:
       - amd64
       - arm64
@@ -75,6 +83,12 @@ builds:
     ignore:
       - goos: windows
         goarch: arm
+      - goos: netbsd
+        goarch: s390x
+      - goos: netbsd
+        goarch: mips64
+      - goos: netbsd
+        goarch: arm
 
   - id: picoclaw-launcher-tui
     binary: picoclaw-launcher-tui
@@ -89,6 +103,7 @@ builds:
       - windows
       - darwin
       - freebsd
+      - netbsd
     goarch:
       - amd64
       - arm64
@@ -106,6 +121,12 @@ builds:
     ignore:
       - goos: windows
         goarch: arm
+      - goos: netbsd
+        goarch: s390x
+      - goos: netbsd
+        goarch: mips64
+      - goos: netbsd
+        goarch: arm
 
 dockers_v2:
   - id: picoclaw
@@ -116,10 +137,27 @@ dockers_v2:
       - picoclaw
     images:
       - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/picoclaw"
-      - "docker.io/{{ .Env.DOCKERHUB_IMAGE_NAME }}"
+      - 'docker.io/{{ .Env.DOCKERHUB_IMAGE_NAME }}'
     tags:
-      - "{{ .Tag }}"
-      - "latest"
+      - '{{ if isEnvSet "NIGHTLY_BUILD" }}nightly{{ else }}{{ .Tag }}{{ end }}'
+      - '{{ if isEnvSet "NIGHTLY_BUILD" }}nightly{{ else }}latest{{ end }}'
+    platforms:
+      - linux/amd64
+      - linux/arm64
+      - linux/riscv64
+
+  - id: picoclaw-launcher
+    dockerfile: docker/Dockerfile.goreleaser.launcher
+    ids:
+      - picoclaw
+      - picoclaw-launcher
+      - picoclaw-launcher-tui
+    images:
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/picoclaw"
+      - 'docker.io/{{ .Env.DOCKERHUB_IMAGE_NAME }}'
+    tags:
+      - '{{ if isEnvSet "NIGHTLY_BUILD" }}nightly-launcher{{ else }}{{ .Tag }}-launcher{{ end }}'
+      - '{{ if isEnvSet "NIGHTLY_BUILD" }}nightly-launcher{{ else }}launcher{{ end }}'
     platforms:
       - linux/amd64
       - linux/arm64
@@ -159,7 +197,7 @@ archives:
 
 nfpms:
   - id: picoclaw
-    builds:
+    ids:
       - picoclaw
       - picoclaw-launcher
       - picoclaw-launcher-tui
@@ -198,6 +236,7 @@ changelog:
 #      lzma: true
 
 release:
+  disable: '{{ isEnvSet "NIGHTLY_BUILD" }}'
   footer: >-
 
     ---

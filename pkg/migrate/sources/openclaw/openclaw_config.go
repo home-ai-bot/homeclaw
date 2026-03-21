@@ -132,11 +132,12 @@ type OpenClawChannels struct {
 }
 
 type OpenClawTelegramConfig struct {
-	BotToken    *string  `json:"botToken"`
-	AllowFrom   []string `json:"allowFrom"`
-	GroupPolicy *string  `json:"groupPolicy"`
-	DmPolicy    *string  `json:"dmPolicy"`
-	Enabled     *bool    `json:"enabled"`
+	BotToken      *string  `json:"botToken"`
+	AllowFrom     []string `json:"allowFrom"`
+	GroupPolicy   *string  `json:"groupPolicy"`
+	DmPolicy      *string  `json:"dmPolicy"`
+	Enabled       *bool    `json:"enabled"`
+	UseMarkdownV2 *bool    `json:"useMarkdownV2"`
 }
 
 type OpenClawDiscordConfig struct {
@@ -645,10 +646,11 @@ type WhatsAppConfig struct {
 }
 
 type TelegramConfig struct {
-	Enabled   bool     `json:"enabled"`
-	Token     string   `json:"token"`
-	Proxy     string   `json:"proxy"`
-	AllowFrom []string `json:"allow_from"`
+	Enabled       bool     `json:"enabled"`
+	Token         string   `json:"token"`
+	Proxy         string   `json:"proxy"`
+	AllowFrom     []string `json:"allow_from"`
+	UseMarkdownV2 bool     `json:"use_markdown_v2"`
 }
 
 type FeishuConfig struct {
@@ -733,16 +735,18 @@ type WebToolsConfig struct {
 }
 
 type BraveConfig struct {
-	Enabled    bool   `json:"enabled"`
-	APIKey     string `json:"api_key"`
-	MaxResults int    `json:"max_results"`
+	Enabled    bool     `json:"enabled"`
+	APIKey     string   `json:"api_key"`
+	APIKeys    []string `json:"api_keys"`
+	MaxResults int      `json:"max_results"`
 }
 
 type TavilyConfig struct {
-	Enabled    bool   `json:"enabled"`
-	APIKey     string `json:"api_key"`
-	BaseURL    string `json:"base_url"`
-	MaxResults int    `json:"max_results"`
+	Enabled    bool     `json:"enabled"`
+	APIKey     string   `json:"api_key"`
+	APIKeys    []string `json:"api_keys"`
+	BaseURL    string   `json:"base_url"`
+	MaxResults int      `json:"max_results"`
 }
 
 type DuckDuckGoConfig struct {
@@ -751,9 +755,10 @@ type DuckDuckGoConfig struct {
 }
 
 type PerplexityConfig struct {
-	Enabled    bool   `json:"enabled"`
-	APIKey     string `json:"api_key"`
-	MaxResults int    `json:"max_results"`
+	Enabled    bool     `json:"enabled"`
+	APIKey     string   `json:"api_key"`
+	APIKeys    []string `json:"api_keys"`
+	MaxResults int      `json:"max_results"`
 }
 
 type CronConfig struct {
@@ -774,9 +779,11 @@ func (c *OpenClawConfig) convertChannels(warnings *[]string) ChannelsConfig {
 
 	if c.Channels.Telegram != nil {
 		enabled := c.Channels.Telegram.Enabled == nil || *c.Channels.Telegram.Enabled
+		useMarkdownV2 := c.Channels.Telegram.UseMarkdownV2 != nil && *c.Channels.Telegram.UseMarkdownV2
 		channels.Telegram = TelegramConfig{
-			Enabled:   enabled,
-			AllowFrom: c.Channels.Telegram.AllowFrom,
+			Enabled:       enabled,
+			AllowFrom:     c.Channels.Telegram.AllowFrom,
+			UseMarkdownV2: useMarkdownV2,
 		}
 		if c.Channels.Telegram.BotToken != nil {
 			channels.Telegram.Token = *c.Channels.Telegram.BotToken
@@ -1082,6 +1089,7 @@ func (c ToolsConfig) ToStandardTools() config.ToolsConfig {
 			Brave: config.BraveConfig{
 				Enabled:    c.Web.Brave.Enabled,
 				APIKey:     c.Web.Brave.APIKey,
+				APIKeys:    c.Web.Brave.APIKeys,
 				MaxResults: c.Web.Brave.MaxResults,
 			},
 			Tavily: config.TavilyConfig{
@@ -1107,6 +1115,7 @@ func (c ToolsConfig) ToStandardTools() config.ToolsConfig {
 		Exec: config.ExecConfig{
 			EnableDenyPatterns: c.Exec.EnableDenyPatterns,
 			CustomDenyPatterns: c.Exec.CustomDenyPatterns,
+			AllowRemote:        config.DefaultConfig().Tools.Exec.AllowRemote,
 		},
 	}
 }
