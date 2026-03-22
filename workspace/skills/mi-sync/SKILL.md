@@ -43,25 +43,25 @@ Call `mi_get_account` again to read the latest account.
   - If only 1 home → call `mi_update_home` with that home automatically.
   - If more than 1 home → present the list and ask the user which home to bind. Call `mi_update_home` with the chosen `home_id` and `home_name`.
 
-### Step 5 — Sync rooms
+### Step 5 — Sync devices
 
-Call `mi_sync_rooms` with the bound `home_id`.
-
-Report result: rooms created / updated / removed.
-
-### Step 6 — Sync devices
-
-Call `mi_sync_devices` with the same `home_id`.
+Call `mi_sync_devices` with the bound `home_id`.
 
 Report result: devices created / updated / removed.
+
+### Step 6 — Sync rooms
+
+Call `mi_sync_rooms` with the same `home_id`.
+
+Report result: rooms created / updated / removed.
 
 ## Final Summary
 
 After all steps complete, summarize in natural language:
 
 - Home bound: `<home_name>` (`<home_id>`)
-- Rooms: X created, Y updated, Z removed
 - Devices: X created, Y updated, Z removed
+- Rooms: X created, Y updated, Z removed
 
 ## Error Handling
 
