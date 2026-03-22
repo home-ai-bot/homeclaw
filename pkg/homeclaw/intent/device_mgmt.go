@@ -81,8 +81,6 @@ func (d *DeviceMgmtIntent) handleAdd(ictx IntentContext) IntentResponse {
 		ID:      deviceID(),
 		Name:    name,
 		SpaceID: spaceID,
-		Props:   map[string]string{},
-		AddedAt: time.Now(),
 	}
 	if err := d.deviceStore.Save(device); err != nil {
 		return errResponse(fmt.Sprintf("添加设备「%s」失败：%s", name, err.Error()), err)
@@ -224,14 +222,6 @@ func formatDeviceStatus(dev data.Device) string {
 	if dev.Brand != "" {
 		fmt.Fprintf(sb, "（%s）", dev.Brand)
 	}
-	if len(dev.Props) == 0 {
-		sb.WriteString("，状态未知。")
-		return sb.String()
-	}
-	parts := make([]string, 0, len(dev.Props))
-	for k, v := range dev.Props {
-		parts = append(parts, fmt.Sprintf("%s=%v", k, v))
-	}
-	fmt.Fprintf(sb, "，当前状态：%s。", strings.Join(parts, "，"))
+	sb.WriteString("，状态未知。")
 	return sb.String()
 }

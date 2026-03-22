@@ -118,30 +118,18 @@ func TestDeviceStore(t *testing.T) {
 		Name:    "客厅灯",
 		Brand:   "mijia",
 		SpaceID: "living-room",
-		Props:   map[string]string{"on": "true"},
-		AddedAt: time.Now(),
 	}
 	if err := deviceStore.Save(device); err != nil {
 		t.Fatalf("Failed to save device: %v", err)
 	}
 
-	// Get by space
+	// Verify device was saved and retrievable by space
 	devices, err := deviceStore.GetBySpace("living-room")
 	if err != nil {
 		t.Fatalf("Failed to get devices by space: %v", err)
 	}
 	if len(devices) != 1 {
 		t.Errorf("Expected 1 device, got %d", len(devices))
-	}
-
-	// Update props
-	newProps := map[string]string{"on": "false", "brightness": "50"}
-	if err := deviceStore.UpdateProps("light-001", newProps); err != nil {
-		t.Fatalf("Failed to update props: %v", err)
-	}
-	found, _ := deviceStore.GetByID("light-001")
-	if found.Props["on"] != "false" {
-		t.Error("Expected props on=false")
 	}
 }
 

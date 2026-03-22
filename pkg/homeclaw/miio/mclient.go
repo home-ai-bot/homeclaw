@@ -512,7 +512,7 @@ func (c *MClient) Action(did string, siid, aiid int, inList []interface{}) ([]in
 		for i, v := range inList {
 			inListMaps[i] = map[string]interface{}{"value": v}
 		}
-		result, err := c.http.Action(did, siid, aiid, inListMaps)
+		result, err := c.http.Action(did, siid, aiid, []interface{}{})
 		if err != nil {
 			return nil, fmt.Errorf("cloud action failed: %w", err)
 		}

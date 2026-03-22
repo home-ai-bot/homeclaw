@@ -649,33 +649,20 @@ func (t *SyncXiaomiDevicesTool) Execute(_ context.Context, args map[string]any) 
 		if existing == nil {
 			// 创建设备
 			newDevice := data.Device{
-				ID:           did,
-				Name:         deviceInfo.Name,
-				Brand:        "mijia",
-				Protocol:     "miio",
-				Model:        deviceInfo.Model,
-				SpaceID:      deviceInfo.RoomID,
-				IP:           deviceInfo.LocalIP,
-				Token:        deviceInfo.Token,
-				Props:        map[string]string{"online": fmt.Sprintf("%v", deviceInfo.Online)},
-				LastSeen:     now,
-				AddedAt:      now,
-				DID:          deviceInfo.DID,
-				UID:          deviceInfo.UID,
-				URN:          deviceInfo.URN,
-				ConnectType:  deviceInfo.ConnectType,
-				Online:       deviceInfo.Online,
-				Icon:         deviceInfo.Icon,
-				ParentID:     deviceInfo.ParentID,
-				Manufacturer: deviceInfo.Manufacturer,
-				VoiceCtrl:    deviceInfo.VoiceCtrl,
-				SSID:         deviceInfo.SSID,
-				BSSID:        deviceInfo.BSSID,
-				OrderTime:    deviceInfo.OrderTime,
-				FWVersion:    deviceInfo.FWVersion,
-				RoomID:       deviceInfo.RoomID,
-				RoomName:     deviceInfo.RoomName,
-				GroupID:      deviceInfo.GroupID,
+				ID:       did,
+				Name:     deviceInfo.Name,
+				Brand:    "mijia",
+				Protocol: "miio",
+				Model:    deviceInfo.Model,
+				SpaceID:  deviceInfo.RoomID,
+				IP:       deviceInfo.LocalIP,
+				Token:    deviceInfo.Token,
+				DID:      deviceInfo.DID,
+				UID:      deviceInfo.UID,
+				URN:      deviceInfo.URN,
+				RoomID:   deviceInfo.RoomID,
+				RoomName: deviceInfo.RoomName,
+				GroupID:  deviceInfo.GroupID,
 			}
 			if err := t.deviceStore.Save(newDevice); err != nil {
 				continue
@@ -688,21 +675,9 @@ func (t *SyncXiaomiDevicesTool) Execute(_ context.Context, args map[string]any) 
 			existing.SpaceID = deviceInfo.RoomID
 			existing.IP = deviceInfo.LocalIP
 			existing.Token = deviceInfo.Token
-			existing.Props = map[string]string{"online": fmt.Sprintf("%v", deviceInfo.Online)}
-			existing.LastSeen = now
 			existing.DID = deviceInfo.DID
 			existing.UID = deviceInfo.UID
 			existing.URN = deviceInfo.URN
-			existing.ConnectType = deviceInfo.ConnectType
-			existing.Online = deviceInfo.Online
-			existing.Icon = deviceInfo.Icon
-			existing.ParentID = deviceInfo.ParentID
-			existing.Manufacturer = deviceInfo.Manufacturer
-			existing.VoiceCtrl = deviceInfo.VoiceCtrl
-			existing.SSID = deviceInfo.SSID
-			existing.BSSID = deviceInfo.BSSID
-			existing.OrderTime = deviceInfo.OrderTime
-			existing.FWVersion = deviceInfo.FWVersion
 			existing.RoomID = deviceInfo.RoomID
 			existing.RoomName = deviceInfo.RoomName
 			existing.GroupID = deviceInfo.GroupID
@@ -885,7 +860,7 @@ func (t *XiaomiActionTool) Execute(_ context.Context, args map[string]any) *tool
 	defer client.Close()
 
 	// Execute action
-	result, err := client.Action(did, siid, aiid, inList)
+	result, err := client.Action(did, siid, aiid, []interface{}{})
 	if err != nil {
 		return tools.ErrorResult(fmt.Sprintf("failed to execute action: %v", err))
 	}
@@ -918,7 +893,7 @@ func (t *SetXiaomiPropTool) Description() string {
 		"Operation: Tell the device 'set switch property to on' or 'set brightness to 80'. " +
 		"Examples: set prop(siid=2,piid=1) switch to true; set prop(siid=2,piid=2) brightness to 60. " +
 		"For triggering multi-step tasks (e.g., start cleaning, start video stream), use mi_action instead. " +
-		"Parameters: did (device ID), siid (service ID), piid (property ID), and value."
+		"Parameters: did (device ID), siid (service ID), piid (property ID), value, and valueType (must match the actual property type)."
 }
 
 func (t *SetXiaomiPropTool) Parameters() map[string]any {
@@ -941,8 +916,13 @@ func (t *SetXiaomiPropTool) Parameters() map[string]any {
 				"type":        "any",
 				"description": "Property value to set",
 			},
+			"valueType": map[string]any{
+				"type":        "string",
+				"description": "The MIoT property format mapped to Go type. Use \"bool\" for bool, \"int\" for uint8/uint16/uint32/int, \"float\" for float/double, \"string\" for string. Must match the device spec format to avoid type errors.",
+				"enum":        []string{"bool", "int", "float", "string"},
+			},
 		},
-		"required": []string{"did", "siid", "piid", "value"},
+		"required": []string{"did", "siid", "piid", "value", "valueType"},
 	}
 }
 
@@ -964,9 +944,56 @@ func (t *SetXiaomiPropTool) Execute(_ context.Context, args map[string]any) *too
 	}
 	piid := int(piidFloat)
 
-	value, ok := args["value"]
+	rawValue, ok := args["value"]
 	if !ok {
 		return tools.ErrorResult("value is required")
+	}
+
+	valueType, ok := args["valueType"].(string)
+	if !ok || valueType == "" {
+		return tools.ErrorResult("valueType is required and must be one of: bool, int, float, string")
+	}
+
+	var value interface{}
+	switch valueType {
+	case "bool":
+		v, ok := rawValue.(bool)
+		if !ok {
+			// JSON numbers decoded as float64; treat 0 as false, non-zero as true
+			if f, fok := rawValue.(float64); fok {
+				v = f != 0
+				ok = true
+			}
+			if s, sok := rawValue.(string); sok {
+				v = s == "true" || s == "1"
+				ok = true
+			}
+		}
+		if !ok {
+			return tools.ErrorResult(fmt.Sprintf("value cannot be cast to bool: %v", rawValue))
+		}
+		value = v
+	case "int":
+		f, ok := rawValue.(float64)
+		if !ok {
+			return tools.ErrorResult(fmt.Sprintf("value cannot be cast to int: %v", rawValue))
+		}
+		value = int(f)
+	case "float":
+		f, ok := rawValue.(float64)
+		if !ok {
+			return tools.ErrorResult(fmt.Sprintf("value cannot be cast to float: %v", rawValue))
+		}
+		value = f
+	case "string":
+		switch v := rawValue.(type) {
+		case string:
+			value = v
+		default:
+			value = fmt.Sprintf("%v", rawValue)
+		}
+	default:
+		return tools.ErrorResult(fmt.Sprintf("unsupported valueType %q, must be one of: bool, int, float, string", valueType))
 	}
 
 	_, tokenErr := checkToken(t.store)

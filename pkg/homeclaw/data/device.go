@@ -7,7 +7,6 @@ type DeviceStore interface {
 	GetByID(id string) (*Device, error)
 	GetBySpace(spaceID string) ([]Device, error)
 	Save(device Device) error
-	UpdateProps(id string, props map[string]string) error
 	Delete(id string) error
 }
 
@@ -73,17 +72,6 @@ func (s *deviceStore) Save(device Device) error {
 	}
 	s.data.Devices = append(s.data.Devices, device)
 	return s.save()
-}
-
-// UpdateProps updates only the props of a device
-func (s *deviceStore) UpdateProps(id string, props map[string]string) error {
-	for i := range s.data.Devices {
-		if s.data.Devices[i].ID == id {
-			s.data.Devices[i].Props = props
-			return s.save()
-		}
-	}
-	return ErrRecordNotFound
 }
 
 // Delete deletes a device by ID
