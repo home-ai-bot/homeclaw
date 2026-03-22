@@ -48,7 +48,7 @@ type HomeclawConfig struct {
 type IntentModelConfig struct {
 	// ModelName references a model_name entry in PicoClaw's model_list.
 	// When set, APIBase / APIKey / Model below are ignored.
-	ModelName string `json:"model_ref,omitempty"`
+	ModelName string `json:"model_name,omitempty"`
 
 	// APIBase is the OpenAI-compatible API endpoint, e.g. "http://localhost:11434/v1".
 	APIBase string `json:"api_base,omitempty"`
