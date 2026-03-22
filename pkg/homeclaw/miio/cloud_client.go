@@ -2,7 +2,6 @@
 package miio
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -48,13 +47,9 @@ type propFuture struct {
 //   - 执行设备 Action
 //   - 获取中央证书
 type CloudClient struct {
-	host        string
-	baseURL     string
-	clientID    string
-	accessToken string
-	httpClient  *http.Client
+	baseClient
 
-	mu          sync.Mutex
+	propMu      sync.Mutex
 	getPropList map[string]*propFuture // key: "did.siid.piid"
 	getPropStop chan struct{}          // 关闭时通知定时器 goroutine 退出
 }
@@ -76,11 +71,7 @@ func NewCloudClient(cloudServer, clientID, accessToken string) (*CloudClient, er
 	}
 
 	return &CloudClient{
-		host:        host,
-		baseURL:     "https://" + host,
-		clientID:    clientID,
-		accessToken: accessToken,
-		httpClient:  &http.Client{Timeout: MIHomeHTTPAPITimeout},
+		baseClient:  newBaseClient(host, clientID, accessToken),
 		getPropList: make(map[string]*propFuture),
 		getPropStop: make(chan struct{}),
 	}, nil
@@ -90,23 +81,15 @@ func NewCloudClient(cloudServer, clientID, accessToken string) (*CloudClient, er
 //
 // 任意参数为空字符串时忽略该参数。
 func (c *CloudClient) UpdateHTTPHeader(cloudServer, clientID, accessToken string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+	var host string
 	if cloudServer != "" {
 		if cloudServer != "cn" {
-			c.host = cloudServer + "." + DefaultOAuth2APIHost
+			host = cloudServer + "." + DefaultOAuth2APIHost
 		} else {
-			c.host = DefaultOAuth2APIHost
+			host = DefaultOAuth2APIHost
 		}
-		c.baseURL = "https://" + c.host
 	}
-	if clientID != "" {
-		c.clientID = clientID
-	}
-	if accessToken != "" {
-		c.accessToken = accessToken
-	}
+	c.updateCredentials(host, clientID, accessToken)
 }
 
 // Close 释放资源，停止内部 goroutine
@@ -118,8 +101,8 @@ func (c *CloudClient) Close() {
 		close(c.getPropStop)
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.propMu.Lock()
+	defer c.propMu.Unlock()
 	for _, fut := range c.getPropList {
 		select {
 		case fut.ch <- nil:
@@ -129,115 +112,16 @@ func (c *CloudClient) Close() {
 	c.getPropList = make(map[string]*propFuture)
 }
 
-// ---------- 内部 HTTP 辅助方法 ----------
-
-func (c *CloudClient) apiHeaders() map[string]string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return map[string]string{
-		"Host":           c.host,
-		"X-Client-BizId": "haapi",
-		"Content-Type":   "application/json",
-		// Python 原文: f'Bearer{self._access_token}' —— 注意中间无空格
-		"Authorization":  "Bearer" + c.accessToken,
-		"X-Client-AppId": c.clientID,
-	}
-}
-
-func (c *CloudClient) baseURLSnapshot() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.baseURL
-}
-
-func (c *CloudClient) doGet(urlPath string, params map[string]string) (map[string]interface{}, error) {
-	reqURL := c.baseURLSnapshot() + urlPath
-	req, err := http.NewRequest(http.MethodGet, reqURL, nil)
-	if err != nil {
-		return nil, &HTTPError{Message: "create request failed: " + err.Error()}
-	}
-
-	q := req.URL.Query()
-	for k, v := range params {
-		q.Set(k, v)
-	}
-	req.URL.RawQuery = q.Encode()
-
-	for k, v := range c.apiHeaders() {
-		req.Header.Set(k, v)
-	}
-
-	return c.execRequest(req, urlPath)
-}
-
-func (c *CloudClient) doPost(urlPath string, data map[string]interface{}) (map[string]interface{}, error) {
-	body, err := json.Marshal(data)
-	if err != nil {
-		return nil, &HTTPError{Message: "marshal request failed: " + err.Error()}
-	}
-
-	req, err := http.NewRequest(http.MethodPost, c.baseURLSnapshot()+urlPath, bytes.NewReader(body))
-	if err != nil {
-		return nil, &HTTPError{Message: "create request failed: " + err.Error()}
-	}
-
-	for k, v := range c.apiHeaders() {
-		req.Header.Set(k, v)
-	}
-
-	return c.execRequest(req, urlPath)
-}
-
-func (c *CloudClient) execRequest(req *http.Request, urlPath string) (map[string]interface{}, error) {
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, &HTTPError{Message: "http request failed: " + err.Error()}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, &HTTPError{
-			Message: "mihome api request failed, unauthorized(401)",
-			Code:    401,
-		}
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, &HTTPError{
-			Message: fmt.Sprintf("mihome api request failed, %d, %s", resp.StatusCode, urlPath),
-		}
-	}
-
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, &HTTPError{Message: "read response failed: " + err.Error()}
-	}
-
-	var resObj map[string]interface{}
-	if err := json.Unmarshal(raw, &resObj); err != nil {
-		return nil, &HTTPError{Message: "decode response failed: " + err.Error()}
-	}
-
-	code, _ := resObj["code"].(float64)
-	if int(code) != 0 {
-		msg, _ := resObj["message"].(string)
-		return nil, &HTTPError{
-			Message: fmt.Sprintf("invalid response code, %d, %s", int(code), msg),
-		}
-	}
-
-	return resObj, nil
-}
-
 // ---------- 公开 API ----------
 
 // GetUserInfo 获取用户基本信息（昵称等）
 //
 // 返回 map 中包含 miliaoNick 等字段。
 func (c *CloudClient) GetUserInfo() (map[string]interface{}, error) {
-	c.mu.Lock()
+	c.mu.RLock()
 	cid := c.clientID
 	tok := c.accessToken
-	c.mu.Unlock()
+	c.mu.RUnlock()
 
 	req, err := http.NewRequest(http.MethodGet,
 		"https://open.account.xiaomi.com/user/profile", nil)
@@ -1007,7 +891,7 @@ func (c *CloudClient) GetProp(did string, siid, piid int) (interface{}, error) {
 func (c *CloudClient) GetPropAggregated(did string, siid, piid int) (interface{}, error) {
 	key := fmt.Sprintf("%s.%d.%d", did, siid, piid)
 
-	c.mu.Lock()
+	c.propMu.Lock()
 	fut, exists := c.getPropList[key]
 	if !exists {
 		fut = &propFuture{
@@ -1019,7 +903,7 @@ func (c *CloudClient) GetPropAggregated(did string, siid, piid int) (interface{}
 		go c.schedulePropHandler()
 	}
 	ch := fut.ch
-	c.mu.Unlock()
+	c.propMu.Unlock()
 
 	val := <-ch
 	return val, nil
@@ -1036,9 +920,9 @@ func (c *CloudClient) schedulePropHandler() {
 
 // flushPropRequests 批量执行队列中的属性请求
 func (c *CloudClient) flushPropRequests() {
-	c.mu.Lock()
+	c.propMu.Lock()
 	if len(c.getPropList) == 0 {
-		c.mu.Unlock()
+		c.propMu.Unlock()
 		return
 	}
 
@@ -1066,7 +950,7 @@ func (c *CloudClient) flushPropRequests() {
 		paramList = append(paramList, PropParam{DID: did, SIID: siid, PIID: piid})
 		keys = append(keys, key)
 	}
-	c.mu.Unlock()
+	c.propMu.Unlock()
 
 	if len(paramList) == 0 {
 		return
@@ -1081,18 +965,18 @@ func (c *CloudClient) flushPropRequests() {
 				continue
 			}
 			key := fmt.Sprintf("%s.%d.%d", result.DID, result.SIID, result.PIID)
-			c.mu.Lock()
+			c.propMu.Lock()
 			if fut, ok := c.getPropList[key]; ok {
 				fut.ch <- result.Value
 				delete(c.getPropList, key)
 				satisfied[key] = true
 			}
-			c.mu.Unlock()
+			c.propMu.Unlock()
 		}
 	}
 
 	// 未满足的请求发送 nil
-	c.mu.Lock()
+	c.propMu.Lock()
 	for _, key := range keys {
 		if !satisfied[key] {
 			if fut, ok := c.getPropList[key]; ok {
@@ -1103,7 +987,7 @@ func (c *CloudClient) flushPropRequests() {
 	}
 	// 若队列中还有未处理项，继续调度
 	remaining := len(c.getPropList) > 0
-	c.mu.Unlock()
+	c.propMu.Unlock()
 
 	if remaining {
 		go c.schedulePropHandler()
@@ -1135,18 +1019,13 @@ func (c *CloudClient) SetProps(params []map[string]interface{}) ([]interface{}, 
 // 示例:
 //
 //	result, err := client.Action("xxxx", 2, 1, []map[string]interface{}{{"value": 42}})
-func (c *CloudClient) Action(did string, siid, aiid int, inList []map[string]interface{}) (map[string]interface{}, error) {
-	values := make([]interface{}, len(inList))
-	for i, item := range inList {
-		values[i] = item["value"]
-	}
-
+func (c *CloudClient) Action(did string, siid, aiid int, inList []interface{}) (map[string]interface{}, error) {
 	resObj, err := c.doPost("/app/v2/miotspec/action", map[string]interface{}{
 		"params": map[string]interface{}{
 			"did":  did,
 			"siid": siid,
 			"aiid": aiid,
-			"in":   values,
+			"in":   inList,
 		},
 	})
 	if err != nil {
