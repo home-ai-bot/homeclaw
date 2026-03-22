@@ -1296,7 +1296,7 @@ func (al *AgentLoop) runLLMIteration(
 			al.targetReasoningChannelID(opts.Channel),
 		)
 
-		logger.DebugCF("agent", "LLM response",
+		logger.InfoCF("agent", "LLM response",
 			map[string]any{
 				"agent_id":       agent.ID,
 				"iteration":      iteration,

@@ -518,13 +518,6 @@ func TestOAuthError(t *testing.T) {
 
 // 集成测试示例（需要真实环境，默认跳过）
 func TestIntegration_RealServer(t *testing.T) {
-	if testing.Short() {
-		t.Skip("跳过集成测试，使用 -short 标志运行单元测试")
-	}
-
-	// 注意：此测试需要真实的OAuth流程，仅作为示例
-	t.Skip("集成测试需要手动执行OAuth流程")
-
 	client, err := NewMIoTOauthClient("", "http://homeassistant.local:8123", "cn", "integration-test")
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
@@ -534,4 +527,10 @@ func TestIntegration_RealServer(t *testing.T) {
 	authURL := client.GenAuthURL("", "", nil, false)
 	fmt.Printf("请访问授权URL: %s\n", authURL)
 	fmt.Println("授权后，从回调URL中获取 code_value 参数值")
+	tokenInfo, err := client.RefreshAccessToken("")
+	if err != nil {
+		t.Fatalf("Failed to refresh Token : %v", err)
+	}
+
+	t.Logf("RefreshAccessToken returned %v", tokenInfo)
 }

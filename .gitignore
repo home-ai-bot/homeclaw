@@ -59,3 +59,6 @@ cmd/telegram/
 !web/backend/dist/
 web/backend/dist/*
 !web/backend/dist/.gitkeep
+pkg/homeclaw/miio/login_client_test.go
+config/camera.json
+config/xiaovvcamera.json
