@@ -174,6 +174,13 @@ func NewPasswordConnector(username, password string) *PasswordConnector {
 	}
 }
 
+// SetCredentials updates the username and password on an existing PasswordConnector.
+// Call this before Login() to reuse the same instance with different credentials.
+func (c *PasswordConnector) SetCredentials(username, password string) {
+	c.username = username
+	c.password = password
+}
+
 // Login 执行密码登录，成功返回 AppLoginResult。
 //
 // 严格对应 Python PasswordXiaomiCloudConnector.login。

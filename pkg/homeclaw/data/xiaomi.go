@@ -15,6 +15,11 @@ type XiaomiAccount struct {
 	HomeName       string    `json:"home_name"`        // 关联的米家家庭名称
 	CreatedAt      time.Time `json:"created_at"`       // 首次绑定时间
 	UpdatedAt      time.Time `json:"updated_at"`       // 最近更新时间
+
+	// App login credentials (populated after password/QR-code login)
+	UserID       string `json:"user_id,omitempty"`       // 用户 ID（App 登录返回）
+	SSecurity    string `json:"ssecurity,omitempty"`     // base64 安全密钥（App 登录返回）
+	ServiceToken string `json:"service_token,omitempty"` // serviceToken（App 登录返回）
 }
 
 // XiaomiAccountData 是 xiaomi-account.json 的根结构

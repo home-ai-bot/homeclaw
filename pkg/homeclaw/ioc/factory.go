@@ -86,6 +86,12 @@ type Factory struct {
 	getXiaomiSpecTool        *homeclawtool.GetXiaomiSpecTool
 	xiaomiActionTool         *homeclawtool.XiaomiActionTool
 	setXiaomiPropTool        *homeclawtool.SetXiaomiPropTool
+	miSendEmailCodeTool      *homeclawtool.MiSendEmailCodeTool
+	miLoginEmailTool         *homeclawtool.MiLoginEmailTool
+
+	// Login connector singleton - lazy loaded
+	passwordConnector *miio.PasswordConnector
+	qrCodeConnector   *miio.QrCodeConnector
 }
 
 // NewFactory creates a new Factory instance.
@@ -751,4 +757,57 @@ func (f *Factory) GetSetXiaomiPropTool() (*homeclawtool.SetXiaomiPropTool, error
 	}
 	f.setXiaomiPropTool = homeclawtool.NewSetXiaomiPropTool(store, f)
 	return f.setXiaomiPropTool, nil
+}
+
+// GetPasswordConnector returns the singleton PasswordConnector instance (lazy initialized).
+func (f *Factory) GetPasswordConnector() *miio.PasswordConnector {
+	if f.passwordConnector == nil {
+		f.passwordConnector = miio.NewPasswordConnector("", "")
+	}
+	return f.passwordConnector
+}
+
+// SetPasswordConnectorCredentials sets the username and password on the singleton PasswordConnector.
+// Call this before GetPasswordConnector to update credentials for a new login attempt.
+func (f *Factory) SetPasswordConnectorCredentials(username, password string) {
+	f.GetPasswordConnector().SetCredentials(username, password)
+}
+
+// GetQrCodeConnector returns the singleton QrCodeConnector instance (lazy initialized).
+func (f *Factory) GetQrCodeConnector() (*miio.QrCodeConnector, error) {
+	if f.qrCodeConnector != nil {
+		return f.qrCodeConnector, nil
+	}
+	var err error
+	f.qrCodeConnector, err = miio.NewQrCodeConnector()
+	if err != nil {
+		return nil, fmt.Errorf("QrCode connector init failed: %w", err)
+	}
+	return f.qrCodeConnector, nil
+}
+
+// GetMiSendEmailCodeTool returns the singleton MiSendEmailCodeTool instance (lazy initialized)
+func (f *Factory) GetMiSendEmailCodeTool() (*homeclawtool.MiSendEmailCodeTool, error) {
+	if f.miSendEmailCodeTool != nil {
+		return f.miSendEmailCodeTool, nil
+	}
+	store, err := f.GetXiaomiAccountStore()
+	if err != nil {
+		return nil, err
+	}
+	f.miSendEmailCodeTool = homeclawtool.NewMiSendEmailCodeTool(store, f)
+	return f.miSendEmailCodeTool, nil
+}
+
+// GetMiLoginEmailTool returns the singleton MiLoginEmailTool instance (lazy initialized)
+func (f *Factory) GetMiLoginEmailTool() (*homeclawtool.MiLoginEmailTool, error) {
+	if f.miLoginEmailTool != nil {
+		return f.miLoginEmailTool, nil
+	}
+	store, err := f.GetXiaomiAccountStore()
+	if err != nil {
+		return nil, err
+	}
+	f.miLoginEmailTool = homeclawtool.NewMiLoginEmailTool(store, f)
+	return f.miLoginEmailTool, nil
 }

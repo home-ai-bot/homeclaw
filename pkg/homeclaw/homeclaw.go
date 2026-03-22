@@ -182,4 +182,6 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	registerTool(toolRegistry, f.GetGetXiaomiSpecTool)
 	registerTool(toolRegistry, f.GetXiaomiActionTool)
 	registerTool(toolRegistry, f.GetSetXiaomiPropTool)
+	registerTool(toolRegistry, f.GetMiSendEmailCodeTool)
+	registerTool(toolRegistry, f.GetMiLoginEmailTool)
 }

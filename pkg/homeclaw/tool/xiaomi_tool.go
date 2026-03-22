@@ -23,6 +23,12 @@ type SpecFetcherFactory interface {
 	GetSpecFetcher() *miio.SpecFetcher
 }
 
+// PasswordConnectorFactory defines the interface for accessing the singleton PasswordConnector
+type PasswordConnectorFactory interface {
+	GetPasswordConnector() *miio.PasswordConnector
+	SetPasswordConnectorCredentials(username, password string)
+}
+
 // syncTimestamp 用于标记本次同步时间，用于识别已删除的项目
 var syncTimestamp = time.Now().Unix()
 
@@ -1026,6 +1032,172 @@ func (t *SetXiaomiPropTool) Execute(_ context.Context, args map[string]any) *too
 	b, _ := json.Marshal(map[string]interface{}{
 		"success": true,
 		"result":  result,
+	})
+	return tools.NewToolResult(string(b))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mi_send_email_code
+// ─────────────────────────────────────────────────────────────────────────────
+
+// MiSendEmailCodeTool initiates Xiaomi password login and triggers 2FA email code delivery.
+// The caller must supply the same username/password pair when calling MiLoginEmailTool.
+type MiSendEmailCodeTool struct {
+	store   data.XiaomiAccountStore
+	factory PasswordConnectorFactory
+}
+
+func NewMiSendEmailCodeTool(store data.XiaomiAccountStore, factory PasswordConnectorFactory) *MiSendEmailCodeTool {
+	return &MiSendEmailCodeTool{store: store, factory: factory}
+}
+
+func (t *MiSendEmailCodeTool) Name() string { return "mi_send_email_code" }
+
+func (t *MiSendEmailCodeTool) Description() string {
+	return "Start the Xiaomi App login flow with username and password. " +
+		"If the account has two-factor authentication (2FA) enabled, a verification code will be sent to the registered email address. " +
+		"After calling this tool, ask the user to check their email and provide the code, then call mi_login_email to complete login. " +
+		"On success without 2FA the login completes immediately and user_id, ssecurity, service_token are saved to the account."
+}
+
+func (t *MiSendEmailCodeTool) Parameters() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"username": map[string]any{
+				"type":        "string",
+				"description": "Xiaomi account username (email or phone number)",
+			},
+			"password": map[string]any{
+				"type":        "string",
+				"description": "Xiaomi account password",
+			},
+		},
+		"required": []string{"username", "password"},
+	}
+}
+
+func (t *MiSendEmailCodeTool) Execute(_ context.Context, args map[string]any) *tools.ToolResult {
+	username, ok := args["username"].(string)
+	if !ok || username == "" {
+		return tools.ErrorResult("username is required")
+	}
+	password, ok := args["password"].(string)
+	if !ok || password == "" {
+		return tools.ErrorResult("password is required")
+	}
+
+	connector := t.factory.GetPasswordConnector()
+	t.factory.SetPasswordConnectorCredentials(username, password)
+	result, err := connector.Login()
+
+	// 2FA required — email code has been sent
+	var tfa *miio.ErrTwoFactorRequired
+	if errors.As(err, &tfa) {
+		b, _ := json.Marshal(map[string]interface{}{
+			"status":  "2fa_required",
+			"message": "A verification code has been sent to your registered email address. Please provide the code to mi_login_email to complete login.",
+		})
+		return tools.NewToolResult(string(b))
+	}
+
+	if err != nil {
+		return tools.ErrorResult(fmt.Sprintf("login failed: %v", err))
+	}
+
+	// No 2FA — login completed directly; save credentials
+	if saveErr := t.saveLoginResult(result); saveErr != nil {
+		return tools.ErrorResult(fmt.Sprintf("login succeeded but failed to save credentials: %v", saveErr))
+	}
+
+	b, _ := json.Marshal(map[string]interface{}{
+		"status":  "ok",
+		"user_id": result.UserID,
+	})
+	return tools.NewToolResult(string(b))
+}
+
+func (t *MiSendEmailCodeTool) saveLoginResult(r *miio.AppLoginResult) error {
+	acc, err := t.store.Get()
+	if err != nil {
+		acc = &data.XiaomiAccount{}
+	}
+	acc.UserID = r.UserID
+	acc.SSecurity = r.SSecurity
+	acc.ServiceToken = r.ServiceToken
+	return t.store.Save(*acc)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mi_login_email
+// ─────────────────────────────────────────────────────────────────────────────
+
+// MiLoginEmailTool completes the Xiaomi 2FA login by submitting the email verification code.
+// Must be called on the same PasswordConnector instance started by MiSendEmailCodeTool,
+// so the factory must return the same connector for the same username/password within a session.
+type MiLoginEmailTool struct {
+	store   data.XiaomiAccountStore
+	factory PasswordConnectorFactory
+}
+
+func NewMiLoginEmailTool(store data.XiaomiAccountStore, factory PasswordConnectorFactory) *MiLoginEmailTool {
+	return &MiLoginEmailTool{store: store, factory: factory}
+}
+
+func (t *MiLoginEmailTool) Name() string { return "mi_login_email" }
+
+func (t *MiLoginEmailTool) Description() string {
+	return "Complete the Xiaomi 2FA login by submitting the email verification code received after calling mi_send_email_code. " +
+		"On success, user_id, ssecurity and service_token are saved to the Xiaomi account."
+}
+
+func (t *MiLoginEmailTool) Parameters() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"code": map[string]any{
+				"type":        "string",
+				"description": "Email verification code received from Xiaomi",
+			},
+		},
+		"required": []string{"code"},
+	}
+}
+
+func (t *MiLoginEmailTool) Execute(_ context.Context, args map[string]any) *tools.ToolResult {
+	code, ok := args["code"].(string)
+	if !ok || code == "" {
+		return tools.ErrorResult("code is required")
+	}
+
+	connector := t.factory.GetPasswordConnector()
+	// Re-run Login to re-establish the 2FA session
+	_, err := connector.Login()
+	var tfa *miio.ErrTwoFactorRequired
+	if err != nil && !errors.As(err, &tfa) {
+		return tools.ErrorResult(fmt.Sprintf("failed to re-establish login session: %v", err))
+	}
+
+	result, err := connector.CompleteTwoFactor(code)
+	if err != nil {
+		return tools.ErrorResult(fmt.Sprintf("2FA verification failed: %v", err))
+	}
+
+	// Save credentials
+	acc, getErr := t.store.Get()
+	if getErr != nil {
+		acc = &data.XiaomiAccount{}
+	}
+	acc.UserID = result.UserID
+	acc.SSecurity = result.SSecurity
+	acc.ServiceToken = result.ServiceToken
+	if saveErr := t.store.Save(*acc); saveErr != nil {
+		return tools.ErrorResult(fmt.Sprintf("login succeeded but failed to save credentials: %v", saveErr))
+	}
+
+	b, _ := json.Marshal(map[string]interface{}{
+		"status":  "ok",
+		"user_id": result.UserID,
 	})
 	return tools.NewToolResult(string(b))
 }
