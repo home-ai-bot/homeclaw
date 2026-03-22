@@ -1171,13 +1171,6 @@ func (t *MiLoginEmailTool) Execute(_ context.Context, args map[string]any) *tool
 	}
 
 	connector := t.factory.GetPasswordConnector()
-	// Re-run Login to re-establish the 2FA session
-	_, err := connector.Login()
-	var tfa *miio.ErrTwoFactorRequired
-	if err != nil && !errors.As(err, &tfa) {
-		return tools.ErrorResult(fmt.Sprintf("failed to re-establish login session: %v", err))
-	}
-
 	result, err := connector.CompleteTwoFactor(code)
 	if err != nil {
 		return tools.ErrorResult(fmt.Sprintf("2FA verification failed: %v", err))

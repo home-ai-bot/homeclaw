@@ -460,12 +460,22 @@ func (c *PasswordConnector) start2FAEmailFlow(notificationURL string) (tfaContex
 	doGet := c.makeDoGet(headers)
 	doPost := c.makeDoPost(headers)
 
-	// 1) Open notificationUrl (authStart)
+	// 1) Open notificationUrl (authStart) — server sets "ick" cookie here
 	r, err := doGet(notificationURL, nil, true)
 	if err != nil {
 		return "", err
 	}
 	r.Body.Close()
+
+	// Extract ick cookie after visiting notificationUrl (set by server in step 1)
+	acctURL, _ := url.Parse("https://account.xiaomi.com")
+	ickCookie := ""
+	for _, ck := range c.jar.Cookies(acctURL) {
+		if ck.Name == "ick" {
+			ickCookie = ck.Value
+			break
+		}
+	}
 
 	// 2) Fetch identity options (list)
 	parsed, err := url.Parse(notificationURL)
@@ -483,7 +493,33 @@ func (c *PasswordConnector) start2FAEmailFlow(notificationURL string) (tfaContex
 	if err != nil {
 		return "", err
 	}
+	listBody, _ := io.ReadAll(r.Body)
 	r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("identity/list failed: status=%d body=%s", r.StatusCode, string(listBody[:minInt(500, len(listBody))]))
+	}
+
+	// If ick was not set in step 1, check again after identity/list (some server flows set it here)
+	if ickCookie == "" {
+		for _, ck := range c.jar.Cookies(acctURL) {
+			if ck.Name == "ick" {
+				ickCookie = ck.Value
+				break
+			}
+		}
+	}
+
+	// Fallback: try to extract ick from identity/list response body
+	if ickCookie == "" {
+		if listJSON, jsonErr := appToJSON(string(listBody)); jsonErr == nil {
+			if v, ok := listJSON["ick"].(string); ok {
+				ickCookie = v
+			}
+		}
+	}
+
+	// 暂存 ick，complete2FAEmailFlow 中 verifyEmail 需要
+	c.tfa2IckCookie = ickCookie
 
 	// 3) Request email ticket（发送验证码到邮箱）
 	sendParams := url.Values{}
@@ -492,17 +528,6 @@ func (c *PasswordConnector) start2FAEmailFlow(notificationURL string) (tfaContex
 	sendParams.Set("context", context)
 	sendParams.Set("mask", "0")
 	sendParams.Set("_locale", "en_US")
-
-	ickCookie := ""
-	acctURL, _ := url.Parse("https://account.xiaomi.com")
-	for _, ck := range c.jar.Cookies(acctURL) {
-		if ck.Name == "ick" {
-			ickCookie = ck.Value
-			break
-		}
-	}
-	// 暂存 ick，complete2FAEmailFlow 中 verifyEmail 需要
-	c.tfa2IckCookie = ickCookie
 
 	sendData := url.Values{}
 	sendData.Set("retry", "0")
@@ -514,7 +539,20 @@ func (c *PasswordConnector) start2FAEmailFlow(notificationURL string) (tfaContex
 	if err != nil {
 		return "", err
 	}
+	sendBody, _ := io.ReadAll(r.Body)
 	r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("sendEmailTicket failed: status=%d body=%s", r.StatusCode, string(sendBody[:minInt(500, len(sendBody))]))
+	}
+	// Check for JSON-level error codes in the sendEmailTicket response
+	// Use appToJSON to strip the "&&&START&&&" prefix that Xiaomi APIs prepend
+	if sendJSON, jsonErr := appToJSON(string(sendBody)); jsonErr == nil {
+		if code, _ := sendJSON["code"].(float64); int(code) != 0 {
+			tips, _ := sendJSON["tips"].(string)
+			desc, _ := sendJSON["desc"].(string)
+			return "", fmt.Errorf("sendEmailTicket error (code=%d): %s %s", int(code), tips, desc)
+		}
+	}
 
 	return context, nil
 }
@@ -564,20 +602,16 @@ func (c *PasswordConnector) complete2FAEmailFlow(context, code string) error {
 	}
 
 	// 检查 JSON 中的错误码（如 70014 = 验证码错误）
-	var jrCheck map[string]interface{}
-	if json.Unmarshal(verifyRaw, &jrCheck) == nil {
+	// Use appToJSON to strip the "&&&START&&&" prefix that Xiaomi APIs prepend
+	var finishLoc string
+	if jrCheck, jsonErr := appToJSON(string(verifyRaw)); jsonErr == nil {
 		if code, _ := jrCheck["code"].(float64); int(code) != 0 {
 			tips, _ := jrCheck["tips"].(string)
 			desc, _ := jrCheck["desc"].(string)
 			return fmt.Errorf("verifyEmail error (code=%d): %s %s", int(code), tips, desc)
 		}
-	}
-
-	// 解析 finish_loc（对应 Python try/except 逻辑）
-	var finishLoc string
-	var jrVerify map[string]interface{}
-	if err := json.Unmarshal(verifyRaw, &jrVerify); err == nil {
-		finishLoc, _ = jrVerify["location"].(string)
+		// Re-parse for location using already-stripped JSON
+		finishLoc, _ = jrCheck["location"].(string)
 	}
 	// fallback: Location header
 	if finishLoc == "" {
