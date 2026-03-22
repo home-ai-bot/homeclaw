@@ -11,7 +11,7 @@ import (
 // newTestCloudClient creates a CloudClient pointed at the given httptest server URL.
 func newTestCloudClient(t *testing.T) (*CloudClient, error) {
 	t.Helper()
-	token := "V3_lZRx34pC219_vABCSHqabLO1x8ussB2lQgpcdRqR3XffbDBMExvQdK82gnI9Y0wM8sb2Z9HSR6JlrB2ZFrCvWhoCJoT6DKtNzC4RUYnaZdM8N3tOOwDzrO_AbazigVpiri3jV1za7-s6QgSeIPmmqFJyUnxg4edBj_icej0QAbU"
+	token := ""
 	if token == "" {
 		t.Fatal("token is empty")
 		return nil, &OAuthError{Code: -1, Message: fmt.Sprintf("invalid http response, %s", "token is empty")}
