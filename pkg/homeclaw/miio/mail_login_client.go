@@ -236,22 +236,18 @@ func (c *PasswordConnector) Login() (*AppLoginResult, error) {
 // CompleteTwoFactor 在用户提供邮件验证码后完成登录。
 //
 // 必须在**同一个 PasswordConnector 实例**上调用（Login() 返回 *ErrTwoFactorRequired 之后）。
-// 内部会重新执行步骤 1-3（刷新会话 + ick cookie）再提交验证码，
-// 因为步骤 1-3 建立的 cookie 会随时间过期或在进程重启后丢失。
+// 直接使用 Login() 阶段已建立的会话状态（ick cookie + context），
+// 不重新发送验证码邮件，与 Python do_2fa_email_flow 的行为完全一致。
 //
 // code — 用户收到的邮件验证码
 //
-// 对应 Python do_2fa_email_flow 的完整流程。
+// 对应 Python do_2fa_email_flow 步骤 4-7。
 func (c *PasswordConnector) CompleteTwoFactor(code string) (*AppLoginResult, error) {
 	if c.tfa2NotifURL == "" {
 		return nil, fmt.Errorf("CompleteTwoFactor must be called on the same PasswordConnector instance that returned ErrTwoFactorRequired from Login()")
 	}
-	// 重新执行步骤 1-3，刷新会话状态和 ick cookie
-	ctx, err := c.start2FAEmailFlow(c.tfa2NotifURL)
-	if err != nil {
-		return nil, fmt.Errorf("re-establish 2FA session failed: %w", err)
-	}
-	if err := c.complete2FAEmailFlow(ctx, code); err != nil {
+	// 直接使用 Login() 阶段已暂存的 context，不重新发送邮件
+	if err := c.complete2FAEmailFlow(c.tfa2Context, code); err != nil {
 		return nil, err
 	}
 	// do_2fa_email_flow 成功后 serviceToken 已设置，login_step_3 条件为假，无需再调。
@@ -467,15 +463,10 @@ func (c *PasswordConnector) start2FAEmailFlow(notificationURL string) (tfaContex
 	}
 	r.Body.Close()
 
-	// Extract ick cookie after visiting notificationUrl (set by server in step 1)
-	acctURL, _ := url.Parse("https://account.xiaomi.com")
-	ickCookie := ""
-	for _, ck := range c.jar.Cookies(acctURL) {
-		if ck.Name == "ick" {
-			ickCookie = ck.Value
-			break
-		}
-	}
+	// Extract ick cookie after visiting notificationUrl (set by server in step 1).
+	// Use jarGetCookie to search all known Xiaomi domains, mirroring Python's
+	// self._session.cookies.get("ick", "") which is not domain-restricted.
+	ickCookie := c.jarGetCookie("ick")
 
 	// 2) Fetch identity options (list)
 	parsed, err := url.Parse(notificationURL)
@@ -501,12 +492,7 @@ func (c *PasswordConnector) start2FAEmailFlow(notificationURL string) (tfaContex
 
 	// If ick was not set in step 1, check again after identity/list (some server flows set it here)
 	if ickCookie == "" {
-		for _, ck := range c.jar.Cookies(acctURL) {
-			if ck.Name == "ick" {
-				ickCookie = ck.Value
-				break
-			}
-		}
+		ickCookie = c.jarGetCookie("ick")
 	}
 
 	// Fallback: try to extract ick from identity/list response body
@@ -518,8 +504,9 @@ func (c *PasswordConnector) start2FAEmailFlow(notificationURL string) (tfaContex
 		}
 	}
 
-	// 暂存 ick，complete2FAEmailFlow 中 verifyEmail 需要
+	// 暂存 ick 和 context，complete2FAEmailFlow 中 verifyEmail 需要
 	c.tfa2IckCookie = ickCookie
+	c.tfa2Context = context
 
 	// 3) Request email ticket（发送验证码到邮箱）
 	sendParams := url.Values{}
@@ -569,7 +556,12 @@ func (c *PasswordConnector) complete2FAEmailFlow(context, code string) error {
 	}
 	doGet := c.makeDoGet(headers)
 	doPost := c.makeDoPost(headers)
-	ickCookie := c.tfa2IckCookie
+	// Re-read ick from the jar at verify time (mirrors Python's self._session.cookies.get("ick", "")
+	// which always reads the live cookie jar, not a stale snapshot).
+	ickCookie := c.jarGetCookie("ick")
+	if ickCookie == "" {
+		ickCookie = c.tfa2IckCookie // fall back to the value saved during sendEmailTicket
+	}
 
 	// 4) 提交验证码
 	verifyParams := url.Values{}
@@ -1061,6 +1053,27 @@ func (c *QrCodeConnector) loginStep4() (bool, error) {
 }
 
 // ---------- 工具函数 ----------
+
+// jarGetCookie scans the cookie jar across all known Xiaomi account domains for a cookie by name.
+// This mirrors Python requests.Session.cookies.get(name, "") which searches the entire jar
+// without domain restriction.
+func (c *PasswordConnector) jarGetCookie(name string) string {
+	candidates := []string{
+		"https://account.xiaomi.com",
+		"https://xiaomi.com",
+		"https://mi.com",
+		"https://identity.xiaomi.com",
+	}
+	for _, rawURL := range candidates {
+		u, _ := url.Parse(rawURL)
+		for _, ck := range c.jar.Cookies(u) {
+			if ck.Name == name {
+				return ck.Value
+			}
+		}
+	}
+	return ""
+}
 
 // minInt 返回两整数中的较小值
 func minInt(a, b int) int {

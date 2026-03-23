@@ -17,6 +17,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/homeclaw/intent"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/miio"
 	homeclawtool "github.com/sipeed/picoclaw/pkg/homeclaw/tool"
+	"github.com/sipeed/picoclaw/pkg/homeclaw/video"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/workflow"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/tools"
@@ -92,6 +93,10 @@ type Factory struct {
 	// Login connector singleton - lazy loaded
 	passwordConnector *miio.PasswordConnector
 	qrCodeConnector   *miio.QrCodeConnector
+
+	// Video frame grabber singleton - lazy loaded
+	frameGrabber    *video.FrameGrabber
+	rtspAnalyzeTool *homeclawtool.RTSPAnalyzeTool
 }
 
 // NewFactory creates a new Factory instance.
@@ -810,4 +815,41 @@ func (f *Factory) GetMiLoginEmailTool() (*homeclawtool.MiLoginEmailTool, error) 
 	}
 	f.miLoginEmailTool = homeclawtool.NewMiLoginEmailTool(store, f)
 	return f.miLoginEmailTool, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Intent model name accessor (implements tool.IntentProviderFactory)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GetIntentModelName returns the model name used by the intent classifier.
+// It triggers lazy initialization of the provider if not yet done.
+func (f *Factory) GetIntentModelName() string {
+	if f.modelName != "" {
+		return f.modelName
+	}
+	// Trigger provider init to populate f.modelName
+	_, _ = f.GetIntentProvider()
+	return f.modelName
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Video / RTSP tools
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GetFrameGrabber returns the singleton FrameGrabber instance (lazy initialized).
+func (f *Factory) GetFrameGrabber() *video.FrameGrabber {
+	if f.frameGrabber == nil {
+		f.frameGrabber = video.NewFrameGrabber()
+	}
+	return f.frameGrabber
+}
+
+// GetRTSPAnalyzeTool returns the singleton RTSPAnalyzeTool instance (lazy initialized).
+// It captures a frame from an RTSP stream and sends it to the intent vision model.
+func (f *Factory) GetRTSPAnalyzeTool() (*homeclawtool.RTSPAnalyzeTool, error) {
+	if f.rtspAnalyzeTool != nil {
+		return f.rtspAnalyzeTool, nil
+	}
+	f.rtspAnalyzeTool = homeclawtool.NewRTSPAnalyzeTool(f.GetFrameGrabber(), f)
+	return f.rtspAnalyzeTool, nil
 }

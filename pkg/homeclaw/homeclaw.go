@@ -184,4 +184,7 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	registerTool(toolRegistry, f.GetSetXiaomiPropTool)
 	registerTool(toolRegistry, f.GetMiSendEmailCodeTool)
 	registerTool(toolRegistry, f.GetMiLoginEmailTool)
+
+	// Video / RTSP tools
+	registerTool(toolRegistry, f.GetRTSPAnalyzeTool)
 }

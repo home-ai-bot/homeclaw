@@ -36,6 +36,8 @@ type HomeclawConfig struct {
 	// IntentModel specifies the small model used for intent classification and
 	// workflow matching.
 	IntentModel IntentModelConfig `json:"intent_model"`
+
+	Rtsp string `json:"rtsp"`
 }
 
 // IntentModelConfig holds connection details for the small intent-classification model.
