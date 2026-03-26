@@ -17,7 +17,7 @@ const (
 	// SpecInstanceURL MIoT Spec instance API URL
 	SpecInstanceURL = "https://miot-spec.org/miot-spec-v2/instance"
 	// SpecCacheDir 本地 Spec 缓存目录
-	SpecCacheDir = "data/spec"
+	SpecCacheDir = "spec"
 	// SpecCacheEffectiveTime 缓存有效期（14天）
 	SpecCacheEffectiveTime = 3600 * 24 * 14 * time.Second
 )

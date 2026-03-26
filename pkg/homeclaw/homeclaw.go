@@ -159,7 +159,6 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 
 	// Member tools
 	registerTool(toolRegistry, f.GetListMembersTool)
-	registerTool(toolRegistry, f.GetGetMemberTool)
 	registerTool(toolRegistry, f.GetSaveMemberTool)
 	registerTool(toolRegistry, f.GetDeleteMemberTool)
 

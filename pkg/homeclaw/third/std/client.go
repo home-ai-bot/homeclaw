@@ -10,58 +10,8 @@
 package std
 
 import (
-	"github.com/sipeed/picoclaw/pkg/config"
-	homeclawconfig "github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
-	"github.com/sipeed/picoclaw/pkg/homeclaw/event"
-	"github.com/sipeed/picoclaw/pkg/homeclaw/ioc"
 )
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Brand constants
-// ─────────────────────────────────────────────────────────────────────────────
-
-const (
-	// BrandXiaomi is the brand name returned by Xiaomi / Mi Home adapters.
-	BrandXiaomi = "xiaomi"
-
-	// BrandTuya is the brand name returned by Tuya adapters.
-	BrandTuya = "tuya"
-)
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Factory
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Options bundles every dependency that a [Factory] may need to construct a
-// [Client].  Pass the zero value for fields that a particular platform does
-// not require.
-type Options struct {
-	// Config is the PicoClaw root configuration.
-	Config *config.Config
-
-	// HCConfig is the HomeClaw-specific configuration (homeclaw.json).
-	HCConfig *homeclawconfig.HomeclawConfig
-
-	// Workspace is the data root directory used for caches and credentials.
-	Workspace string
-
-	// Factory is the HomeClaw IOC factory.
-	Factory *ioc.Factory
-
-	// EventBus is the HomeClaw event center for cross-component event dispatch.
-	EventBus *event.Center
-}
-
-// Factory is a constructor function that creates and returns a platform
-// [Client].  Implementations should be registered at startup and looked up
-// by brand name.
-//
-// Example usage:
-//
-//	var _ std.Factory = NewMiioClient
-//	func NewMiioClient(opts std.Options) (std.Client, error) { … }
-type Factory func(opts Options) (Client, error)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Data types returned by the query methods

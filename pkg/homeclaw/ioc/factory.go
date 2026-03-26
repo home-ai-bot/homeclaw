@@ -37,17 +37,16 @@ type Factory struct {
 	hcfg      *homeclawconfig.HomeclawConfig
 
 	// Singleton instances - lazy loaded
-	jsonStore          *data.JSONStore
-	deviceStore        data.DeviceStore
-	spaceStore         data.SpaceStore
-	memberStore        data.MemberStore
-	workflowStore      data.WorkflowStore
-	xiaomiAccountStore data.XiaomiAccountStore
-	eventCenter        *event.Center
-	classifier         intent.IntentClassifier
-	router             *intent.Router
-	workflowEngine     workflow.Engine
-	toolRegistry       *tools.ToolRegistry
+	jsonStore      *data.JSONStore
+	deviceStore    data.DeviceStore
+	spaceStore     data.SpaceStore
+	memberStore    data.MemberStore
+	workflowStore  data.WorkflowStore
+	eventCenter    *event.Center
+	classifier     intent.IntentClassifier
+	router         *intent.Router
+	workflowEngine workflow.Engine
+	toolRegistry   *tools.ToolRegistry
 
 	// Provider for intent classification
 	provider  providers.LLMProvider
@@ -58,22 +57,20 @@ type Factory struct {
 	storeErr  error
 
 	// Tool singleton instances - lazy loaded
-	listDevicesTool      *homeclawtool.ListDevicesTool
-	listSpacesTool       *homeclawtool.ListSpacesTool
-	getSpaceTool         *homeclawtool.GetSpaceTool
-	saveSpaceTool        *homeclawtool.SaveSpaceTool
-	deleteSpaceTool      *homeclawtool.DeleteSpaceTool
-	listMembersTool      *homeclawtool.ListMembersTool
-	getMemberTool        *homeclawtool.GetMemberTool
-	saveMemberTool       *homeclawtool.SaveMemberTool
-	deleteMemberTool     *homeclawtool.DeleteMemberTool
-	listWorkflowsTool    *homeclawtool.ListWorkflowsTool
-	getWorkflowTool      *homeclawtool.GetWorkflowTool
-	saveWorkflowTool     *homeclawtool.SaveWorkflowTool
-	deleteWorkflowTool   *homeclawtool.DeleteWorkflowTool
-	enableWorkflowTool   *homeclawtool.EnableWorkflowTool
-	disableWorkflowTool  *homeclawtool.DisableWorkflowTool
-	updateXiaomiHomeTool *homeclawtool.UpdateXiaomiHomeTool
+	listDevicesTool     *homeclawtool.ListDevicesTool
+	listSpacesTool      *homeclawtool.ListSpacesTool
+	getSpaceTool        *homeclawtool.GetSpaceTool
+	saveSpaceTool       *homeclawtool.SaveSpaceTool
+	deleteSpaceTool     *homeclawtool.DeleteSpaceTool
+	listMembersTool     *homeclawtool.ListMembersTool
+	saveMemberTool      *homeclawtool.SaveMemberTool
+	deleteMemberTool    *homeclawtool.DeleteMemberTool
+	listWorkflowsTool   *homeclawtool.ListWorkflowsTool
+	getWorkflowTool     *homeclawtool.GetWorkflowTool
+	saveWorkflowTool    *homeclawtool.SaveWorkflowTool
+	deleteWorkflowTool  *homeclawtool.DeleteWorkflowTool
+	enableWorkflowTool  *homeclawtool.EnableWorkflowTool
+	disableWorkflowTool *homeclawtool.DisableWorkflowTool
 
 	// Video frame grabber singleton - lazy loaded
 	frameGrabber    *video.FrameGrabber
@@ -183,24 +180,6 @@ func (f *Factory) GetWorkflowStore() (data.WorkflowStore, error) {
 		return nil, fmt.Errorf("workflow store init failed: %w", err)
 	}
 	return f.workflowStore, nil
-}
-
-// GetXiaomiAccountStore returns the singleton XiaomiAccountStore instance (lazy initialized)
-func (f *Factory) GetXiaomiAccountStore() (data.XiaomiAccountStore, error) {
-	if f.xiaomiAccountStore != nil {
-		return f.xiaomiAccountStore, nil
-	}
-
-	store, err := f.GetJSONStore()
-	if err != nil {
-		return nil, err
-	}
-
-	f.xiaomiAccountStore, err = data.NewXiaomiAccountStore(store)
-	if err != nil {
-		return nil, fmt.Errorf("xiaomi account store init failed: %w", err)
-	}
-	return f.xiaomiAccountStore, nil
 }
 
 // GetEventCenter returns the singleton EventCenter instance
@@ -420,19 +399,6 @@ func (f *Factory) GetListMembersTool() (*homeclawtool.ListMembersTool, error) {
 	return f.listMembersTool, nil
 }
 
-// GetGetMemberTool returns the singleton GetMemberTool instance (lazy initialized)
-func (f *Factory) GetGetMemberTool() (*homeclawtool.GetMemberTool, error) {
-	if f.getMemberTool != nil {
-		return f.getMemberTool, nil
-	}
-	store, err := f.GetMemberStore()
-	if err != nil {
-		return nil, err
-	}
-	f.getMemberTool = homeclawtool.NewGetMemberTool(store)
-	return f.getMemberTool, nil
-}
-
 // GetSaveMemberTool returns the singleton SaveMemberTool instance (lazy initialized)
 func (f *Factory) GetSaveMemberTool() (*homeclawtool.SaveMemberTool, error) {
 	if f.saveMemberTool != nil {
@@ -535,19 +501,6 @@ func (f *Factory) GetDisableWorkflowTool() (*homeclawtool.DisableWorkflowTool, e
 	}
 	f.disableWorkflowTool = homeclawtool.NewDisableWorkflowTool(store)
 	return f.disableWorkflowTool, nil
-}
-
-// GetUpdateXiaomiHomeTool returns the singleton UpdateXiaomiHomeTool instance (lazy initialized)
-func (f *Factory) GetUpdateXiaomiHomeTool() (*homeclawtool.UpdateXiaomiHomeTool, error) {
-	if f.updateXiaomiHomeTool != nil {
-		return f.updateXiaomiHomeTool, nil
-	}
-	store, err := f.GetXiaomiAccountStore()
-	if err != nil {
-		return nil, err
-	}
-	f.updateXiaomiHomeTool = homeclawtool.NewUpdateXiaomiHomeTool(store)
-	return f.updateXiaomiHomeTool, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

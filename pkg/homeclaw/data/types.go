@@ -24,6 +24,14 @@ type Device struct {
 	Actions   map[string]string `json:"actions,omitempty"` // key: action name, value: param json, e.g. {"开灯": "{did:xxx,siid:xxx,aiid:xx,value:true}"}
 }
 
+// Home represents a home information
+type Home struct {
+	FromID  string `json:"from_id"`
+	From    string `json:"from"`
+	Name    string `json:"name"`
+	Current bool   `json:"current"`
+}
+
 // Member represents a family member
 type Member struct {
 	Name       string   `json:"name"`
@@ -42,6 +50,12 @@ type SpacesData struct {
 type DevicesData struct {
 	Version string   `json:"version"`
 	Devices []Device `json:"devices"`
+}
+
+// HomesData is the root structure for homes.json
+type HomesData struct {
+	Version string `json:"version"`
+	Homes   []Home `json:"homes"`
 }
 
 // MembersData is the root structure for members.json

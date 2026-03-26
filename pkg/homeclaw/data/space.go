@@ -48,7 +48,7 @@ func (s *spaceStore) GetAll() ([]Space, error) {
 func (s *spaceStore) Save(space Space) error {
 	for i := range s.data.Spaces {
 		if strings.EqualFold(s.data.Spaces[i].Name, space.Name) {
-			s.data.Spaces[i] = space
+			s.data.Spaces[i].From[space.From["name"]] = space.From["id"]
 			return s.save()
 		}
 	}

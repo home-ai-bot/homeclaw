@@ -62,3 +62,4 @@ web/backend/dist/*
 pkg/homeclaw/miio/login_client_test.go
 config/camera.json
 config/xiaovvcamera.json
+pkg/homeclaw/third/miio/mi_client_test.go
