@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 )
@@ -57,10 +56,8 @@ func (u *UserMgmtIntent) handleAdd(ictx IntentContext) IntentResponse {
 	}
 
 	member := data.Member{
-		Name:      name,
-		Role:      "member",
-		Channels:  map[string]data.ChannelInfo{},
-		CreatedAt: time.Now(),
+		Name: name,
+		Role: "member",
 	}
 	if err := u.store.Save(member); err != nil {
 		return errResponse(fmt.Sprintf("添加成员「%s」失败：%s", name, err.Error()), err)
@@ -94,17 +91,19 @@ func (u *UserMgmtIntent) handleQuery(ictx IntentContext) IntentResponse {
 
 	// Query a specific member.
 	if name != "" {
-		m, err := u.store.GetByName(name)
+		members, err := u.store.GetAll()
 		if err != nil {
-			if err == data.ErrRecordNotFound {
-				return IntentResponse{Handled: true, Response: fmt.Sprintf("未找到成员「%s」。", name)}
-			}
 			return errResponse(fmt.Sprintf("查询成员失败：%s", err.Error()), err)
 		}
-		return IntentResponse{
-			Handled:  true,
-			Response: fmt.Sprintf("成员「%s」，角色：%s，已绑定渠道：%s。", m.Name, m.Role, formatChannels(m.Channels)),
+		for _, m := range members {
+			if strings.EqualFold(m.Name, name) {
+				return IntentResponse{
+					Handled:  true,
+					Response: fmt.Sprintf("成员「%s」，角色：%s。", m.Name, m.Role),
+				}
+			}
 		}
+		return IntentResponse{Handled: true, Response: fmt.Sprintf("未找到成员「%s」。", name)}
 	}
 
 	// Query all members.
@@ -123,15 +122,4 @@ func (u *UserMgmtIntent) handleQuery(ictx IntentContext) IntentResponse {
 		Handled:  true,
 		Response: fmt.Sprintf("家庭成员共 %d 人：%s。", len(members), strings.Join(names, "、")),
 	}
-}
-
-func formatChannels(channels map[string]data.ChannelInfo) string {
-	if len(channels) == 0 {
-		return "无"
-	}
-	names := make([]string, 0, len(channels))
-	for ch := range channels {
-		names = append(names, ch)
-	}
-	return strings.Join(names, "、")
 }

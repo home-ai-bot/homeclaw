@@ -72,39 +72,26 @@ func (t *GetMemberTool) Parameters() map[string]any {
 				"type":        "string",
 				"description": "Member name to look up",
 			},
-			"channel": map[string]any{
-				"type":        "string",
-				"description": "Channel name (e.g. telegram, wecom) for channel-based lookup",
-			},
-			"channel_user_id": map[string]any{
-				"type":        "string",
-				"description": "User ID in the given channel for channel-based lookup",
-			},
 		},
-		"required": []string{},
+		"required": []string{"name"},
 	}
 }
 
 func (t *GetMemberTool) Execute(_ context.Context, args map[string]any) *tools.ToolResult {
+	members, err := t.store.GetAll()
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to list members: %v", err), IsError: true}
+	}
 	if name, ok := args["name"].(string); ok && name != "" {
-		member, err := t.store.GetByName(name)
-		if err != nil {
-			return &tools.ToolResult{ForLLM: fmt.Sprintf("member not found: %v", err), IsError: true}
+		for _, m := range members {
+			if m.Name == name {
+				b, _ := json.Marshal(m)
+				return tools.NewToolResult(string(b))
+			}
 		}
-		b, _ := json.Marshal(member)
-		return tools.NewToolResult(string(b))
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("member %q not found", name), IsError: true}
 	}
-	ch, _ := args["channel"].(string)
-	uid, _ := args["channel_user_id"].(string)
-	if ch != "" && uid != "" {
-		member, err := t.store.GetByChannelID(ch, uid)
-		if err != nil {
-			return &tools.ToolResult{ForLLM: fmt.Sprintf("member not found: %v", err), IsError: true}
-		}
-		b, _ := json.Marshal(member)
-		return tools.NewToolResult(string(b))
-	}
-	return &tools.ToolResult{ForLLM: "name or (channel + channel_user_id) is required", IsError: true}
+	return &tools.ToolResult{ForLLM: "name is required", IsError: true}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,12 +126,12 @@ func (t *SaveMemberTool) Parameters() map[string]any {
 						"type":        "string",
 						"description": "admin or member",
 					},
-					"space_permissions": map[string]any{
+					"my_spaces": map[string]any{
 						"type":        "array",
 						"items":       map[string]any{"type": "string"},
-						"description": "Space IDs this member can access. Use [\"*\"] for all spaces.",
+						"description": "Space names this member can access.",
 					},
-					"default_space_id": map[string]any{"type": "string"},
+					"sleep_space": map[string]any{"type": "string", "description": "The space where this member sleeps."},
 				},
 				"required": []string{"name", "role"},
 			},

@@ -70,24 +70,35 @@ func (d *DeviceMgmtIntent) handleAdd(ictx IntentContext) IntentResponse {
 	}
 
 	spaceName := entityString(ictx.Result.Entities, "space_name")
-	spaceID := ""
 	if spaceName != "" && d.spaceStore != nil {
-		if sp, err := d.spaceStore.FindByName(spaceName); err == nil {
-			spaceID = sp.ID
+		// Verify space exists
+		spaces, err := d.spaceStore.GetAll()
+		if err == nil {
+			found := false
+			for _, sp := range spaces {
+				if strings.EqualFold(sp.Name, spaceName) {
+					spaceName = sp.Name // Use canonical name
+					found = true
+					break
+				}
+			}
+			if !found {
+				spaceName = "" // Space not found
+			}
 		}
 	}
 
 	device := data.Device{
-		ID:      deviceID(),
-		Name:    name,
-		SpaceID: spaceID,
+		FromID:    deviceID(),
+		Name:      name,
+		SpaceName: spaceName,
 	}
 	if err := d.deviceStore.Save(device); err != nil {
 		return errResponse(fmt.Sprintf("添加设备「%s」失败：%s", name, err.Error()), err)
 	}
 	msg := fmt.Sprintf("已添加设备「%s」。", name)
-	if spaceName != "" && spaceID == "" {
-		msg += fmt.Sprintf("（未找到空间「%s」，设备未分配房间）", spaceName)
+	if entityString(ictx.Result.Entities, "space_name") != "" && spaceName == "" {
+		msg += fmt.Sprintf("（未找到空间「%s」，设备未分配房间）", entityString(ictx.Result.Entities, "space_name"))
 	}
 	return IntentResponse{Handled: true, Response: msg}
 }
@@ -110,7 +121,7 @@ func (d *DeviceMgmtIntent) handleRemove(ictx IntentContext) IntentResponse {
 	}
 	for _, dev := range devices {
 		if strings.EqualFold(dev.Name, name) {
-			if err := d.deviceStore.Delete(dev.ID); err != nil {
+			if err := d.deviceStore.Delete(dev.FromID); err != nil {
 				return errResponse(fmt.Sprintf("删除设备「%s」失败：%s", name, err.Error()), err)
 			}
 			return IntentResponse{Handled: true, Response: fmt.Sprintf("已删除设备「%s」。", name)}
@@ -150,16 +161,21 @@ func (d *DeviceMgmtIntent) handleMove(ictx IntentContext) IntentResponse {
 	}
 
 	// Resolve space.
-	var spaceID string
+	var resolvedSpaceName string
 	if d.spaceStore != nil {
-		sp, err := d.spaceStore.FindByName(spaceName)
+		spaces, err := d.spaceStore.GetAll()
 		if err != nil {
-			if err == data.ErrRecordNotFound {
-				return IntentResponse{Handled: true, Response: fmt.Sprintf("未找到空间「%s」。", spaceName)}
-			}
 			return errResponse(fmt.Sprintf("查询空间失败：%s", err.Error()), err)
 		}
-		spaceID = sp.ID
+		for _, sp := range spaces {
+			if strings.EqualFold(sp.Name, spaceName) {
+				resolvedSpaceName = sp.Name
+				break
+			}
+		}
+		if resolvedSpaceName == "" {
+			return IntentResponse{Handled: true, Response: fmt.Sprintf("未找到空间「%s」。", spaceName)}
+		}
 	}
 
 	devices, err := d.deviceStore.GetAll()
@@ -168,7 +184,7 @@ func (d *DeviceMgmtIntent) handleMove(ictx IntentContext) IntentResponse {
 	}
 	for _, dev := range devices {
 		if strings.EqualFold(dev.Name, deviceName) {
-			dev.SpaceID = spaceID
+			dev.SpaceName = resolvedSpaceName
 			if err := d.deviceStore.Save(dev); err != nil {
 				return errResponse(fmt.Sprintf("移动设备失败：%s", err.Error()), err)
 			}
@@ -208,7 +224,7 @@ func (d *DeviceMgmtIntent) handleQueryStatus(ictx IntentContext) IntentResponse 
 	}
 	lines := make([]string, 0, len(devices))
 	for _, dev := range devices {
-		lines = append(lines, fmt.Sprintf("「%s」（%s）", dev.Name, dev.Brand))
+		lines = append(lines, fmt.Sprintf("「%s」（%s）", dev.Name, dev.From))
 	}
 	return IntentResponse{
 		Handled:  true,
@@ -219,8 +235,8 @@ func (d *DeviceMgmtIntent) handleQueryStatus(ictx IntentContext) IntentResponse 
 func formatDeviceStatus(dev data.Device) string {
 	sb := &strings.Builder{}
 	fmt.Fprintf(sb, "设备「%s」", dev.Name)
-	if dev.Brand != "" {
-		fmt.Fprintf(sb, "（%s）", dev.Brand)
+	if dev.From != "" {
+		fmt.Fprintf(sb, "（%s）", dev.From)
 	}
 	sb.WriteString("，状态未知。")
 	return sb.String()

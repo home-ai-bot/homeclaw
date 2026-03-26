@@ -15,7 +15,6 @@ import (
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/event"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/intent"
-	"github.com/sipeed/picoclaw/pkg/homeclaw/miio"
 	homeclawtool "github.com/sipeed/picoclaw/pkg/homeclaw/tool"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/video"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/workflow"
@@ -45,7 +44,6 @@ type Factory struct {
 	workflowStore      data.WorkflowStore
 	xiaomiAccountStore data.XiaomiAccountStore
 	eventCenter        *event.Center
-	oauthClient        *miio.MIoTOauthClient
 	classifier         intent.IntentClassifier
 	router             *intent.Router
 	workflowEngine     workflow.Engine
@@ -60,39 +58,22 @@ type Factory struct {
 	storeErr  error
 
 	// Tool singleton instances - lazy loaded
-	listDevicesTool          *homeclawtool.ListDevicesTool
-	listSpacesTool           *homeclawtool.ListSpacesTool
-	getSpaceTool             *homeclawtool.GetSpaceTool
-	saveSpaceTool            *homeclawtool.SaveSpaceTool
-	deleteSpaceTool          *homeclawtool.DeleteSpaceTool
-	listMembersTool          *homeclawtool.ListMembersTool
-	getMemberTool            *homeclawtool.GetMemberTool
-	saveMemberTool           *homeclawtool.SaveMemberTool
-	deleteMemberTool         *homeclawtool.DeleteMemberTool
-	listWorkflowsTool        *homeclawtool.ListWorkflowsTool
-	getWorkflowTool          *homeclawtool.GetWorkflowTool
-	saveWorkflowTool         *homeclawtool.SaveWorkflowTool
-	deleteWorkflowTool       *homeclawtool.DeleteWorkflowTool
-	enableWorkflowTool       *homeclawtool.EnableWorkflowTool
-	disableWorkflowTool      *homeclawtool.DisableWorkflowTool
-	getXiaomiAccountTool     *homeclawtool.GetXiaomiAccountTool
-	updateXiaomiHomeTool     *homeclawtool.UpdateXiaomiHomeTool
-	getXiaomiOAuthURLTool    *homeclawtool.GetXiaomiOAuthURLTool
-	getXiaomiAccessTokenTool *homeclawtool.GetXiaomiAccessTokenTool
-	syncXiaomiHomesTool      *homeclawtool.SyncXiaomiHomesTool
-	syncXiaomiRoomsTool      *homeclawtool.SyncXiaomiRoomsTool
-	syncXiaomiDevicesTool    *homeclawtool.SyncXiaomiDevicesTool
-	cloudClient              *miio.CloudClient
-	specFetcher              *miio.SpecFetcher
-	getXiaomiSpecTool        *homeclawtool.GetXiaomiSpecTool
-	xiaomiActionTool         *homeclawtool.XiaomiActionTool
-	setXiaomiPropTool        *homeclawtool.SetXiaomiPropTool
-	miSendEmailCodeTool      *homeclawtool.MiSendEmailCodeTool
-	miLoginEmailTool         *homeclawtool.MiLoginEmailTool
-
-	// Login connector singleton - lazy loaded
-	passwordConnector *miio.PasswordConnector
-	qrCodeConnector   *miio.QrCodeConnector
+	listDevicesTool      *homeclawtool.ListDevicesTool
+	listSpacesTool       *homeclawtool.ListSpacesTool
+	getSpaceTool         *homeclawtool.GetSpaceTool
+	saveSpaceTool        *homeclawtool.SaveSpaceTool
+	deleteSpaceTool      *homeclawtool.DeleteSpaceTool
+	listMembersTool      *homeclawtool.ListMembersTool
+	getMemberTool        *homeclawtool.GetMemberTool
+	saveMemberTool       *homeclawtool.SaveMemberTool
+	deleteMemberTool     *homeclawtool.DeleteMemberTool
+	listWorkflowsTool    *homeclawtool.ListWorkflowsTool
+	getWorkflowTool      *homeclawtool.GetWorkflowTool
+	saveWorkflowTool     *homeclawtool.SaveWorkflowTool
+	deleteWorkflowTool   *homeclawtool.DeleteWorkflowTool
+	enableWorkflowTool   *homeclawtool.EnableWorkflowTool
+	disableWorkflowTool  *homeclawtool.DisableWorkflowTool
+	updateXiaomiHomeTool *homeclawtool.UpdateXiaomiHomeTool
 
 	// Video frame grabber singleton - lazy loaded
 	frameGrabber    *video.FrameGrabber
@@ -357,39 +338,6 @@ func (f *Factory) GetIntentRouter() (*intent.Router, error) {
 	return f.router, nil
 }
 
-// GetMIoTOAuthClient returns the singleton MIoT OAuth client (lazy initialized)
-func (f *Factory) GetMIoTOAuthClient() (*miio.MIoTOauthClient, error) {
-	if f.oauthClient != nil {
-		return f.oauthClient, nil
-	}
-
-	xiaomiAccountStore, err := f.GetXiaomiAccountStore()
-	if err != nil {
-		return nil, err
-	}
-
-	xiaomiAccount, err := xiaomiAccountStore.Get()
-	if err != nil {
-		if err != data.ErrRecordNotFound {
-			return nil, fmt.Errorf("xiaomi account load failed: %w", err)
-		}
-		// Create default account if not exists
-		xiaomiAccount = &data.XiaomiAccount{
-			ClientID: miio.OAuth2ClientID,
-			ID:       common.GenerateUUID(),
-		}
-		if saveErr := xiaomiAccountStore.Save(*xiaomiAccount); saveErr != nil {
-			return nil, fmt.Errorf("xiaomi account save failed: %w", saveErr)
-		}
-	}
-
-	f.oauthClient, err = miio.NewMIoTOauthClient(xiaomiAccount.ClientID, "", "cn", xiaomiAccount.ID)
-	if err != nil {
-		return nil, fmt.Errorf("MIoT OAuth client init failed: %w", err)
-	}
-	return f.oauthClient, nil
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Tool factory methods
 // ─────────────────────────────────────────────────────────────────────────────
@@ -589,23 +537,6 @@ func (f *Factory) GetDisableWorkflowTool() (*homeclawtool.DisableWorkflowTool, e
 	return f.disableWorkflowTool, nil
 }
 
-// GetGetXiaomiAccountTool returns the singleton GetXiaomiAccountTool instance (lazy initialized)
-func (f *Factory) GetGetXiaomiAccountTool() (*homeclawtool.GetXiaomiAccountTool, error) {
-	if f.getXiaomiAccountTool != nil {
-		return f.getXiaomiAccountTool, nil
-	}
-	store, err := f.GetXiaomiAccountStore()
-	if err != nil {
-		return nil, err
-	}
-	oauthClient, err := f.GetMIoTOAuthClient()
-	if err != nil {
-		return nil, err
-	}
-	f.getXiaomiAccountTool = homeclawtool.NewGetXiaomiAccountTool(store, oauthClient)
-	return f.getXiaomiAccountTool, nil
-}
-
 // GetUpdateXiaomiHomeTool returns the singleton UpdateXiaomiHomeTool instance (lazy initialized)
 func (f *Factory) GetUpdateXiaomiHomeTool() (*homeclawtool.UpdateXiaomiHomeTool, error) {
 	if f.updateXiaomiHomeTool != nil {
@@ -617,204 +548,6 @@ func (f *Factory) GetUpdateXiaomiHomeTool() (*homeclawtool.UpdateXiaomiHomeTool,
 	}
 	f.updateXiaomiHomeTool = homeclawtool.NewUpdateXiaomiHomeTool(store)
 	return f.updateXiaomiHomeTool, nil
-}
-
-// GetGetXiaomiOAuthURLTool returns the singleton GetXiaomiOAuthURLTool instance (lazy initialized)
-func (f *Factory) GetGetXiaomiOAuthURLTool() (*homeclawtool.GetXiaomiOAuthURLTool, error) {
-	if f.getXiaomiOAuthURLTool != nil {
-		return f.getXiaomiOAuthURLTool, nil
-	}
-	oauthClient, err := f.GetMIoTOAuthClient()
-	if err != nil {
-		return nil, err
-	}
-	f.getXiaomiOAuthURLTool = homeclawtool.NewGetXiaomiOAuthURLTool(oauthClient)
-	return f.getXiaomiOAuthURLTool, nil
-}
-
-// GetGetXiaomiAccessTokenTool returns the singleton GetXiaomiAccessTokenTool instance (lazy initialized)
-func (f *Factory) GetGetXiaomiAccessTokenTool() (*homeclawtool.GetXiaomiAccessTokenTool, error) {
-	if f.getXiaomiAccessTokenTool != nil {
-		return f.getXiaomiAccessTokenTool, nil
-	}
-	store, err := f.GetXiaomiAccountStore()
-	if err != nil {
-		return nil, err
-	}
-	oauthClient, err := f.GetMIoTOAuthClient()
-	if err != nil {
-		return nil, err
-	}
-	f.getXiaomiAccessTokenTool = homeclawtool.NewGetXiaomiAccessTokenTool(store, oauthClient)
-	return f.getXiaomiAccessTokenTool, nil
-}
-
-// GetSyncXiaomiHomesTool returns the singleton SyncXiaomiHomesTool instance (lazy initialized)
-func (f *Factory) GetSyncXiaomiHomesTool() (*homeclawtool.SyncXiaomiHomesTool, error) {
-	if f.syncXiaomiHomesTool != nil {
-		return f.syncXiaomiHomesTool, nil
-	}
-	store, err := f.GetXiaomiAccountStore()
-	if err != nil {
-		return nil, err
-	}
-	f.syncXiaomiHomesTool = homeclawtool.NewSyncXiaomiHomesTool(store, f)
-	return f.syncXiaomiHomesTool, nil
-}
-
-// GetSyncXiaomiRoomsTool returns the singleton SyncXiaomiRoomsTool instance (lazy initialized)
-func (f *Factory) GetSyncXiaomiRoomsTool() (*homeclawtool.SyncXiaomiRoomsTool, error) {
-	if f.syncXiaomiRoomsTool != nil {
-		return f.syncXiaomiRoomsTool, nil
-	}
-	store, err := f.GetXiaomiAccountStore()
-	if err != nil {
-		return nil, err
-	}
-	spaceStore, err := f.GetSpaceStore()
-	if err != nil {
-		return nil, err
-	}
-	f.syncXiaomiRoomsTool = homeclawtool.NewSyncXiaomiRoomsTool(store, spaceStore, f)
-	return f.syncXiaomiRoomsTool, nil
-}
-
-// GetSyncXiaomiDevicesTool returns the singleton SyncXiaomiDevicesTool instance (lazy initialized)
-func (f *Factory) GetSyncXiaomiDevicesTool() (*homeclawtool.SyncXiaomiDevicesTool, error) {
-	if f.syncXiaomiDevicesTool != nil {
-		return f.syncXiaomiDevicesTool, nil
-	}
-	store, err := f.GetXiaomiAccountStore()
-	if err != nil {
-		return nil, err
-	}
-	deviceStore, err := f.GetDeviceStore()
-	if err != nil {
-		return nil, err
-	}
-	f.syncXiaomiDevicesTool = homeclawtool.NewSyncXiaomiDevicesTool(store, deviceStore, f)
-	return f.syncXiaomiDevicesTool, nil
-}
-
-// GetCloudClient returns the singleton CloudClient instance (lazy initialized)
-// The CloudClient manages its own token refresh internally
-func (f *Factory) GetCloudClient() (*miio.CloudClient, error) {
-	if f.cloudClient != nil {
-		return f.cloudClient, nil
-	}
-
-	acc, err := f.GetXiaomiAccountStore()
-	if err != nil {
-		return nil, err
-	}
-
-	account, err := acc.Get()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get xiaomi account: %w", err)
-	}
-
-	f.cloudClient, err = miio.NewCloudClient("cn", miio.OAuth2ClientID, account.AccessToken)
-	if err != nil {
-		return nil, err
-	}
-	return f.cloudClient, nil
-}
-
-// GetSpecFetcher returns the singleton SpecFetcher instance (lazy initialized)
-func (f *Factory) GetSpecFetcher() *miio.SpecFetcher {
-	if f.specFetcher != nil {
-		return f.specFetcher
-	}
-	f.specFetcher = miio.NewSpecFetcher(f.Workspace)
-	return f.specFetcher
-}
-
-// GetGetXiaomiSpecTool returns the singleton GetXiaomiSpecTool instance (lazy initialized)
-func (f *Factory) GetGetXiaomiSpecTool() (*homeclawtool.GetXiaomiSpecTool, error) {
-	if f.getXiaomiSpecTool != nil {
-		return f.getXiaomiSpecTool, nil
-	}
-	f.getXiaomiSpecTool = homeclawtool.NewGetXiaomiSpecTool(f.GetSpecFetcher())
-	return f.getXiaomiSpecTool, nil
-}
-
-// GetXiaomiActionTool returns the singleton XiaomiActionTool instance (lazy initialized)
-func (f *Factory) GetXiaomiActionTool() (*homeclawtool.XiaomiActionTool, error) {
-	if f.xiaomiActionTool != nil {
-		return f.xiaomiActionTool, nil
-	}
-	store, err := f.GetXiaomiAccountStore()
-	if err != nil {
-		return nil, err
-	}
-	f.xiaomiActionTool = homeclawtool.NewXiaomiActionTool(store, f)
-	return f.xiaomiActionTool, nil
-}
-
-// GetSetXiaomiPropTool returns the singleton SetXiaomiPropTool instance (lazy initialized)
-func (f *Factory) GetSetXiaomiPropTool() (*homeclawtool.SetXiaomiPropTool, error) {
-	if f.setXiaomiPropTool != nil {
-		return f.setXiaomiPropTool, nil
-	}
-	store, err := f.GetXiaomiAccountStore()
-	if err != nil {
-		return nil, err
-	}
-	f.setXiaomiPropTool = homeclawtool.NewSetXiaomiPropTool(store, f)
-	return f.setXiaomiPropTool, nil
-}
-
-// GetPasswordConnector returns the singleton PasswordConnector instance (lazy initialized).
-func (f *Factory) GetPasswordConnector() *miio.PasswordConnector {
-	if f.passwordConnector == nil {
-		f.passwordConnector = miio.NewPasswordConnector("", "")
-	}
-	return f.passwordConnector
-}
-
-// SetPasswordConnectorCredentials sets the username and password on the singleton PasswordConnector.
-// Call this before GetPasswordConnector to update credentials for a new login attempt.
-func (f *Factory) SetPasswordConnectorCredentials(username, password string) {
-	f.GetPasswordConnector().SetCredentials(username, password)
-}
-
-// GetQrCodeConnector returns the singleton QrCodeConnector instance (lazy initialized).
-func (f *Factory) GetQrCodeConnector() (*miio.QrCodeConnector, error) {
-	if f.qrCodeConnector != nil {
-		return f.qrCodeConnector, nil
-	}
-	var err error
-	f.qrCodeConnector, err = miio.NewQrCodeConnector()
-	if err != nil {
-		return nil, fmt.Errorf("QrCode connector init failed: %w", err)
-	}
-	return f.qrCodeConnector, nil
-}
-
-// GetMiSendEmailCodeTool returns the singleton MiSendEmailCodeTool instance (lazy initialized)
-func (f *Factory) GetMiSendEmailCodeTool() (*homeclawtool.MiSendEmailCodeTool, error) {
-	if f.miSendEmailCodeTool != nil {
-		return f.miSendEmailCodeTool, nil
-	}
-	store, err := f.GetXiaomiAccountStore()
-	if err != nil {
-		return nil, err
-	}
-	f.miSendEmailCodeTool = homeclawtool.NewMiSendEmailCodeTool(store, f)
-	return f.miSendEmailCodeTool, nil
-}
-
-// GetMiLoginEmailTool returns the singleton MiLoginEmailTool instance (lazy initialized)
-func (f *Factory) GetMiLoginEmailTool() (*homeclawtool.MiLoginEmailTool, error) {
-	if f.miLoginEmailTool != nil {
-		return f.miLoginEmailTool, nil
-	}
-	store, err := f.GetXiaomiAccountStore()
-	if err != nil {
-		return nil, err
-	}
-	f.miLoginEmailTool = homeclawtool.NewMiLoginEmailTool(store, f)
-	return f.miLoginEmailTool, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

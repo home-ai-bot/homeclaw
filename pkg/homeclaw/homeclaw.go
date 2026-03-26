@@ -171,20 +171,6 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	registerTool(toolRegistry, f.GetEnableWorkflowTool)
 	registerTool(toolRegistry, f.GetDisableWorkflowTool)
 
-	// Mi Home (miio) tools
-	registerTool(toolRegistry, f.GetGetXiaomiAccountTool)
-	registerTool(toolRegistry, f.GetUpdateXiaomiHomeTool)
-	registerTool(toolRegistry, f.GetGetXiaomiOAuthURLTool)
-	registerTool(toolRegistry, f.GetGetXiaomiAccessTokenTool)
-	registerTool(toolRegistry, f.GetSyncXiaomiHomesTool)
-	registerTool(toolRegistry, f.GetSyncXiaomiRoomsTool)
-	registerTool(toolRegistry, f.GetSyncXiaomiDevicesTool)
-	registerTool(toolRegistry, f.GetGetXiaomiSpecTool)
-	registerTool(toolRegistry, f.GetXiaomiActionTool)
-	registerTool(toolRegistry, f.GetSetXiaomiPropTool)
-	registerTool(toolRegistry, f.GetMiSendEmailCodeTool)
-	registerTool(toolRegistry, f.GetMiLoginEmailTool)
-
 	// Video / RTSP tools
 	registerTool(toolRegistry, f.GetRTSPAnalyzeTool)
 }

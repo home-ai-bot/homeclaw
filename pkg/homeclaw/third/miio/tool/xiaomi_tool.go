@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/event"
-	"github.com/sipeed/picoclaw/pkg/homeclaw/miio"
+	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio"
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
 
@@ -506,10 +507,10 @@ func (t *SyncXiaomiRoomsTool) Execute(_ context.Context, args map[string]any) *t
 
 	// 获取现有所有空间用于比较
 	existingSpaces, _ := t.spaceStore.GetAll()
-	existingRoomIDs := make(map[string]bool)
+	existingXiaomiRoomIDs := make(map[string]bool)
 	for _, space := range existingSpaces {
-		if space.Type == "room" {
-			existingRoomIDs[space.ID] = true
+		if fromID, ok := space.From["id"]; ok && space.From["name"] == "小米" {
+			existingXiaomiRoomIDs[fromID] = true
 		}
 	}
 
@@ -522,17 +523,21 @@ func (t *SyncXiaomiRoomsTool) Execute(_ context.Context, args map[string]any) *t
 
 	for roomID, roomDetail := range targetHome.RoomInfo {
 		currentRoomIDs[roomID] = true
-		delete(existingRoomIDs, roomID)
+		delete(existingXiaomiRoomIDs, roomID)
 
-		// 查找是否已存在
-		existing, _ := t.spaceStore.GetByID(roomID)
+		// 查找是否已存在（通过名称匹配）
+		var existing *data.Space
+		for _, sp := range existingSpaces {
+			if strings.EqualFold(sp.Name, roomDetail.RoomName) {
+				existing = &sp
+				break
+			}
+		}
 		if existing == nil {
 			// 新建房间空间
 			newSpace := data.Space{
-				ID:     roomID,
-				Name:   roomDetail.RoomName,
-				Type:   "room",
-				Source: "xiaomi",
+				Name: roomDetail.RoomName,
+				From: map[string]string{"name": "小米", "id": roomID},
 			}
 			if err := t.spaceStore.Save(newSpace); err != nil {
 				continue
@@ -540,8 +545,7 @@ func (t *SyncXiaomiRoomsTool) Execute(_ context.Context, args map[string]any) *t
 			syncedCount++
 		} else {
 			// 更新现有空间
-			existing.Name = roomDetail.RoomName
-			existing.Source = "xiaomi"
+			existing.From = map[string]string{"name": "小米", "id": roomID}
 			if err := t.spaceStore.Save(*existing); err != nil {
 				continue
 			}
@@ -549,11 +553,14 @@ func (t *SyncXiaomiRoomsTool) Execute(_ context.Context, args map[string]any) *t
 		}
 	}
 
-	// 删除不再存在的房间（仅删除来源为 xiaomi 的）
-	for roomID := range existingRoomIDs {
-		if space, err := t.spaceStore.GetByID(roomID); err == nil && space.Source == "xiaomi" {
-			if err := t.spaceStore.Delete(roomID); err == nil {
-				removedCount++
+	// 删除不再存在的房间（仅删除来源为小米的）
+	if len(existingXiaomiRoomIDs) > 0 {
+		allSpaces, _ := t.spaceStore.GetAll()
+		for _, sp := range allSpaces {
+			if fromID, ok := sp.From["id"]; ok && sp.From["name"] == "小米" && existingXiaomiRoomIDs[fromID] {
+				if err := t.spaceStore.Delete(sp.Name); err == nil {
+					removedCount++
+				}
 			}
 		}
 	}
@@ -636,8 +643,8 @@ func (t *SyncXiaomiDevicesTool) Execute(_ context.Context, args map[string]any) 
 	existingDevices, _ := t.deviceStore.GetAll()
 	existingDeviceIDs := make(map[string]bool)
 	for _, dev := range existingDevices {
-		if dev.Brand == "mijia" {
-			existingDeviceIDs[dev.ID] = true
+		if dev.From == "mijia" {
+			existingDeviceIDs[dev.FromID] = true
 		}
 	}
 
@@ -650,25 +657,25 @@ func (t *SyncXiaomiDevicesTool) Execute(_ context.Context, args map[string]any) 
 	for did, deviceInfo := range devicesResult.Devices {
 		delete(existingDeviceIDs, did)
 
-		// 查找是否已存在
-		existing, _ := t.deviceStore.GetByID(did)
+		// 查找是否已存在（通过 FromID 匹配）
+		var existing *data.Device
+		for i, dev := range existingDevices {
+			if dev.FromID == did {
+				existing = &existingDevices[i]
+				break
+			}
+		}
 		if existing == nil {
 			// 创建设备
 			newDevice := data.Device{
-				ID:       did,
-				Name:     deviceInfo.Name,
-				Brand:    "mijia",
-				Protocol: "miio",
-				Model:    deviceInfo.Model,
-				SpaceID:  deviceInfo.RoomID,
-				IP:       deviceInfo.LocalIP,
-				Token:    deviceInfo.Token,
-				DID:      deviceInfo.DID,
-				UID:      deviceInfo.UID,
-				URN:      deviceInfo.URN,
-				RoomID:   deviceInfo.RoomID,
-				RoomName: deviceInfo.RoomName,
-				GroupID:  deviceInfo.GroupID,
+				FromID:    did,
+				From:      "mijia",
+				Name:      deviceInfo.Name,
+				Type:      deviceInfo.Model,
+				IP:        deviceInfo.LocalIP,
+				Token:     deviceInfo.Token,
+				URN:       deviceInfo.URN,
+				SpaceName: deviceInfo.RoomName,
 			}
 			if err := t.deviceStore.Save(newDevice); err != nil {
 				continue
@@ -677,16 +684,11 @@ func (t *SyncXiaomiDevicesTool) Execute(_ context.Context, args map[string]any) 
 		} else {
 			// 更新设备
 			existing.Name = deviceInfo.Name
-			existing.Model = deviceInfo.Model
-			existing.SpaceID = deviceInfo.RoomID
+			existing.Type = deviceInfo.Model
 			existing.IP = deviceInfo.LocalIP
 			existing.Token = deviceInfo.Token
-			existing.DID = deviceInfo.DID
-			existing.UID = deviceInfo.UID
 			existing.URN = deviceInfo.URN
-			existing.RoomID = deviceInfo.RoomID
-			existing.RoomName = deviceInfo.RoomName
-			existing.GroupID = deviceInfo.GroupID
+			existing.SpaceName = deviceInfo.RoomName
 			if err := t.deviceStore.Save(*existing); err != nil {
 				continue
 			}

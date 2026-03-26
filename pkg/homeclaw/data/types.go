@@ -3,51 +3,33 @@ package data
 
 import "time"
 
-// Space represents a physical space in the home (floor, room, etc.)
+// Space represents a physical space in the home (floor, room, area, etc.)
 type Space struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Type     string  `json:"type"`             // "floor", "room", "area"
-	Source   string  `json:"source,omitempty"` // 来源: "xiaomi", "manual" 等
-	Children []Space `json:"children"`
+	Name string            `json:"name"`           // Primary key, unique space name
+	From map[string]string `json:"from,omitempty"` // Source info, e.g. {"name": "小米", "id": "123456"}
 }
 
 // Device represents a smart device in the home.
-// Only core immutable identity fields are stored here.
-// Volatile state (online status, firmware, SSID, etc.) is NOT persisted.
 type Device struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Brand    string `json:"brand"`    // "mijia", "tuya", "homekit", "matter"
-	Protocol string `json:"protocol"` // "miio", "local", "hap", "matter"
-	Model    string `json:"model"`
-	SpaceID  string `json:"space_id"`
-	IP       string `json:"ip"`
-	Token    string `json:"token"`
-
-	// Xiaomi device identity fields (synced from Mi Home, immutable once added)
-	DID      string `json:"did,omitempty"`
-	UID      string `json:"uid,omitempty"`
-	URN      string `json:"urn,omitempty"`
-	RoomID   string `json:"room_id,omitempty"`
-	RoomName string `json:"room_name,omitempty"`
-	GroupID  string `json:"group_id,omitempty"`
+	FromID    string            `json:"from_id"`
+	From      string            `json:"from"`
+	Name      string            `json:"name"`
+	Type      string            `json:"type"`
+	IP        string            `json:"ip"`
+	Token     string            `json:"token"`
+	URN       string            `json:"urn,omitempty"`
+	SpaceName string            `json:"space_name,omitempty"`
+	Tags      []string          `json:"tags,omitempty"`
+	Owners    []string          `json:"owners,omitempty"`
+	Actions   map[string]string `json:"actions,omitempty"` // key: action name, value: param json, e.g. {"开灯": "{did:xxx,siid:xxx,aiid:xx,value:true}"}
 }
 
 // Member represents a family member
 type Member struct {
-	Name             string                 `json:"name"`
-	Role             string                 `json:"role"`              // "admin", "member"
-	SpacePermissions []string               `json:"space_permissions"` // ["*"] for all
-	Channels         map[string]ChannelInfo `json:"channels"`
-	DefaultSpaceID   string                 `json:"default_space_id"`
-	CreatedAt        time.Time              `json:"created_at"`
-}
-
-// ChannelInfo represents a member's binding to a communication channel
-type ChannelInfo struct {
-	UserID  string    `json:"user_id"`
-	BoundAt time.Time `json:"bound_at"`
+	Name       string   `json:"name"`
+	Role       string   `json:"role"`        // "admin", "member"
+	MySpaces   []string `json:"my_spaces"`   // spaces this member can access
+	SleepSpace string   `json:"sleep_space"` // the space where this member sleeps
 }
 
 // SpacesData is the root structure for spaces.json

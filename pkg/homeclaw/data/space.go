@@ -5,13 +5,12 @@ import (
 	"strings"
 )
 
-// SpaceStore defines the interface for space data operations
+// SpaceStore defines the interface for space data operations.
+// Name is the primary key for all operations.
 type SpaceStore interface {
 	GetAll() ([]Space, error)
-	GetByID(id string) (*Space, error)
 	Save(space Space) error
-	Delete(id string) error
-	FindByName(name string) (*Space, error)
+	Delete(name string) error
 }
 
 // spaceStore implements SpaceStore using JSONStore
@@ -45,96 +44,26 @@ func (s *spaceStore) GetAll() ([]Space, error) {
 	return s.data.Spaces, nil
 }
 
-// GetByID finds a space by ID (recursively searches in children)
-func (s *spaceStore) GetByID(id string) (*Space, error) {
-	return s.findByIDRecursive(s.data.Spaces, id)
-}
-
-// findByIDRecursive recursively searches for a space by ID
-func (s *spaceStore) findByIDRecursive(spaces []Space, id string) (*Space, error) {
-	for i := range spaces {
-		if spaces[i].ID == id {
-			return &spaces[i], nil
-		}
-		if len(spaces[i].Children) > 0 {
-			if found, err := s.findByIDRecursive(spaces[i].Children, id); err == nil {
-				return found, nil
-			}
-		}
-	}
-	return nil, ErrRecordNotFound
-}
-
-// Save saves a space (insert or update)
+// Save saves a space (insert or update by Name)
 func (s *spaceStore) Save(space Space) error {
-	// Try to find and update existing space
-	if updated := s.updateRecursive(&s.data.Spaces, space); updated {
-		return s.save()
+	for i := range s.data.Spaces {
+		if strings.EqualFold(s.data.Spaces[i].Name, space.Name) {
+			s.data.Spaces[i] = space
+			return s.save()
+		}
 	}
-
-	// Insert new space
 	s.data.Spaces = append(s.data.Spaces, space)
 	return s.save()
 }
 
-// updateRecursive recursively updates a space in the tree
-func (s *spaceStore) updateRecursive(spaces *[]Space, space Space) bool {
-	for i := range *spaces {
-		if (*spaces)[i].ID == space.ID {
-			(*spaces)[i] = space
-			return true
+// Delete removes a space by name (case-insensitive)
+func (s *spaceStore) Delete(name string) error {
+	lower := strings.ToLower(name)
+	for i := range s.data.Spaces {
+		if strings.ToLower(s.data.Spaces[i].Name) == lower {
+			s.data.Spaces = append(s.data.Spaces[:i], s.data.Spaces[i+1:]...)
+			return s.save()
 		}
-		if len((*spaces)[i].Children) > 0 {
-			if s.updateRecursive(&(*spaces)[i].Children, space) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// Delete deletes a space by ID
-func (s *spaceStore) Delete(id string) error {
-	if deleted := s.deleteRecursive(&s.data.Spaces, id); deleted {
-		return s.save()
 	}
 	return ErrRecordNotFound
-}
-
-// deleteRecursive recursively deletes a space from the tree
-func (s *spaceStore) deleteRecursive(spaces *[]Space, id string) bool {
-	for i := range *spaces {
-		if (*spaces)[i].ID == id {
-			// Found it, remove from slice
-			*spaces = append((*spaces)[:i], (*spaces)[i+1:]...)
-			return true
-		}
-		if len((*spaces)[i].Children) > 0 {
-			if s.deleteRecursive(&(*spaces)[i].Children, id) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// FindByName finds a space by name (case-insensitive, recursive)
-func (s *spaceStore) FindByName(name string) (*Space, error) {
-	return s.findByNameRecursive(s.data.Spaces, name)
-}
-
-// findByNameRecursive recursively searches for a space by name
-func (s *spaceStore) findByNameRecursive(spaces []Space, name string) (*Space, error) {
-	lowerName := strings.ToLower(name)
-	for i := range spaces {
-		if strings.ToLower(spaces[i].Name) == lowerName {
-			return &spaces[i], nil
-		}
-		if len(spaces[i].Children) > 0 {
-			if found, err := s.findByNameRecursive(spaces[i].Children, name); err == nil {
-				return found, nil
-			}
-		}
-	}
-	return nil, ErrRecordNotFound
 }

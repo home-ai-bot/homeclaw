@@ -4,8 +4,6 @@ package data
 // DeviceStore defines the interface for device data operations
 type DeviceStore interface {
 	GetAll() ([]Device, error)
-	GetByID(id string) (*Device, error)
-	GetBySpace(spaceID string) ([]Device, error)
 	Save(device Device) error
 	Delete(id string) error
 }
@@ -41,31 +39,10 @@ func (s *deviceStore) GetAll() ([]Device, error) {
 	return s.data.Devices, nil
 }
 
-// GetByID finds a device by ID
-func (s *deviceStore) GetByID(id string) (*Device, error) {
-	for i := range s.data.Devices {
-		if s.data.Devices[i].ID == id {
-			return &s.data.Devices[i], nil
-		}
-	}
-	return nil, ErrRecordNotFound
-}
-
-// GetBySpace returns all devices in a specific space
-func (s *deviceStore) GetBySpace(spaceID string) ([]Device, error) {
-	var result []Device
-	for _, d := range s.data.Devices {
-		if d.SpaceID == spaceID {
-			result = append(result, d)
-		}
-	}
-	return result, nil
-}
-
 // Save saves a device (insert or update)
 func (s *deviceStore) Save(device Device) error {
 	for i := range s.data.Devices {
-		if s.data.Devices[i].ID == device.ID {
+		if s.data.Devices[i].FromID == device.FromID {
 			s.data.Devices[i] = device
 			return s.save()
 		}
@@ -74,10 +51,10 @@ func (s *deviceStore) Save(device Device) error {
 	return s.save()
 }
 
-// Delete deletes a device by ID
+// Delete deletes a device by FromID
 func (s *deviceStore) Delete(id string) error {
 	for i := range s.data.Devices {
-		if s.data.Devices[i].ID == id {
+		if s.data.Devices[i].FromID == id {
 			s.data.Devices = append(s.data.Devices[:i], s.data.Devices[i+1:]...)
 			return s.save()
 		}

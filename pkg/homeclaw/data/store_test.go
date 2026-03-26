@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestJSONStoreBackup(t *testing.T) {
@@ -19,7 +18,7 @@ func TestJSONStoreBackup(t *testing.T) {
 	data := SpacesData{
 		Version: "1",
 		Spaces: []Space{
-			{ID: "living-room", Name: "客厅", Type: "room"},
+			{Name: "客厅", From: map[string]string{"name": "manual"}},
 		},
 	}
 	if err := store.Write("spaces", data); err != nil {
@@ -33,7 +32,7 @@ func TestJSONStoreBackup(t *testing.T) {
 	}
 
 	// Second write should create backup
-	data.Spaces = append(data.Spaces, Space{ID: "kitchen", Name: "厨房", Type: "room"})
+	data.Spaces = append(data.Spaces, Space{Name: "厨房", From: map[string]string{"name": "manual"}})
 	if err := store.Write("spaces", data); err != nil {
 		t.Fatalf("Failed to write second time: %v", err)
 	}
@@ -62,45 +61,74 @@ func TestSpaceStore(t *testing.T) {
 	}
 
 	// Save space
-	space := Space{ID: "test-room", Name: "测试房间", Type: "room"}
+	space := Space{Name: "测试房间", From: map[string]string{"name": "manual"}}
 	if err := spaceStore.Save(space); err != nil {
 		t.Fatalf("Failed to save space: %v", err)
 	}
 
-	// Get by ID
-	found, err := spaceStore.GetByID("test-room")
+	// Get by name
+	spaces, err := spaceStore.GetAll()
 	if err != nil {
-		t.Fatalf("Failed to get space: %v", err)
+		t.Fatalf("Failed to get spaces: %v", err)
+	}
+	var found *Space
+	for i := range spaces {
+		if spaces[i].Name == "测试房间" {
+			found = &spaces[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("Space not found")
 	}
 	if found.Name != "测试房间" {
 		t.Errorf("Expected name '测试房间', got '%s'", found.Name)
 	}
 
-	// Find by name
-	found2, err := spaceStore.FindByName("测试房间")
-	if err != nil {
-		t.Fatalf("Failed to find space: %v", err)
+	// Find by name (second lookup)
+	spaces2, _ := spaceStore.GetAll()
+	var found2 *Space
+	for i := range spaces2 {
+		if spaces2[i].Name == "测试房间" {
+			found2 = &spaces2[i]
+			break
+		}
 	}
-	if found2.ID != "test-room" {
-		t.Errorf("Expected ID 'test-room', got '%s'", found2.ID)
+	if found2 == nil || found2.Name != "测试房间" {
+		t.Errorf("Expected name '测试房间'")
 	}
 
 	// Update
-	space.Name = "新名字"
+	space.From = map[string]string{"name": "xiaomi"}
 	if err := spaceStore.Save(space); err != nil {
 		t.Fatalf("Failed to update space: %v", err)
 	}
-	found3, _ := spaceStore.GetByID("test-room")
-	if found3.Name != "新名字" {
-		t.Errorf("Expected updated name '新名字', got '%s'", found3.Name)
+	spaces3, _ := spaceStore.GetAll()
+	var found3 *Space
+	for i := range spaces3 {
+		if spaces3[i].Name == "测试房间" {
+			found3 = &spaces3[i]
+			break
+		}
+	}
+	if found3 == nil || found3.From["name"] != "xiaomi" {
+		t.Errorf("Expected updated from 'xiaomi'")
 	}
 
 	// Delete
-	if err := spaceStore.Delete("test-room"); err != nil {
+	if err := spaceStore.Delete("测试房间"); err != nil {
 		t.Fatalf("Failed to delete space: %v", err)
 	}
-	if _, err := spaceStore.GetByID("test-room"); err != ErrRecordNotFound {
-		t.Error("Expected ErrRecordNotFound after delete")
+	spaces4, _ := spaceStore.GetAll()
+	deleted := true
+	for _, s := range spaces4 {
+		if s.Name == "测试房间" {
+			deleted = false
+			break
+		}
+	}
+	if !deleted {
+		t.Error("Expected space to be deleted")
 	}
 }
 
@@ -114,19 +142,19 @@ func TestDeviceStore(t *testing.T) {
 
 	// Save device
 	device := Device{
-		ID:      "light-001",
-		Name:    "客厅灯",
-		Brand:   "mijia",
-		SpaceID: "living-room",
+		FromID:    "light-001",
+		From:      "mijia",
+		Name:      "客厅灯",
+		SpaceName: "客厅",
 	}
 	if err := deviceStore.Save(device); err != nil {
 		t.Fatalf("Failed to save device: %v", err)
 	}
 
-	// Verify device was saved and retrievable by space
-	devices, err := deviceStore.GetBySpace("living-room")
+	// Verify device was saved
+	devices, err := deviceStore.GetAll()
 	if err != nil {
-		t.Fatalf("Failed to get devices by space: %v", err)
+		t.Fatalf("Failed to get devices: %v", err)
 	}
 	if len(devices) != 1 {
 		t.Errorf("Expected 1 device, got %d", len(devices))
@@ -143,34 +171,32 @@ func TestMemberStore(t *testing.T) {
 
 	// Save member
 	member := Member{
-		Name:             "爸爸",
-		Role:             "admin",
-		SpacePermissions: []string{"*"},
-		Channels: map[string]ChannelInfo{
-			"telegram": {UserID: "123456", BoundAt: time.Now()},
-		},
-		CreatedAt: time.Now(),
+		Name:       "爸爸",
+		Role:       "admin",
+		MySpaces:   []string{"客厅", "书房"},
+		SleepSpace: "主卧",
 	}
 	if err := memberStore.Save(member); err != nil {
 		t.Fatalf("Failed to save member: %v", err)
 	}
 
-	// Get by name
-	found, err := memberStore.GetByName("爸爸")
+	// Get by name via GetAll
+	members, err := memberStore.GetAll()
 	if err != nil {
-		t.Fatalf("Failed to get member: %v", err)
+		t.Fatalf("Failed to get members: %v", err)
+	}
+	var found *Member
+	for i := range members {
+		if members[i].Name == "爸爸" {
+			found = &members[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("Member not found")
 	}
 	if found.Role != "admin" {
 		t.Errorf("Expected role 'admin', got '%s'", found.Role)
-	}
-
-	// Get by channel ID
-	found2, err := memberStore.GetByChannelID("telegram", "123456")
-	if err != nil {
-		t.Fatalf("Failed to get member by channel: %v", err)
-	}
-	if found2.Name != "爸爸" {
-		t.Errorf("Expected name '爸爸', got '%s'", found2.Name)
 	}
 }
 

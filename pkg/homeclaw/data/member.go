@@ -4,8 +4,6 @@ package data
 // MemberStore defines the interface for member data operations
 type MemberStore interface {
 	GetAll() ([]Member, error)
-	GetByName(name string) (*Member, error)
-	GetByChannelID(channel string, channelUserID string) (*Member, error)
 	Save(member Member) error
 	Delete(name string) error
 }
@@ -39,28 +37,6 @@ func (s *memberStore) save() error {
 // GetAll returns all members
 func (s *memberStore) GetAll() ([]Member, error) {
 	return s.data.Members, nil
-}
-
-// GetByName finds a member by name
-func (s *memberStore) GetByName(name string) (*Member, error) {
-	for i := range s.data.Members {
-		if s.data.Members[i].Name == name {
-			return &s.data.Members[i], nil
-		}
-	}
-	return nil, ErrRecordNotFound
-}
-
-// GetByChannelID finds a member by channel binding
-func (s *memberStore) GetByChannelID(channel string, channelUserID string) (*Member, error) {
-	for i := range s.data.Members {
-		if info, ok := s.data.Members[i].Channels[channel]; ok {
-			if info.UserID == channelUserID {
-				return &s.data.Members[i], nil
-			}
-		}
-	}
-	return nil, ErrRecordNotFound
 }
 
 // Save saves a member (insert or update)
