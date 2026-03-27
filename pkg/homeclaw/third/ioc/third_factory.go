@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/AlexxIT/go2rtc/pkg/xiaomi"
 	"github.com/sipeed/picoclaw/pkg/config"
-	rootdata "github.com/sipeed/picoclaw/pkg/homeclaw/data"
+	hcc "github.com/sipeed/picoclaw/pkg/homeclaw/config"
+	hcd "github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio"
 	midata "github.com/sipeed/picoclaw/pkg/homeclaw/third/miio/data"
 )
@@ -19,11 +21,11 @@ import (
 type ThirdFactory struct {
 	Workspace string
 	cfg       *config.Config
-
+	hcfg      *hcc.HomeclawConfig
 	// Singleton instances - lazy loaded
-	jsonStore     *rootdata.JSONStore
+	jsonStore     *hcd.JSONStore
 	miDeviceStore midata.MiDeviceStore
-	cloud         *miio.Cloud
+	cloud         *xiaomi.Cloud
 	miClient      *miio.MiClient
 	specFetcher   *miio.SpecFetcher
 
@@ -34,17 +36,18 @@ type ThirdFactory struct {
 
 // NewThirdFactory creates a new ThirdFactory instance.
 // workspace is the data root used for all third-party data files.
-func NewThirdFactory(workspace string, cfg *config.Config) *ThirdFactory {
+func NewThirdFactory(workspace string, cfg *config.Config, hcfg *hcc.HomeclawConfig) *ThirdFactory {
 	return &ThirdFactory{
 		Workspace: workspace,
 		cfg:       cfg,
+		hcfg:      hcfg,
 	}
 }
 
 // GetJSONStore returns the singleton JSONStore instance (lazy initialized).
-func (f *ThirdFactory) GetJSONStore() (*rootdata.JSONStore, error) {
+func (f *ThirdFactory) GetJSONStore() (*hcd.JSONStore, error) {
 	f.storeOnce.Do(func() {
-		f.jsonStore, f.storeErr = rootdata.NewJSONStore(filepath.Join(f.Workspace, "third"))
+		f.jsonStore, f.storeErr = hcd.NewJSONStore(filepath.Join(f.Workspace, "third"))
 	})
 	return f.jsonStore, f.storeErr
 }
@@ -69,14 +72,14 @@ func (f *ThirdFactory) GetMiDeviceStore() (midata.MiDeviceStore, error) {
 
 // GetCloud returns the singleton Cloud instance (lazy initialized).
 // The sid parameter defaults to "xiaomiio" if empty.
-func (f *ThirdFactory) GetCloud(sid string) *miio.Cloud {
+func (f *ThirdFactory) GetCloud(sid string) *xiaomi.Cloud {
 	if f.cloud != nil {
 		return f.cloud
 	}
 	if sid == "" {
 		sid = "xiaomiio"
 	}
-	f.cloud = miio.NewCloud(sid)
+	f.cloud = xiaomi.NewCloud(sid)
 	return f.cloud
 }
 

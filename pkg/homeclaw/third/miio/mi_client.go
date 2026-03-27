@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/AlexxIT/go2rtc/pkg/xiaomi"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	midata "github.com/sipeed/picoclaw/pkg/homeclaw/third/miio/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third/std"
@@ -38,7 +39,7 @@ func getBaseURL(country string) string {
 
 // MiClient implements std.Client for Xiaomi/Mi Home platform.
 type MiClient struct {
-	cloud       *Cloud
+	cloud       *xiaomi.Cloud
 	specFetcher *SpecFetcher
 	deviceStore midata.MiDeviceStore
 	baseURL     string
@@ -50,11 +51,11 @@ type MiClient struct {
 // NewMiClient creates a new MiClient instance.
 //
 // Parameters:
-//   - cloud: authenticated Cloud instance
+//   - cloud: authenticated xiaomi.Cloud instance
 //   - country: region code (cn, de, ru, sg, i2, us, etc.)
 //   - workspace: data root directory for caching
 //   - deviceStore: optional MiDeviceStore for persisting device info (can be nil)
-func NewMiClient(cloud *Cloud, country, workspace string, deviceStore midata.MiDeviceStore) *MiClient {
+func NewMiClient(cloud *xiaomi.Cloud, country, workspace string, deviceStore midata.MiDeviceStore) *MiClient {
 	if country == "" {
 		country = "cn"
 	}
@@ -166,8 +167,9 @@ func (c *MiClient) GetDevices(homeID string) ([]*data.Device, error) {
 	hasMore := true
 
 	for hasMore {
+		userID, _ := c.cloud.UserToken()
 		reqParams := map[string]any{
-			"home_owner":         c.cloud.userID,
+			"home_owner":         userID,
 			"home_id":            homeID,
 			"limit":              homeDeviceLimit,
 			"start_did":          startDID,
