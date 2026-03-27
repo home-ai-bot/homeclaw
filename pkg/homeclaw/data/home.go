@@ -5,7 +5,7 @@ package data
 type HomeStore interface {
 	GetAll() ([]Home, error)
 	Save(home Home) error
-	Delete(id string) error
+	Delete(fromID, from string) error
 }
 
 // homeStore implements HomeStore using JSONStore
@@ -42,7 +42,7 @@ func (s *homeStore) GetAll() ([]Home, error) {
 // Save saves a home (insert or update)
 func (s *homeStore) Save(home Home) error {
 	for i := range s.data.Homes {
-		if s.data.Homes[i].FromID == home.FromID {
+		if s.data.Homes[i].FromID == home.FromID && s.data.Homes[i].From == home.From {
 			s.data.Homes[i] = home
 			return s.save()
 		}
@@ -51,10 +51,10 @@ func (s *homeStore) Save(home Home) error {
 	return s.save()
 }
 
-// Delete deletes a home by FromID
-func (s *homeStore) Delete(id string) error {
+// Delete deletes a home by FromID and From
+func (s *homeStore) Delete(fromID, from string) error {
 	for i := range s.data.Homes {
-		if s.data.Homes[i].FromID == id {
+		if s.data.Homes[i].FromID == fromID && s.data.Homes[i].From == from {
 			s.data.Homes = append(s.data.Homes[:i], s.data.Homes[i+1:]...)
 			return s.save()
 		}

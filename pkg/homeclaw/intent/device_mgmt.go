@@ -121,7 +121,7 @@ func (d *DeviceMgmtIntent) handleRemove(ictx IntentContext) IntentResponse {
 	}
 	for _, dev := range devices {
 		if strings.EqualFold(dev.Name, name) {
-			if err := d.deviceStore.Delete(dev.FromID); err != nil {
+			if err := d.deviceStore.Delete(dev.FromID, dev.From); err != nil {
 				return errResponse(fmt.Sprintf("删除设备「%s」失败：%s", name, err.Error()), err)
 			}
 			return IntentResponse{Handled: true, Response: fmt.Sprintf("已删除设备「%s」。", name)}

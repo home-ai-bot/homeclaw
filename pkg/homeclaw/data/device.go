@@ -5,7 +5,7 @@ package data
 type DeviceStore interface {
 	GetAll() ([]Device, error)
 	Save(device Device) error
-	Delete(id string) error
+	Delete(fromID, from string) error
 }
 
 // deviceStore implements DeviceStore using JSONStore
@@ -42,7 +42,7 @@ func (s *deviceStore) GetAll() ([]Device, error) {
 // Save saves a device (insert or update)
 func (s *deviceStore) Save(device Device) error {
 	for i := range s.data.Devices {
-		if s.data.Devices[i].FromID == device.FromID {
+		if s.data.Devices[i].FromID == device.FromID && s.data.Devices[i].From == device.From {
 			s.data.Devices[i] = device
 			return s.save()
 		}
@@ -51,10 +51,10 @@ func (s *deviceStore) Save(device Device) error {
 	return s.save()
 }
 
-// Delete deletes a device by FromID
-func (s *deviceStore) Delete(id string) error {
+// Delete deletes a device by FromID and From
+func (s *deviceStore) Delete(fromID, from string) error {
 	for i := range s.data.Devices {
-		if s.data.Devices[i].FromID == id {
+		if s.data.Devices[i].FromID == fromID && s.data.Devices[i].From == from {
 			s.data.Devices = append(s.data.Devices[:i], s.data.Devices[i+1:]...)
 			return s.save()
 		}
