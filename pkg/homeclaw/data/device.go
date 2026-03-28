@@ -6,7 +6,7 @@ type DeviceStore interface {
 	GetAll() ([]Device, error)
 	Save(devices ...Device) error
 	Delete(fromID, from string) error
-	SetActions(fromID, from string, actions map[string]string) error
+	SetActions(fromID, from string, actions string) error
 }
 
 // deviceStore implements DeviceStore using JSONStore
@@ -70,7 +70,7 @@ func (s *deviceStore) Delete(fromID, from string) error {
 }
 
 // SetActions sets the actions for a device by FromID and From
-func (s *deviceStore) SetActions(fromID, from string, actions map[string]string) error {
+func (s *deviceStore) SetActions(fromID, from string, actions string) error {
 	for i := range s.data.Devices {
 		if s.data.Devices[i].FromID == fromID && s.data.Devices[i].From == from {
 			s.data.Devices[i].Actions = actions

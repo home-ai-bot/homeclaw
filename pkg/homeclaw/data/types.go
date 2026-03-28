@@ -11,17 +11,17 @@ type Space struct {
 
 // Device represents a smart device in the home.
 type Device struct {
-	FromID    string            `json:"from_id"`
-	From      string            `json:"from"`
-	Name      string            `json:"name"`
-	Type      string            `json:"type"`
-	IP        string            `json:"ip"`
-	Token     string            `json:"token"`
-	URN       string            `json:"urn,omitempty"`
-	SpaceName string            `json:"space_name,omitempty"`
-	Tags      []string          `json:"tags,omitempty"`
-	Owners    []string          `json:"owners,omitempty"`
-	Actions   map[string]string `json:"actions,omitempty"` // key: action name, value: param json, e.g. {"开灯": "{{method:"SetProp"},{"Param":{did:xxx,siid:xxx,piid:xx,value:true}}"}
+	FromID    string   `json:"from_id"`
+	From      string   `json:"from"`
+	Name      string   `json:"name"`
+	Type      string   `json:"type"`
+	IP        string   `json:"ip"`
+	Token     string   `json:"token"`
+	URN       string   `json:"urn,omitempty"`
+	SpaceName string   `json:"space_name,omitempty"`
+	Tags      []string `json:"tags,omitempty"`
+	Owners    []string `json:"owners,omitempty"`
+	Actions   string   `json:"actions,omitempty"` // key: action name, value: param json, e.g. {"开灯": "{{method:"SetProp"},{"Param":{did:xxx,siid:xxx,piid:xx,value:true}}"}
 }
 
 // Home represents a home information

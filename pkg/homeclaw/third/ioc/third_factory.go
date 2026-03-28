@@ -33,6 +33,7 @@ type ThirdFactory struct {
 	specFetcher       *miio.SpecFetcher
 	syncDevicesTool   *mitool.SyncDevicesTool
 	executeActionTool *mitool.ExecuteActionTool
+	genActionsTool    *mitool.GenActionsTool
 
 	// Initialization tracking
 	storeOnce sync.Once
@@ -158,14 +159,7 @@ func (f *ThirdFactory) GetSyncDevicesTool() (*mitool.SyncDevicesTool, error) {
 		return nil, fmt.Errorf("get device store: %w", err)
 	}
 
-	intentProvider, err := f.factory.GetIntentProvider()
-	if err != nil {
-		return nil, fmt.Errorf("get intent provider: %w", err)
-	}
-
-	intentModel := f.factory.GetIntentModelName()
-
-	f.syncDevicesTool = mitool.NewSyncDevicesTool(client, homeStore, spaceStore, deviceStore, intentProvider, intentModel)
+	f.syncDevicesTool = mitool.NewSyncDevicesTool(client, homeStore, spaceStore, deviceStore)
 	return f.syncDevicesTool, nil
 }
 
@@ -182,4 +176,31 @@ func (f *ThirdFactory) GetExecuteActionTool() (*mitool.ExecuteActionTool, error)
 
 	f.executeActionTool = mitool.NewExecuteActionTool(client)
 	return f.executeActionTool, nil
+}
+
+// GetGenActionsTool returns the singleton GenActionsTool instance (lazy initialized).
+func (f *ThirdFactory) GetGenActionsTool() (*mitool.GenActionsTool, error) {
+	if f.genActionsTool != nil {
+		return f.genActionsTool, nil
+	}
+	country := "cn"
+	client, err := f.GetMiClient(country)
+	if err != nil {
+		return nil, fmt.Errorf("get mi client: %w", err)
+	}
+
+	deviceStore, err := f.factory.GetDeviceStore()
+	if err != nil {
+		return nil, fmt.Errorf("get device store: %w", err)
+	}
+
+	intentProvider, err := f.factory.GetIntentProvider()
+	if err != nil {
+		return nil, fmt.Errorf("get intent provider: %w", err)
+	}
+
+	intentModel := f.factory.GetIntentModelName()
+
+	f.genActionsTool = mitool.NewGenActionsTool(client, deviceStore, intentProvider, intentModel)
+	return f.genActionsTool, nil
 }
