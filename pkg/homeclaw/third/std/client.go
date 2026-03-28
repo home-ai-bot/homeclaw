@@ -108,8 +108,8 @@ type Client interface {
 	//   - prop:     property name or identifier (platform-specific).
 	//
 	// Returns the property value (any JSON-compatible type) or an error.
-	GetProp(params map[string]any) (any, error)
-
+	GetProps(params map[string]any) (any, error)
+	SetProps(params map[string]any) (any, error)
 	// ── 4. Event lifecycle ───────────────────────────────────────────────────
 
 	// EnableEvent starts the adapter's event subscription for the given

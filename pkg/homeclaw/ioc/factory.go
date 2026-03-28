@@ -10,7 +10,6 @@ import (
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
-	"github.com/sipeed/picoclaw/pkg/homeclaw/common"
 	homeclawconfig "github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/event"
@@ -32,9 +31,9 @@ var ErrDisabled = fmt.Errorf("homeclaw is disabled")
 // per application lifecycle.
 type Factory struct {
 	Workspace string
-	cfg       *config.Config
+	Cfg       *config.Config
 	bus       *bus.MessageBus
-	hcfg      *homeclawconfig.HomeclawConfig
+	Hcfg      *homeclawconfig.HomeclawConfig
 
 	// Singleton instances - lazy loaded
 	jsonStore      *data.JSONStore
@@ -42,26 +41,26 @@ type Factory struct {
 	spaceStore     data.SpaceStore
 	memberStore    data.MemberStore
 	workflowStore  data.WorkflowStore
+	homeStore      data.HomeStore
 	eventCenter    *event.Center
 	classifier     intent.IntentClassifier
 	router         *intent.Router
 	workflowEngine workflow.Engine
 	toolRegistry   *tools.ToolRegistry
 
-	// Provider for intent classification
-	provider  providers.LLMProvider
-	modelName string
+	// Provider for intent classification or other small use
+	smallProvider providers.LLMProvider
+	smallModel    string
 
+	// Provider for other purposes or large use
+	bigProvider providers.LLMProvider
+	bigModel    string
 	// Initialization tracking
 	storeOnce sync.Once
 	storeErr  error
 
 	// Tool singleton instances - lazy loaded
 	listDevicesTool     *homeclawtool.ListDevicesTool
-	listSpacesTool      *homeclawtool.ListSpacesTool
-	getSpaceTool        *homeclawtool.GetSpaceTool
-	saveSpaceTool       *homeclawtool.SaveSpaceTool
-	deleteSpaceTool     *homeclawtool.DeleteSpaceTool
 	listMembersTool     *homeclawtool.ListMembersTool
 	saveMemberTool      *homeclawtool.SaveMemberTool
 	deleteMemberTool    *homeclawtool.DeleteMemberTool
@@ -73,15 +72,16 @@ type Factory struct {
 	disableWorkflowTool *homeclawtool.DisableWorkflowTool
 
 	// Video frame grabber singleton - lazy loaded
-	frameGrabber    *video.FrameGrabber
-	rtspAnalyzeTool *homeclawtool.RTSPAnalyzeTool
+	frameGrabber       *video.FrameGrabber
+	rtspAnalyzeTool    *homeclawtool.RTSPAnalyzeTool
+	setCurrentHomeTool *homeclawtool.SetCurrentHomeTool
 }
 
 // NewFactory creates a new Factory instance.
 // workspace is the data root used for all HomeClaw data files.
 // Returns error when HomeClaw is disabled or homeclaw.json is absent.
 func NewFactory(workspace string, picoclawCfg *config.Config, msgBus *bus.MessageBus) (*Factory, error) {
-	hcfg, err := common.LoadHomeclawConfig()
+	hcfg, err := homeclawconfig.LoadHomeclawConfig()
 	if err != nil {
 		return nil, fmt.Errorf("homeclaw config load error: %w", err)
 	}
@@ -91,15 +91,15 @@ func NewFactory(workspace string, picoclawCfg *config.Config, msgBus *bus.Messag
 
 	return &Factory{
 		Workspace: workspace,
-		cfg:       picoclawCfg,
+		Cfg:       picoclawCfg,
 		bus:       msgBus,
-		hcfg:      hcfg,
+		Hcfg:      hcfg,
 	}, nil
 }
 
 // GetHomeclawConfig returns the HomeClaw configuration
 func (f *Factory) GetHomeclawConfig() *homeclawconfig.HomeclawConfig {
-	return f.hcfg
+	return f.Hcfg
 }
 
 // GetJSONStore returns the singleton JSONStore instance (lazy initialized)
@@ -182,6 +182,24 @@ func (f *Factory) GetWorkflowStore() (data.WorkflowStore, error) {
 	return f.workflowStore, nil
 }
 
+// GetHomeStore returns the singleton HomeStore instance (lazy initialized)
+func (f *Factory) GetHomeStore() (data.HomeStore, error) {
+	if f.homeStore != nil {
+		return f.homeStore, nil
+	}
+
+	store, err := f.GetJSONStore()
+	if err != nil {
+		return nil, err
+	}
+
+	f.homeStore, err = data.NewHomeStore(store)
+	if err != nil {
+		return nil, fmt.Errorf("home store init failed: %w", err)
+	}
+	return f.homeStore, nil
+}
+
 // GetEventCenter returns the singleton EventCenter instance
 func (f *Factory) GetEventCenter() *event.Center {
 	if f.eventCenter == nil {
@@ -211,22 +229,22 @@ func (f *Factory) GetWorkflowEngine() workflow.Engine {
 
 // GetIntentProvider returns the LLM provider for intent classification (lazy initialized)
 func (f *Factory) GetIntentProvider() (providers.LLMProvider, error) {
-	if f.provider != nil {
-		return f.provider, nil
+	if f.smallProvider != nil {
+		return f.smallProvider, nil
 	}
 
-	mc := f.hcfg.IntentModel
+	mc := f.Hcfg.IntentModel
 
 	if mc.IsModelName() {
-		for i := range f.cfg.ModelList {
-			if f.cfg.ModelList[i].ModelName == mc.ModelName {
-				p, modelID, err := providers.CreateProviderFromConfig(&f.cfg.ModelList[i])
+		for i := range f.Cfg.ModelList {
+			if f.Cfg.ModelList[i].ModelName == mc.ModelName {
+				p, modelID, err := providers.CreateProviderFromConfig(&f.Cfg.ModelList[i])
 				if err != nil {
 					return nil, fmt.Errorf("intent model_ref %q: %w", mc.ModelName, err)
 				}
-				f.provider = p
-				f.modelName = modelID
-				return f.provider, nil
+				f.smallProvider = p
+				f.smallModel = modelID
+				return f.smallProvider, nil
 			}
 		}
 		return nil, fmt.Errorf("intent model_ref %q not found in model_list", mc.ModelName)
@@ -246,9 +264,9 @@ func (f *Factory) GetIntentProvider() (providers.LLMProvider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("intent inline provider: %w", err)
 	}
-	f.provider = p
-	f.modelName = mc.ModelName
-	return f.provider, nil
+	f.smallProvider = p
+	f.smallModel = mc.ModelName
+	return f.smallProvider, nil
 }
 
 // GetIntentClassifier returns the singleton IntentClassifier instance (lazy initialized)
@@ -262,7 +280,7 @@ func (f *Factory) GetIntentClassifier() (intent.IntentClassifier, error) {
 		return nil, err
 	}
 
-	f.classifier = intent.NewLLMClassifier(provider, f.hcfg, f.hcfg.IntentModel.ModelName)
+	f.classifier = intent.NewLLMClassifier(provider, f.Hcfg, f.Hcfg.IntentModel.ModelName)
 	return f.classifier, nil
 }
 
@@ -272,7 +290,7 @@ func (f *Factory) GetIntentRouter() (*intent.Router, error) {
 		return f.router, nil
 	}
 
-	if !f.hcfg.IntentEnabled {
+	if !f.Hcfg.IntentEnabled {
 		return nil, fmt.Errorf("intent processing is disabled")
 	}
 
@@ -304,7 +322,7 @@ func (f *Factory) GetIntentRouter() (*intent.Router, error) {
 	}
 
 	workflowEngine := f.GetWorkflowEngine()
-	deviceControlHandler := intent.NewDeviceControlIntent(workflowStore, workflowEngine, provider, f.hcfg.IntentModel.ModelName)
+	deviceControlHandler := intent.NewDeviceControlIntent(workflowStore, workflowEngine, provider, f.Hcfg.IntentModel.ModelName)
 	f.router = intent.NewRouter(
 		chatHandler,
 		deviceControlHandler,
@@ -315,6 +333,27 @@ func (f *Factory) GetIntentRouter() (*intent.Router, error) {
 	)
 
 	return f.router, nil
+}
+
+func (f *Factory) GetBigProvider() (providers.LLMProvider, error) {
+	if f.bigProvider != nil {
+		return f.bigProvider, nil
+	}
+	defaultModelName := f.Cfg.Agents.Defaults.ModelName
+
+	for i := range f.Cfg.ModelList {
+		if f.Cfg.ModelList[i].ModelName == defaultModelName {
+			p, modelID, err := providers.CreateProviderFromConfig(&f.Cfg.ModelList[i])
+			if err != nil {
+				return nil, fmt.Errorf("big model create err %q: %w", defaultModelName, err)
+			}
+			f.bigProvider = p
+			f.bigModel = modelID
+			return f.bigProvider, nil
+		}
+	}
+	return nil, fmt.Errorf(" %q not found in model_list", defaultModelName)
+
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -332,58 +371,6 @@ func (f *Factory) GetListDevicesTool() (*homeclawtool.ListDevicesTool, error) {
 	}
 	f.listDevicesTool = homeclawtool.NewListDevicesTool(store)
 	return f.listDevicesTool, nil
-}
-
-// GetListSpacesTool returns the singleton ListSpacesTool instance (lazy initialized)
-func (f *Factory) GetListSpacesTool() (*homeclawtool.ListSpacesTool, error) {
-	if f.listSpacesTool != nil {
-		return f.listSpacesTool, nil
-	}
-	store, err := f.GetSpaceStore()
-	if err != nil {
-		return nil, err
-	}
-	f.listSpacesTool = homeclawtool.NewListSpacesTool(store)
-	return f.listSpacesTool, nil
-}
-
-// GetGetSpaceTool returns the singleton GetSpaceTool instance (lazy initialized)
-func (f *Factory) GetGetSpaceTool() (*homeclawtool.GetSpaceTool, error) {
-	if f.getSpaceTool != nil {
-		return f.getSpaceTool, nil
-	}
-	store, err := f.GetSpaceStore()
-	if err != nil {
-		return nil, err
-	}
-	f.getSpaceTool = homeclawtool.NewGetSpaceTool(store)
-	return f.getSpaceTool, nil
-}
-
-// GetSaveSpaceTool returns the singleton SaveSpaceTool instance (lazy initialized)
-func (f *Factory) GetSaveSpaceTool() (*homeclawtool.SaveSpaceTool, error) {
-	if f.saveSpaceTool != nil {
-		return f.saveSpaceTool, nil
-	}
-	store, err := f.GetSpaceStore()
-	if err != nil {
-		return nil, err
-	}
-	f.saveSpaceTool = homeclawtool.NewSaveSpaceTool(store)
-	return f.saveSpaceTool, nil
-}
-
-// GetDeleteSpaceTool returns the singleton DeleteSpaceTool instance (lazy initialized)
-func (f *Factory) GetDeleteSpaceTool() (*homeclawtool.DeleteSpaceTool, error) {
-	if f.deleteSpaceTool != nil {
-		return f.deleteSpaceTool, nil
-	}
-	store, err := f.GetSpaceStore()
-	if err != nil {
-		return nil, err
-	}
-	f.deleteSpaceTool = homeclawtool.NewDeleteSpaceTool(store)
-	return f.deleteSpaceTool, nil
 }
 
 // GetListMembersTool returns the singleton ListMembersTool instance (lazy initialized)
@@ -510,12 +497,12 @@ func (f *Factory) GetDisableWorkflowTool() (*homeclawtool.DisableWorkflowTool, e
 // GetIntentModelName returns the model name used by the intent classifier.
 // It triggers lazy initialization of the provider if not yet done.
 func (f *Factory) GetIntentModelName() string {
-	if f.modelName != "" {
-		return f.modelName
+	if f.smallModel != "" {
+		return f.smallModel
 	}
 	// Trigger provider init to populate f.modelName
 	_, _ = f.GetIntentProvider()
-	return f.modelName
+	return f.smallModel
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -538,4 +525,17 @@ func (f *Factory) GetRTSPAnalyzeTool() (*homeclawtool.RTSPAnalyzeTool, error) {
 	}
 	f.rtspAnalyzeTool = homeclawtool.NewRTSPAnalyzeTool(f.GetFrameGrabber(), f)
 	return f.rtspAnalyzeTool, nil
+}
+
+// GetSetCurrentHomeTool returns the singleton SetCurrentHomeTool instance (lazy initialized).
+func (f *Factory) GetSetCurrentHomeTool() (*homeclawtool.SetCurrentHomeTool, error) {
+	if f.setCurrentHomeTool != nil {
+		return f.setCurrentHomeTool, nil
+	}
+	store, err := f.GetHomeStore()
+	if err != nil {
+		return nil, err
+	}
+	f.setCurrentHomeTool = homeclawtool.NewSetCurrentHomeTool(store)
+	return f.setCurrentHomeTool, nil
 }

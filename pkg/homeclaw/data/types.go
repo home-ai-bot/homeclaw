@@ -6,7 +6,7 @@ import "time"
 // Space represents a physical space in the home (floor, room, area, etc.)
 type Space struct {
 	Name string            `json:"name"`           // Primary key, unique space name
-	From map[string]string `json:"from,omitempty"` // Source info, e.g. {"name": "小米", "id": "123456"}
+	From map[string]string `json:"from,omitempty"` // Source info, e.g. {"xiaomi": "123456"}
 }
 
 // Device represents a smart device in the home.
@@ -21,7 +21,7 @@ type Device struct {
 	SpaceName string            `json:"space_name,omitempty"`
 	Tags      []string          `json:"tags,omitempty"`
 	Owners    []string          `json:"owners,omitempty"`
-	Actions   map[string]string `json:"actions,omitempty"` // key: action name, value: param json, e.g. {"开灯": "{did:xxx,siid:xxx,aiid:xx,value:true}"}
+	Actions   map[string]string `json:"actions,omitempty"` // key: action name, value: param json, e.g. {"开灯": "{{method:"SetProp"},{"Param":{did:xxx,siid:xxx,piid:xx,value:true}}"}
 }
 
 // Home represents a home information

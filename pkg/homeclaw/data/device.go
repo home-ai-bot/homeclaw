@@ -4,8 +4,9 @@ package data
 // DeviceStore defines the interface for device data operations
 type DeviceStore interface {
 	GetAll() ([]Device, error)
-	Save(device Device) error
+	Save(devices ...Device) error
 	Delete(fromID, from string) error
+	SetActions(fromID, from string, actions map[string]string) error
 }
 
 // deviceStore implements DeviceStore using JSONStore
@@ -39,15 +40,21 @@ func (s *deviceStore) GetAll() ([]Device, error) {
 	return s.data.Devices, nil
 }
 
-// Save saves a device (insert or update)
-func (s *deviceStore) Save(device Device) error {
-	for i := range s.data.Devices {
-		if s.data.Devices[i].FromID == device.FromID && s.data.Devices[i].From == device.From {
-			s.data.Devices[i] = device
-			return s.save()
+// Save saves devices (insert or update)
+func (s *deviceStore) Save(devices ...Device) error {
+	for _, device := range devices {
+		found := false
+		for i := range s.data.Devices {
+			if s.data.Devices[i].FromID == device.FromID && s.data.Devices[i].From == device.From {
+				s.data.Devices[i] = device
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.data.Devices = append(s.data.Devices, device)
 		}
 	}
-	s.data.Devices = append(s.data.Devices, device)
 	return s.save()
 }
 
@@ -56,6 +63,17 @@ func (s *deviceStore) Delete(fromID, from string) error {
 	for i := range s.data.Devices {
 		if s.data.Devices[i].FromID == fromID && s.data.Devices[i].From == from {
 			s.data.Devices = append(s.data.Devices[:i], s.data.Devices[i+1:]...)
+			return s.save()
+		}
+	}
+	return ErrRecordNotFound
+}
+
+// SetActions sets the actions for a device by FromID and From
+func (s *deviceStore) SetActions(fromID, from string, actions map[string]string) error {
+	for i := range s.data.Devices {
+		if s.data.Devices[i].FromID == fromID && s.data.Devices[i].From == from {
+			s.data.Devices[i].Actions = actions
 			return s.save()
 		}
 	}

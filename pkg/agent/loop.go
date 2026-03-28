@@ -122,7 +122,7 @@ func NewAgentLoop(
 	// ErrDisabled means HomeClaw is intentionally off — log at info level and skip.
 	// Any other error is a real failure and is logged at error level.
 	if defaultAgent != nil {
-		hc, err := homeclaw.New(defaultAgent.Workspace, cfg, msgBus)
+		hc, err := homeclaw.NewHomeClaw(defaultAgent.Workspace, cfg, msgBus)
 		if err != nil {
 			if errors.Is(err, homeclaw.ErrDisabled) {
 				logger.InfoCF("agent", "HomeClaw is disabled, skipping", nil)

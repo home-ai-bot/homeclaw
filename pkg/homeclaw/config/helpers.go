@@ -1,4 +1,4 @@
-package common
+package config
 
 import (
 	"fmt"
@@ -7,7 +7,6 @@ import (
 	"runtime"
 
 	"github.com/sipeed/picoclaw/pkg/config"
-	homeclawconfig "github.com/sipeed/picoclaw/pkg/homeclaw/config"
 )
 
 const Logo = "🦞"
@@ -38,10 +37,6 @@ func GetConfigPath() string {
 
 func LoadConfig() (*config.Config, error) {
 	return config.LoadConfig(GetConfigPath())
-}
-
-func LoadHomeclawConfig() (*homeclawconfig.HomeclawConfig, error) {
-	return homeclawconfig.LoadFromDir(GetPicoclawHome())
 }
 
 // FormatVersion returns the version string with optional git commit

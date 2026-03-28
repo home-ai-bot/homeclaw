@@ -11,8 +11,10 @@ import (
 	"github.com/sipeed/picoclaw/pkg/config"
 	hcc "github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	hcd "github.com/sipeed/picoclaw/pkg/homeclaw/data"
+	"github.com/sipeed/picoclaw/pkg/homeclaw/ioc"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio"
 	midata "github.com/sipeed/picoclaw/pkg/homeclaw/third/miio/data"
+	mitool "github.com/sipeed/picoclaw/pkg/homeclaw/third/miio/tool"
 )
 
 // ThirdFactory is the central factory for creating and managing third-party
@@ -22,12 +24,15 @@ type ThirdFactory struct {
 	Workspace string
 	cfg       *config.Config
 	hcfg      *hcc.HomeclawConfig
+	factory   *ioc.Factory
 	// Singleton instances - lazy loaded
-	jsonStore     *hcd.JSONStore
-	miDeviceStore midata.MiDeviceStore
-	cloud         *xiaomi.Cloud
-	miClient      *miio.MiClient
-	specFetcher   *miio.SpecFetcher
+	jsonStore         *hcd.JSONStore
+	miDeviceStore     midata.MiDeviceStore
+	cloud             *xiaomi.Cloud
+	miClient          *miio.MiClient
+	specFetcher       *miio.SpecFetcher
+	syncDevicesTool   *mitool.SyncDevicesTool
+	executeActionTool *mitool.ExecuteActionTool
 
 	// Initialization tracking
 	storeOnce sync.Once
@@ -36,11 +41,12 @@ type ThirdFactory struct {
 
 // NewThirdFactory creates a new ThirdFactory instance.
 // workspace is the data root used for all third-party data files.
-func NewThirdFactory(workspace string, cfg *config.Config, hcfg *hcc.HomeclawConfig) *ThirdFactory {
+func NewThirdFactory(factory *ioc.Factory) *ThirdFactory {
 	return &ThirdFactory{
-		Workspace: workspace,
-		cfg:       cfg,
-		hcfg:      hcfg,
+		Workspace: factory.Workspace,
+		cfg:       factory.Cfg,
+		hcfg:      factory.Hcfg,
+		factory:   factory,
 	}
 }
 
@@ -80,6 +86,20 @@ func (f *ThirdFactory) GetCloud(sid string) *xiaomi.Cloud {
 		sid = "xiaomiio"
 	}
 	f.cloud = xiaomi.NewCloud(sid)
+	var Xiaomi struct {
+		Cfg map[string]string `yaml:"xiaomi"`
+	}
+
+	hcc.LoadGo2RTCConfig(&Xiaomi)
+
+	// Get first key-value pair: userId=key, token=value
+	var userId, token string
+	for k, v := range Xiaomi.Cfg {
+		userId = k
+		token = v
+		break
+	}
+	f.cloud.LoginWithToken(userId, token)
 	return f.cloud
 }
 
@@ -110,4 +130,56 @@ func (f *ThirdFactory) GetMiClient(country string) (*miio.MiClient, error) {
 
 	f.miClient = miio.NewMiClient(cloud, country, f.Workspace, deviceStore)
 	return f.miClient, nil
+}
+
+// GetSyncDevicesTool returns the singleton SyncDevicesTool instance (lazy initialized).
+func (f *ThirdFactory) GetSyncDevicesTool() (*mitool.SyncDevicesTool, error) {
+	if f.syncDevicesTool != nil {
+		return f.syncDevicesTool, nil
+	}
+	country := "cn"
+	client, err := f.GetMiClient(country)
+	if err != nil {
+		return nil, fmt.Errorf("get mi client: %w", err)
+	}
+
+	homeStore, err := f.factory.GetHomeStore()
+	if err != nil {
+		return nil, fmt.Errorf("get home store: %w", err)
+	}
+
+	spaceStore, err := f.factory.GetSpaceStore()
+	if err != nil {
+		return nil, fmt.Errorf("get space store: %w", err)
+	}
+
+	deviceStore, err := f.factory.GetDeviceStore()
+	if err != nil {
+		return nil, fmt.Errorf("get device store: %w", err)
+	}
+
+	intentProvider, err := f.factory.GetIntentProvider()
+	if err != nil {
+		return nil, fmt.Errorf("get intent provider: %w", err)
+	}
+
+	intentModel := f.factory.GetIntentModelName()
+
+	f.syncDevicesTool = mitool.NewSyncDevicesTool(client, homeStore, spaceStore, deviceStore, intentProvider, intentModel)
+	return f.syncDevicesTool, nil
+}
+
+// GetExecuteActionTool returns the singleton ExecuteActionTool instance (lazy initialized).
+func (f *ThirdFactory) GetExecuteActionTool() (*mitool.ExecuteActionTool, error) {
+	if f.executeActionTool != nil {
+		return f.executeActionTool, nil
+	}
+	country := "cn"
+	client, err := f.GetMiClient(country)
+	if err != nil {
+		return nil, fmt.Errorf("get mi client: %w", err)
+	}
+
+	f.executeActionTool = mitool.NewExecuteActionTool(client)
+	return f.executeActionTool, nil
 }

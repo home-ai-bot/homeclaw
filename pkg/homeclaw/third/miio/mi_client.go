@@ -341,7 +341,7 @@ func (c *MiClient) Execute(params map[string]any) (map[string]any, error) {
 //
 // Or batch mode:
 //   - props: array of {did, siid, piid} objects
-func (c *MiClient) GetProp(params map[string]any) (any, error) {
+func (c *MiClient) GetProps(params map[string]any) (any, error) {
 	var propList []map[string]any
 
 	// Check for batch mode
@@ -411,7 +411,7 @@ func (c *MiClient) GetProp(params map[string]any) (any, error) {
 //
 // Or batch mode:
 //   - props: array of {did, siid, piid, value} objects
-func (c *MiClient) SetProp(params map[string]any) (any, error) {
+func (c *MiClient) SetProps(params map[string]any) (any, error) {
 	var propList []map[string]any
 
 	// Check for batch mode

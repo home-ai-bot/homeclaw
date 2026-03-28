@@ -4,8 +4,10 @@ package data
 // HomeStore defines the interface for home data operations
 type HomeStore interface {
 	GetAll() ([]Home, error)
-	Save(home Home) error
+	GetCurrent(from string) (*Home, error)
+	Save(homes ...Home) error
 	Delete(fromID, from string) error
+	SetCurrent(fromID, from string) error
 }
 
 // homeStore implements HomeStore using JSONStore
@@ -39,15 +41,31 @@ func (s *homeStore) GetAll() ([]Home, error) {
 	return s.data.Homes, nil
 }
 
-// Save saves a home (insert or update)
-func (s *homeStore) Save(home Home) error {
+// GetCurrent returns the current home for a given from source
+func (s *homeStore) GetCurrent(from string) (*Home, error) {
 	for i := range s.data.Homes {
-		if s.data.Homes[i].FromID == home.FromID && s.data.Homes[i].From == home.From {
-			s.data.Homes[i] = home
-			return s.save()
+		if s.data.Homes[i].From == from && s.data.Homes[i].Current {
+			return &s.data.Homes[i], nil
 		}
 	}
-	s.data.Homes = append(s.data.Homes, home)
+	return nil, ErrRecordNotFound
+}
+
+// Save saves homes (insert or update)
+func (s *homeStore) Save(homes ...Home) error {
+	for _, home := range homes {
+		found := false
+		for i := range s.data.Homes {
+			if s.data.Homes[i].FromID == home.FromID && s.data.Homes[i].From == home.From {
+				s.data.Homes[i] = home
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.data.Homes = append(s.data.Homes, home)
+		}
+	}
 	return s.save()
 }
 
@@ -60,4 +78,25 @@ func (s *homeStore) Delete(fromID, from string) error {
 		}
 	}
 	return ErrRecordNotFound
+}
+
+// SetCurrent sets the current home for a given from source.
+// It first sets all homes with the same from to current=false,
+// then sets the specified home (by fromID and from) to current=true.
+func (s *homeStore) SetCurrent(fromID, from string) error {
+	found := false
+	for i := range s.data.Homes {
+		if s.data.Homes[i].From == from {
+			if s.data.Homes[i].FromID == fromID {
+				s.data.Homes[i].Current = true
+				found = true
+			} else {
+				s.data.Homes[i].Current = false
+			}
+		}
+	}
+	if !found {
+		return ErrRecordNotFound
+	}
+	return s.save()
 }

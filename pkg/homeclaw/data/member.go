@@ -4,7 +4,7 @@ package data
 // MemberStore defines the interface for member data operations
 type MemberStore interface {
 	GetAll() ([]Member, error)
-	Save(member Member) error
+	Save(members ...Member) error
 	Delete(name string) error
 }
 
@@ -39,15 +39,21 @@ func (s *memberStore) GetAll() ([]Member, error) {
 	return s.data.Members, nil
 }
 
-// Save saves a member (insert or update)
-func (s *memberStore) Save(member Member) error {
-	for i := range s.data.Members {
-		if s.data.Members[i].Name == member.Name {
-			s.data.Members[i] = member
-			return s.save()
+// Save saves members (insert or update)
+func (s *memberStore) Save(members ...Member) error {
+	for _, member := range members {
+		found := false
+		for i := range s.data.Members {
+			if s.data.Members[i].Name == member.Name {
+				s.data.Members[i] = member
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.data.Members = append(s.data.Members, member)
 		}
 	}
-	s.data.Members = append(s.data.Members, member)
 	return s.save()
 }
 

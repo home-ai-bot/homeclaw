@@ -12,6 +12,8 @@ import (
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/intent"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/ioc"
+	third "github.com/sipeed/picoclaw/pkg/homeclaw/third/ioc"
+
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
@@ -24,15 +26,16 @@ var ErrDisabled = ioc.ErrDisabled
 // HomeClaw holds all HomeClaw subsystem objects and exposes a single
 // RunIntent method that the agent loop calls from processMessage.
 type HomeClaw struct {
-	f *ioc.Factory
+	f      *ioc.Factory
+	thirdf *third.ThirdFactory
 }
 
-// New creates a HomeClaw instance from the given workspace directory,
+// NewHomeClaw creates a HomeClaw instance from the given workspace directory,
 // PicoClaw config, and message bus.
 // workspace is the data root used for all HomeClaw data files (users, devices, workflows …).
 // Returns nil (no error) when HomeClaw is disabled or homeclaw.json is absent –
 // the caller should treat nil as "not configured".
-func New(workspace string, picolawerCfg *config.Config, msgBus *bus.MessageBus) (*HomeClaw, error) {
+func NewHomeClaw(workspace string, picolawerCfg *config.Config, msgBus *bus.MessageBus) (*HomeClaw, error) {
 	// Create factory which handles all singleton object creation
 	factory, err := ioc.NewFactory(workspace, picolawerCfg, msgBus)
 	if err != nil {
@@ -41,9 +44,10 @@ func New(workspace string, picolawerCfg *config.Config, msgBus *bus.MessageBus) 
 		}
 		return nil, fmt.Errorf("HomeClaw factory creation failed: %w", err)
 	}
-
+	thirdf := third.NewThirdFactory(factory)
 	return &HomeClaw{
-		f: factory,
+		f:      factory,
+		thirdf: thirdf,
 	}, nil
 }
 
@@ -151,12 +155,6 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	// Device tools
 	registerTool(toolRegistry, f.GetListDevicesTool)
 
-	// Space tools
-	registerTool(toolRegistry, f.GetListSpacesTool)
-	registerTool(toolRegistry, f.GetGetSpaceTool)
-	registerTool(toolRegistry, f.GetSaveSpaceTool)
-	registerTool(toolRegistry, f.GetDeleteSpaceTool)
-
 	// Member tools
 	registerTool(toolRegistry, f.GetListMembersTool)
 	registerTool(toolRegistry, f.GetSaveMemberTool)
@@ -172,4 +170,11 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 
 	// Video / RTSP tools
 	registerTool(toolRegistry, f.GetRTSPAnalyzeTool)
+	registerTool(toolRegistry, f.GetSetCurrentHomeTool)
+
+	//Third
+	thirdf := hc.thirdf
+
+	registerTool(toolRegistry, thirdf.GetSyncDevicesTool)
+	registerTool(toolRegistry, thirdf.GetExecuteActionTool)
 }

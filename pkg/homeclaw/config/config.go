@@ -4,12 +4,17 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
+
+	"github.com/AlexxIT/go2rtc/pkg/yaml"
 )
 
 const defaultConfigFileName = "homeclaw.json"
+const defaultGo2RtcFileName = "go2rtc.yaml"
 
 // DefaultConfidenceThreshold is the default intent confidence threshold.
 const DefaultConfidenceThreshold = 0.7
@@ -87,7 +92,7 @@ func (c *HomeclawConfig) applyDefaults() {
 }
 
 // Load reads and parses a homeclaw.json file from the given path.
-func Load(path string) (*HomeclawConfig, error) {
+func load(path string) (*HomeclawConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("homeclaw config: read %s: %w", path, err)
@@ -105,8 +110,8 @@ func Load(path string) (*HomeclawConfig, error) {
 // LoadFromDir looks for homeclaw.json inside dir and loads it.
 // Returns (nil, nil) when the file does not exist, so callers can treat
 // a missing file as "HomeClaw not configured" without an error.
-func LoadFromDir(dir string) (*HomeclawConfig, error) {
-	path := filepath.Join(dir, defaultConfigFileName)
+func LoadHomeclawConfig() (*HomeclawConfig, error) {
+	path := filepath.Join(GetPicoclawHome(), defaultConfigFileName)
 	_, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -114,5 +119,47 @@ func LoadFromDir(dir string) (*HomeclawConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("homeclaw config: stat %s: %w", path, err)
 	}
-	return Load(path)
+	return load(path)
+}
+
+var configMu sync.Mutex
+
+func LoadYamlConfig(filepath string, v any) error {
+	if filepath == "" {
+		return errors.New("config file path is empty")
+	}
+
+	b, err := os.ReadFile(filepath)
+	if err != nil {
+		return err
+	}
+
+	return yaml.Unmarshal(b, v)
+}
+func PatchConfig(filepath string, path []string, value any) error {
+	if filepath == "" {
+		return errors.New("config file disabled")
+	}
+
+	configMu.Lock()
+	defer configMu.Unlock()
+
+	// empty config is OK
+	b, _ := os.ReadFile(filepath)
+
+	b, err := yaml.Patch(b, path, value)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(filepath, b, 0644)
+}
+func GetGo2RTCPath() string {
+	return filepath.Join(GetPicoclawHome(), defaultGo2RtcFileName)
+}
+func LoadGo2RTCConfig(v any) error {
+	return LoadYamlConfig(GetGo2RTCPath(), v)
+}
+func PatchGo2RTCConfig(path []string, value any) error {
+	return PatchConfig(GetGo2RTCPath(), path, value)
 }

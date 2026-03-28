@@ -9,7 +9,7 @@ import (
 // Name is the primary key for all operations.
 type SpaceStore interface {
 	GetAll() ([]Space, error)
-	Save(space Space) error
+	Save(spaces ...Space) error
 	Delete(name string) error
 }
 
@@ -44,15 +44,27 @@ func (s *spaceStore) GetAll() ([]Space, error) {
 	return s.data.Spaces, nil
 }
 
-// Save saves a space (insert or update by Name)
-func (s *spaceStore) Save(space Space) error {
-	for i := range s.data.Spaces {
-		if strings.EqualFold(s.data.Spaces[i].Name, space.Name) {
-			s.data.Spaces[i].From[space.From["name"]] = space.From["id"]
-			return s.save()
+// Save saves spaces (insert or update by Name)
+func (s *spaceStore) Save(spaces ...Space) error {
+	for _, space := range spaces {
+		found := false
+		for i := range s.data.Spaces {
+			if strings.EqualFold(s.data.Spaces[i].Name, space.Name) {
+				// Merge From map instead of replacing
+				if s.data.Spaces[i].From == nil {
+					s.data.Spaces[i].From = make(map[string]string)
+				}
+				for k, v := range space.From {
+					s.data.Spaces[i].From[k] = v
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.data.Spaces = append(s.data.Spaces, space)
 		}
 	}
-	s.data.Spaces = append(s.data.Spaces, space)
 	return s.save()
 }
 
