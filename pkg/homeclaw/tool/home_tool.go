@@ -109,8 +109,9 @@ func (t *GetCurrentHomeTool) Execute(_ context.Context, params map[string]any) *
 		if len(brandHomes) == 0 {
 			return &tools.ToolResult{ForLLM: fmt.Sprintf("no homes found for brand '%s', please sync homes first", from), IsError: true}
 		}
+		msg := fmt.Sprintf("no current home set for brand '%s', available homes: %v. Must ask user to choose one!!!", from, brandHomes)
 		// Homes exist but none is set as current
-		return &tools.ToolResult{ForLLM: fmt.Sprintf("no current home set for brand '%s', available homes: %v. Please use hc_set_current_home to set one as current.", from, brandHomes), IsError: true}
+		return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
 	}
 
 	result, _ := json.Marshal(map[string]any{
