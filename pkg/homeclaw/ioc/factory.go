@@ -75,6 +75,7 @@ type Factory struct {
 	frameGrabber       *video.FrameGrabber
 	rtspAnalyzeTool    *homeclawtool.RTSPAnalyzeTool
 	setCurrentHomeTool *homeclawtool.SetCurrentHomeTool
+	getCurrentHomeTool *homeclawtool.GetCurrentHomeTool
 }
 
 // NewFactory creates a new Factory instance.
@@ -538,4 +539,17 @@ func (f *Factory) GetSetCurrentHomeTool() (*homeclawtool.SetCurrentHomeTool, err
 	}
 	f.setCurrentHomeTool = homeclawtool.NewSetCurrentHomeTool(store)
 	return f.setCurrentHomeTool, nil
+}
+
+// GetGetCurrentHomeTool returns the singleton GetCurrentHomeTool instance (lazy initialized).
+func (f *Factory) GetGetCurrentHomeTool() (*homeclawtool.GetCurrentHomeTool, error) {
+	if f.getCurrentHomeTool != nil {
+		return f.getCurrentHomeTool, nil
+	}
+	store, err := f.GetHomeStore()
+	if err != nil {
+		return nil, err
+	}
+	f.getCurrentHomeTool = homeclawtool.NewGetCurrentHomeTool(store)
+	return f.getCurrentHomeTool, nil
 }

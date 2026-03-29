@@ -6,7 +6,6 @@ type DeviceStore interface {
 	GetAll() ([]Device, error)
 	Save(devices ...Device) error
 	Delete(fromID, from string) error
-	SetActions(fromID, from string, actions string) error
 }
 
 // deviceStore implements DeviceStore using JSONStore
@@ -63,17 +62,6 @@ func (s *deviceStore) Delete(fromID, from string) error {
 	for i := range s.data.Devices {
 		if s.data.Devices[i].FromID == fromID && s.data.Devices[i].From == from {
 			s.data.Devices = append(s.data.Devices[:i], s.data.Devices[i+1:]...)
-			return s.save()
-		}
-	}
-	return ErrRecordNotFound
-}
-
-// SetActions sets the actions for a device by FromID and From
-func (s *deviceStore) SetActions(fromID, from string, actions string) error {
-	for i := range s.data.Devices {
-		if s.data.Devices[i].FromID == fromID && s.data.Devices[i].From == from {
-			s.data.Devices[i].Actions = actions
 			return s.save()
 		}
 	}

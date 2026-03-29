@@ -26,14 +26,15 @@ type ThirdFactory struct {
 	hcfg      *hcc.HomeclawConfig
 	factory   *ioc.Factory
 	// Singleton instances - lazy loaded
-	jsonStore         *hcd.JSONStore
-	miDeviceStore     midata.MiDeviceStore
-	cloud             *xiaomi.Cloud
-	miClient          *miio.MiClient
-	specFetcher       *miio.SpecFetcher
-	syncDevicesTool   *mitool.SyncDevicesTool
-	executeActionTool *mitool.ExecuteActionTool
-	genActionsTool    *mitool.GenActionsTool
+	jsonStore           *hcd.JSONStore
+	miDeviceStore       midata.MiDeviceStore
+	cloud               *xiaomi.Cloud
+	miClient            *miio.MiClient
+	specFetcher         *miio.SpecFetcher
+	syncHomesTool       *mitool.SyncHomesTool
+	syncDevicesTool     *mitool.SyncDevicesTool
+	executeActionTool   *mitool.ExecuteActionTool
+	getSpecCommandsTool *mitool.GetSpecCommandsTool
 
 	// Initialization tracking
 	storeOnce sync.Once
@@ -133,6 +134,29 @@ func (f *ThirdFactory) GetMiClient(country string) (*miio.MiClient, error) {
 	return f.miClient, nil
 }
 
+// GetSyncHomesTool returns the singleton SyncHomesTool instance (lazy initialized).
+func (f *ThirdFactory) GetSyncHomesTool() (*mitool.SyncHomesTool, error) {
+	if f.syncHomesTool != nil {
+		return f.syncHomesTool, nil
+	}
+	country := "cn"
+	client, err := f.GetMiClient(country)
+	if err != nil {
+		return nil, fmt.Errorf("get mi client: %w", err)
+	}
+
+	homeStore, err := f.factory.GetHomeStore()
+	if err != nil {
+		return nil, fmt.Errorf("get home store: %w", err)
+	}
+
+	f.syncHomesTool, err = mitool.NewSyncHomesTool(client, homeStore)
+	if err != nil {
+		return nil, fmt.Errorf("create sync homes tool: %w", err)
+	}
+	return f.syncHomesTool, nil
+}
+
 // GetSyncDevicesTool returns the singleton SyncDevicesTool instance (lazy initialized).
 func (f *ThirdFactory) GetSyncDevicesTool() (*mitool.SyncDevicesTool, error) {
 	if f.syncDevicesTool != nil {
@@ -159,7 +183,7 @@ func (f *ThirdFactory) GetSyncDevicesTool() (*mitool.SyncDevicesTool, error) {
 		return nil, fmt.Errorf("get device store: %w", err)
 	}
 
-	f.syncDevicesTool = mitool.NewSyncDevicesTool(client, homeStore, spaceStore, deviceStore)
+	f.syncDevicesTool = mitool.NewSyncDevicesTool(client, homeStore, spaceStore, deviceStore, f.GetSpecFetcher())
 	return f.syncDevicesTool, nil
 }
 
@@ -178,29 +202,11 @@ func (f *ThirdFactory) GetExecuteActionTool() (*mitool.ExecuteActionTool, error)
 	return f.executeActionTool, nil
 }
 
-// GetGenActionsTool returns the singleton GenActionsTool instance (lazy initialized).
-func (f *ThirdFactory) GetGenActionsTool() (*mitool.GenActionsTool, error) {
-	if f.genActionsTool != nil {
-		return f.genActionsTool, nil
+// GetSpecCommandsTool returns the singleton GetSpecCommandsTool instance (lazy initialized).
+func (f *ThirdFactory) GetSpecCommandsTool() (*mitool.GetSpecCommandsTool, error) {
+	if f.getSpecCommandsTool != nil {
+		return f.getSpecCommandsTool, nil
 	}
-	country := "cn"
-	client, err := f.GetMiClient(country)
-	if err != nil {
-		return nil, fmt.Errorf("get mi client: %w", err)
-	}
-
-	deviceStore, err := f.factory.GetDeviceStore()
-	if err != nil {
-		return nil, fmt.Errorf("get device store: %w", err)
-	}
-
-	intentProvider, err := f.factory.GetIntentProvider()
-	if err != nil {
-		return nil, fmt.Errorf("get intent provider: %w", err)
-	}
-
-	intentModel := f.factory.GetIntentModelName()
-
-	f.genActionsTool = mitool.NewGenActionsTool(client, deviceStore, intentProvider, intentModel)
-	return f.genActionsTool, nil
+	f.getSpecCommandsTool = mitool.NewGetSpecCommandsTool(f.GetSpecFetcher())
+	return f.getSpecCommandsTool, nil
 }

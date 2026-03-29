@@ -15,13 +15,13 @@ type Device struct {
 	From      string   `json:"from"`
 	Name      string   `json:"name"`
 	Type      string   `json:"type"`
+	Online    bool     `json:"online"` // Whether the device is online
 	IP        string   `json:"ip"`
 	Token     string   `json:"token"`
 	URN       string   `json:"urn,omitempty"`
 	SpaceName string   `json:"space_name,omitempty"`
 	Tags      []string `json:"tags,omitempty"`
 	Owners    []string `json:"owners,omitempty"`
-	Actions   string   `json:"actions,omitempty"` // key: action name, value: param json, e.g. {"开灯": "{{method:"SetProp"},{"Param":{did:xxx,siid:xxx,piid:xx,value:true}}"}
 }
 
 // Home represents a home information

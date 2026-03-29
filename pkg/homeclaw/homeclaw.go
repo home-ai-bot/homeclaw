@@ -152,6 +152,9 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 
 	f := hc.f
 
+	// Home tools
+	registerTool(toolRegistry, f.GetSetCurrentHomeTool)
+	registerTool(toolRegistry, f.GetGetCurrentHomeTool)
 	// Device tools
 	registerTool(toolRegistry, f.GetListDevicesTool)
 
@@ -170,11 +173,12 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 
 	// Video / RTSP tools
 	registerTool(toolRegistry, f.GetRTSPAnalyzeTool)
-	registerTool(toolRegistry, f.GetSetCurrentHomeTool)
 
 	//Third
 	thirdf := hc.thirdf
 
 	registerTool(toolRegistry, thirdf.GetSyncDevicesTool)
 	registerTool(toolRegistry, thirdf.GetExecuteActionTool)
+	registerTool(toolRegistry, thirdf.GetSpecCommandsTool)
+	registerTool(toolRegistry, thirdf.GetSyncHomesTool)
 }

@@ -7,14 +7,83 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio/util"
-	"github.com/sipeed/picoclaw/pkg/logger"
-	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
+
+// ────────────────────────────────────────────────────────────────────────────────
+// SyncHomesTool - Sync homes from Xiaomi cloud
+// ────────────────────────────────────────────────────────────────────────────────
+
+// SyncHomesTool syncs homes from Xiaomi cloud.
+type SyncHomesTool struct {
+	client    *miio.MiClient
+	homeStore data.HomeStore
+}
+
+// NewSyncHomesTool creates a SyncHomesTool backed by the given MiClient and HomeStore.
+func NewSyncHomesTool(client *miio.MiClient, homeStore data.HomeStore) (*SyncHomesTool, error) {
+	return &SyncHomesTool{client: client, homeStore: homeStore}, nil
+}
+
+func (t *SyncHomesTool) Name() string { return "mi__internal_1" }
+
+func (t *SyncHomesTool) Description() string {
+	return "must only invoked by mi-sync skill,when home is empty"
+}
+
+func (t *SyncHomesTool) Parameters() map[string]any {
+	return map[string]any{
+		"type":       "object",
+		"properties": map[string]any{},
+	}
+}
+
+func (t *SyncHomesTool) Execute(_ context.Context, _ map[string]any) *tools.ToolResult {
+	homes, err := t.client.GetHomes()
+	if err != nil {
+		msg := fmt.Sprintf("failed to sync homes: %v", err)
+		return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
+	}
+
+	if len(homes) == 0 {
+		return tools.NewToolResult("no homes found in Xiaomi Mi Home")
+	}
+
+	// Convert to data.Home and save
+	dataHomes := make([]data.Home, 0, len(homes))
+	for _, h := range homes {
+		dataHomes = append(dataHomes, data.Home{
+			FromID:  h.ID,
+			From:    miio.BrandXiaomi,
+			Name:    h.Name,
+			Current: false,
+		})
+	}
+
+	// Set first home as current if only one home
+	if len(dataHomes) == 1 {
+		dataHomes[0].Current = true
+	}
+
+	if err := t.homeStore.Save(dataHomes...); err != nil {
+		msg := fmt.Sprintf("failed to save homes: %v", err)
+		return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
+	}
+
+	// Build result
+	result := make([]map[string]string, 0, len(homes))
+	for _, h := range homes {
+		result = append(result, map[string]string{
+			"home_id": h.ID,
+			"name":    h.Name,
+		})
+	}
+	b, _ := json.Marshal(result)
+	return tools.NewToolResult(fmt.Sprintf("synced %d homes: %s", len(homes), string(b)))
+}
 
 // ────────────────────────────────────────────────────────────────────────────────
 // SyncDevicesTool - Sync devices from Xiaomi cloud
@@ -26,6 +95,7 @@ type SyncDevicesTool struct {
 	homeStore   data.HomeStore
 	spaceStore  data.SpaceStore
 	deviceStore data.DeviceStore
+	specFetcher *miio.SpecFetcher
 }
 
 // NewSyncDevicesTool creates a SyncDevicesTool backed by the given MiClient.
@@ -34,103 +104,46 @@ func NewSyncDevicesTool(
 	homeStore data.HomeStore,
 	spaceStore data.SpaceStore,
 	deviceStore data.DeviceStore,
+	specFetcher *miio.SpecFetcher,
 ) *SyncDevicesTool {
 	return &SyncDevicesTool{
 		client:      client,
 		homeStore:   homeStore,
 		spaceStore:  spaceStore,
 		deviceStore: deviceStore,
+		specFetcher: specFetcher,
 	}
 }
 
-func (t *SyncDevicesTool) Name() string { return "mi_sync_devices" }
+func (t *SyncDevicesTool) Name() string { return "mi__internal_2" }
 
 func (t *SyncDevicesTool) Description() string {
-	return "Sync all devices from Xiaomi/Mi Home cloud for a specific home. Returns the list of synced devices with their details."
+	return "must only invoked by mi_sync skill, when mi-sync detemine which homeId should be sync"
 }
 
 func (t *SyncDevicesTool) Parameters() map[string]any {
 	return map[string]any{
-		"type":       "object",
-		"properties": map[string]any{},
-		"required":   []string{},
+		"type": "object",
+		"properties": map[string]any{
+			"homeId": map[string]any{
+				"type":        "string",
+				"description": "The Xiaomi home ID to sync devices from",
+			},
+		},
+		"required": []string{"homeId"},
 	}
 }
 
 func (t *SyncDevicesTool) Execute(ctx context.Context, args map[string]any) *tools.ToolResult {
-	homeID := ""
-	// Try to get current home from homeStore
-	currentHome, err := t.homeStore.GetCurrent(miio.BrandXiaomi)
-	if err == nil && currentHome != nil {
-		homeID = currentHome.FromID
+	homeID, ok := args["homeId"].(string)
+	if !ok || homeID == "" {
+		return &tools.ToolResult{ForLLM: "missing or invalid 'homeId' parameter", IsError: true}
 	}
 
-	if homeID == "" {
-		// Get all Xiaomi homes from local store
-		allHomes, _ := t.homeStore.GetAll()
-		var xiaomiHomes []data.Home
-		for _, h := range allHomes {
-			if h.From == miio.BrandXiaomi {
-				xiaomiHomes = append(xiaomiHomes, h)
-			}
-		}
-
-		// If no local homes, fetch from cloud and save
-		if len(xiaomiHomes) == 0 {
-			cloudHomes, err := t.client.GetHomes()
-			if err != nil {
-				msg := fmt.Sprintf("failed to fetch homes from cloud: %v", err)
-				return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
-			}
-			if len(cloudHomes) == 0 {
-				msg := "No homes found for this Xiaomi account. Please create a home in Mi Home app first."
-				return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
-			}
-			// Convert and save to homeStore
-			homesToSave := make([]data.Home, 0, len(cloudHomes))
-			for _, ch := range cloudHomes {
-				homesToSave = append(homesToSave, data.Home{
-					FromID: ch.ID,
-					From:   miio.BrandXiaomi,
-					Name:   ch.Name,
-				})
-			}
-			if err := t.homeStore.Save(homesToSave...); err != nil {
-				msg := fmt.Sprintf("failed to save homes: %v", err)
-				return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
-			}
-			xiaomiHomes = homesToSave
-		}
-
-		// Handle based on number of homes
-		if len(xiaomiHomes) == 0 {
-			msg := "No homes found for this Xiaomi account. Please create a home in Mi Home app first."
-			return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
-		} else if len(xiaomiHomes) == 1 {
-			// Only one home, set as current automatically
-			homeID = xiaomiHomes[0].FromID
-			_ = t.homeStore.SetCurrent(homeID, miio.BrandXiaomi)
-		} else {
-			// Multiple homes, ask user to choose
-			var homeList strings.Builder
-			homeList.WriteString("Multiple homes found. Please specify a home_id:\n")
-			for _, h := range xiaomiHomes {
-				currentMark := ""
-				if h.Current {
-					currentMark = " (current)"
-				}
-				homeList.WriteString(fmt.Sprintf("- %s: %s%s\n", h.FromID, h.Name, currentMark))
-			}
-			msg := homeList.String()
-			return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
-		}
-	}
-	if homeID != "" {
-		err := t.homeStore.SetCurrent(homeID, miio.BrandXiaomi)
-		if err != nil {
-			msg := fmt.Sprintf("failed to set current home: %v", err)
-			return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
-		}
+	err := t.homeStore.SetCurrent(homeID, miio.BrandXiaomi)
+	if err != nil {
+		msg := fmt.Sprintf("failed to set current home: %v", err)
+		return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
 	}
 	devices, err := t.client.GetDevices(homeID)
 	if err != nil {
@@ -179,8 +192,50 @@ func (t *SyncDevicesTool) Execute(ctx context.Context, args map[string]any) *too
 		t.deviceStore.Save(deviceValues...)
 	}
 
+	// Process and save spec for all devices
+	var specProcessed int
+	var specErrors []string
+	for _, d := range devices {
+		if d == nil || d.URN == "" {
+			continue
+		}
+		// Get spec for this device
+		spec, err := t.client.GetSpec(d.FromID)
+		if err != nil {
+			specErrors = append(specErrors, fmt.Sprintf("%s: %v", d.Name, err))
+			continue
+		}
+		// Parse and process spec using spec_parser
+		parsedSpec, err := util.ParseSpecJSON(spec.Raw)
+		if err != nil {
+			specErrors = append(specErrors, fmt.Sprintf("%s: parse error - %v", d.Name, err))
+			continue
+		}
+		// Generate device commands JSON
+		commandsJSON, err := parsedSpec.GenerateDeviceCommandsCompactJSON(d.FromID)
+		if err != nil {
+			specErrors = append(specErrors, fmt.Sprintf("%s: generate commands error - %v", d.Name, err))
+			continue
+		}
+		// Save processed spec as _new.json
+		if t.specFetcher != nil {
+			if err := t.specFetcher.SaveProcessedSpec(d.URN, commandsJSON); err != nil {
+				specErrors = append(specErrors, fmt.Sprintf("%s: save error - %v", d.Name, err))
+				continue
+			}
+		}
+		specProcessed++
+	}
+
 	b, _ := json.Marshal(devices)
-	return tools.NewToolResult(fmt.Sprintf("synced %d devices: %s", len(devices), string(b)))
+	summary := fmt.Sprintf("synced %d devices: %s", len(devices), string(b))
+	if specProcessed > 0 {
+		summary += fmt.Sprintf("\nProcessed specs for %d devices", specProcessed)
+	}
+	if len(specErrors) > 0 {
+		summary += fmt.Sprintf("\nSpec errors: %s", strings.Join(specErrors, "; "))
+	}
+	return tools.NewToolResult(summary)
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
@@ -200,11 +255,7 @@ func NewExecuteActionTool(client *miio.MiClient) *ExecuteActionTool {
 func (t *ExecuteActionTool) Name() string { return "mi_execute_action" }
 
 func (t *ExecuteActionTool) Description() string {
-	return `Execute MIoT commands on a Xiaomi device via JSON. 
-Supports three methods:
-- Action: {"method":"Action","param":{"did":"xxx","siid":2,"aiid":1,"in":[...]}}
-- GetProp: {"method":"GetProp","param":{"did":"xxx","siid":2,"piid":1}}
-- SetProp: {"method":"SetProp","param":{"did":"xxx","siid":2,"piid":1,"value":true}}`
+	return "send commond to xiaomi device ,use by control xiaomi device,before use should find target device,get one its action from actions"
 }
 
 func (t *ExecuteActionTool) Parameters() map[string]any {
@@ -268,169 +319,53 @@ func (t *ExecuteActionTool) Execute(_ context.Context, args map[string]any) *too
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
-// GenActionsTool - Generate actions for Xiaomi devices with empty actions
+// GetSpecCommandsTool - Get processed spec commands by URN
 // ────────────────────────────────────────────────────────────────────────────────
 
-// GenActionsTool generates actions for Xiaomi devices that have empty actions.
-type GenActionsTool struct {
-	client         *miio.MiClient
-	deviceStore    data.DeviceStore
-	intentProvider providers.LLMProvider
-	intentModel    string
+// GetSpecCommandsTool reads the processed spec commands from _new.json file by URN.
+type GetSpecCommandsTool struct {
+	specFetcher *miio.SpecFetcher
 }
 
-// NewGenActionsTool creates a GenActionsTool backed by the given MiClient.
-func NewGenActionsTool(
-	client *miio.MiClient,
-	deviceStore data.DeviceStore,
-	intentProvider providers.LLMProvider,
-	intentModel string,
-) *GenActionsTool {
-	return &GenActionsTool{
-		client:         client,
-		deviceStore:    deviceStore,
-		intentProvider: intentProvider,
-		intentModel:    intentModel,
-	}
+// NewGetSpecCommandsTool creates a GetSpecCommandsTool backed by the given SpecFetcher.
+func NewGetSpecCommandsTool(specFetcher *miio.SpecFetcher) *GetSpecCommandsTool {
+	return &GetSpecCommandsTool{specFetcher: specFetcher}
 }
 
-func (t *GenActionsTool) Name() string { return "mi_gen_actions" }
+func (t *GetSpecCommandsTool) Name() string { return "mi_get_spec_commands" }
 
-func (t *GenActionsTool) Description() string {
-	return "Generate action mappings for Xiaomi devices that have empty actions. This uses LLM to analyze device specs and create action commands."
+func (t *GetSpecCommandsTool) Description() string {
+	return "Get processed device commands by URN. Returns the pre-processed device commands JSON from _new.json cache."
 }
 
-func (t *GenActionsTool) Parameters() map[string]any {
+func (t *GetSpecCommandsTool) Parameters() map[string]any {
 	return map[string]any{
-		"type":       "object",
-		"properties": map[string]any{},
-		"required":   []string{},
+		"type": "object",
+		"properties": map[string]any{
+			"urn": map[string]any{
+				"type":        "string",
+				"description": "Device URN (e.g., urn:miot-spec-v2:device:light:0000A001:yeelink-v1)",
+			},
+		},
+		"required": []string{"urn"},
 	}
 }
 
-func (t *GenActionsTool) Execute(ctx context.Context, args map[string]any) *tools.ToolResult {
-	allDevices, err := t.deviceStore.GetAll()
+func (t *GetSpecCommandsTool) Execute(_ context.Context, args map[string]any) *tools.ToolResult {
+	urn, ok := args["urn"].(string)
+	if !ok || urn == "" {
+		return &tools.ToolResult{ForLLM: "missing or invalid 'urn' parameter", IsError: true}
+	}
+
+	if t.specFetcher == nil {
+		return &tools.ToolResult{ForLLM: "spec fetcher not initialized", IsError: true}
+	}
+
+	commandsJSON, err := t.specFetcher.GetProcessedSpec(urn)
 	if err != nil {
-		msg := fmt.Sprintf("failed to get devices: %v", err)
+		msg := fmt.Sprintf("failed to get processed spec for URN %s: %v", urn, err)
 		return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
 	}
 
-	var generated int
-	var skipped int
-	var results []string
-
-	for _, dev := range allDevices {
-		if len(dev.Actions) > 0 {
-			skipped++
-			continue // Skip devices that already have actions
-		}
-		if dev.From != miio.BrandXiaomi {
-			continue // Only handle Xiaomi devices
-		}
-
-		// Get device spec
-		spec, err := t.client.GetSpec(dev.FromID)
-		if err != nil {
-			results = append(results, fmt.Sprintf("%s: spec unavailable", dev.Name))
-			continue
-		}
-
-		// Generate actions using LLM
-		actions := t.generateActionsWithLLM(ctx, &dev, spec.Raw)
-		if len(actions) > 0 {
-			t.deviceStore.SetActions(dev.FromID, dev.From, actions)
-			generated++
-			results = append(results, fmt.Sprintf("%s: %d actions generated", dev.Name, len(actions)))
-		} else {
-			results = append(results, fmt.Sprintf("%s: no actions generated", dev.Name))
-		}
-	}
-
-	summary := fmt.Sprintf("Generated actions for %d devices, skipped %d devices with existing actions", generated, skipped)
-	if len(results) > 0 {
-		summary += "\nDetails:\n" + strings.Join(results, "\n")
-	}
-	return tools.NewToolResult(summary)
-}
-
-// generateActionsWithLLM uses LLM to map device spec to standard actions
-func (t *GenActionsTool) generateActionsWithLLM(ctx context.Context, dev *data.Device, specJSON string) string {
-	prompt := t.buildActionGenerationPrompt(dev, specJSON)
-
-	messages := []providers.Message{
-		{Role: "system", Content: "You are a smart home device expert. Generate action mappings in JSON format only."},
-		{Role: "user", Content: prompt},
-	}
-
-	resp, err := t.intentProvider.Chat(ctx, messages, nil, t.intentModel, nil)
-	if err != nil || resp == nil || resp.Content == "" {
-		return ""
-	}
-
-	return t.parseActionsResponse(resp.Content, dev.FromID)
-}
-
-// buildActionGenerationPrompt builds the prompt for action generation
-func (t *GenActionsTool) buildActionGenerationPrompt(dev *data.Device, specJSON string) string {
-	return fmt.Sprintf(`Based on the device spec below, generate action mappings for this Xiaomi device.
-Device Info:
-- DID: %s
-- Name: %s
-- Type/Model: %s
-- URN: %s
-
-Device MIoT Spec (JSON):
-%s
-
-Available Standard Actions:
-%s
-
-Generate a JSON array object mapping standard action names to MIoT commands.
-Format example: 
-1. {"start": {"method":"Action","param":{"did":"#did","siid":2,"aiid":1,"in":[true,1]}}}
-2. {"get_state": {"method":"GetProp","param":{"did":"#did","siid":2,"piid":1}}}
-3. {"turn_on": {"method":"SetProp","param":{"did":"#did","siid":2,"piid":1,"value":true}}}
-
-Rules:
-1. Only include actions that the device actually supports based on its spec
-2. services sub iid is siid
-   services sub properties sub iid is piid,generate 2,3,value must follow format,must related to Available Standard Actions
-   services sub actions sub iid is siid,generate 1, in must follow in ; must related to Available Standard Actions
-3. start\get_state\turn_on must in Available Standard Actions
-4. some device may have multiple entities, you need to generate actions for each entity,such as light+fan
-5. ignore  properties\actions not related to Available Standard Actions
-
-Output ONLY the JSON object array, no explanation:`,
-		dev.FromID, dev.Name, dev.Type, dev.URN, specJSON, config.DeviceActionsJSON)
-}
-
-// parseActionsResponse extracts action mappings from LLM response
-func (t *GenActionsTool) parseActionsResponse(content string, did string) string {
-	logger.Info(content)
-	content = strings.TrimSpace(content)
-
-	// Handle markdown code blocks
-	if strings.HasPrefix(content, "```") {
-		lines := strings.Split(content, "\n")
-		var jsonLines []string
-		inBlock := false
-		for _, line := range lines {
-			if strings.HasPrefix(line, "```") {
-				inBlock = !inBlock
-				continue
-			}
-			if inBlock {
-				jsonLines = append(jsonLines, line)
-			}
-		}
-		content = strings.Join(jsonLines, "\n")
-	}
-	// 使用 util.ValidJson 验证 JSON
-	valid, err := util.ValidJson(content)
-	if err != nil {
-		logger.Errorf("ValidJson parse error: %v", err)
-	} else if len(valid.ActionErrors) > 0 || len(valid.MethondErrors) > 0 {
-		logger.Errorf("ValidJson validation errors - ActionErrors: %v, MethodErrors: %v", valid.ActionErrors, valid.MethondErrors)
-	}
-	return content
+	return tools.NewToolResult(commandsJSON)
 }

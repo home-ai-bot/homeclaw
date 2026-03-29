@@ -11,9 +11,24 @@ const DeviceActionsJSON = `{
   "cover": ["open", "close", "stop", "set_position", "get_state"],
   "humidifier": ["turn_on", "turn_off", "get_state", "set_mode", "set_humidity"],
   "water_heater": ["turn_on", "turn_off", "get_state", "set_temperature", "set_operation_mode"],
-  "media_player": ["turn_on", "turn_off", "get_state", "play", "pause", "stop", "next_track", "previous_track", "set_volume", "mute", "select_source"],
-  "sensor": ["get_state"]
+  "tv": ["turn_on", "turn_off", "get_state", "play", "pause", "stop", "set_volume", "mute", "select_source"],
+  "tvbox": ["turn_on", "turn_off", "get_state", "play", "pause", "stop", "set_volume", "mute", "select_source"],
+  "speaker": ["turn_on", "turn_off", "get_state", "play", "pause", "stop", "next_track", "previous_track", "set_volume", "mute"],
+  "lock": ["lock", "unlock", "get_state"],
+  "doorbell": ["get_state"],
+  "sensor_motion": ["get_state"],
+  "sensor_temperature": ["get_state"],
+  "sensor_humidity": ["get_state"],
+  "sensor_smoke": ["get_state"],
+  "sensor_gas": ["get_state"],
+  "sensor_door": ["get_state"],
+  "sensor_water_leak": ["get_state"],
+  "sensor_illuminance": ["get_state"],
+  "sensor_air_quality": ["get_state"]
 }`
+
+// DeviceTypesJSON contains the JSON array of all supported smart home device types.
+const DeviceTypesJSON = `["light", "switch", "camera", "vacuum", "fan", "climate", "cover", "humidifier", "water_heater", "tv", "tvbox", "speaker", "lock", "doorbell", "sensor_motion", "sensor_temperature", "sensor_humidity", "sensor_smoke", "sensor_gas", "sensor_door", "sensor_water_leak", "sensor_illuminance", "sensor_air_quality"]`
 
 // DeviceType 设备类型
 type DeviceType string
@@ -28,8 +43,23 @@ const (
 	DeviceTypeCover       DeviceType = "cover"        // 窗帘/晾衣架/窗户
 	DeviceTypeHumidifier  DeviceType = "humidifier"   // 加湿器/除湿机
 	DeviceTypeWaterHeater DeviceType = "water_heater" // 热水器/饮水机
-	DeviceTypeMediaPlayer DeviceType = "media_player" // 电视/音箱/投影仪
-	DeviceTypeSensor      DeviceType = "sensor"       // 传感器(只读)
+	// 媒体播放器子类型
+	DeviceTypeTV      DeviceType = "tv"      // 电视
+	DeviceTypeTVBox   DeviceType = "tvbox"   // 电视盒子
+	DeviceTypeSpeaker DeviceType = "speaker" // 音箱
+	// 安防设备
+	DeviceTypeLock     DeviceType = "lock"     // 智能门锁
+	DeviceTypeDoorbell DeviceType = "doorbell" // 门铃
+	// 传感器子类型
+	DeviceTypeSensorMotion      DeviceType = "sensor_motion"      // 人体/红外传感器
+	DeviceTypeSensorTemperature DeviceType = "sensor_temperature" // 温度传感器
+	DeviceTypeSensorHumidity    DeviceType = "sensor_humidity"    // 湿度传感器
+	DeviceTypeSensorSmoke       DeviceType = "sensor_smoke"       // 烟雾/火灾传感器
+	DeviceTypeSensorGas         DeviceType = "sensor_gas"         // 燃气/煤气传感器
+	DeviceTypeSensorDoor        DeviceType = "sensor_door"        // 门窗传感器
+	DeviceTypeSensorWaterLeak   DeviceType = "sensor_water_leak"  // 水浸传感器
+	DeviceTypeSensorIlluminance DeviceType = "sensor_illuminance" // 光照传感器
+	DeviceTypeSensorAirQuality  DeviceType = "sensor_air_quality" // 空气质量传感器
 )
 
 // ActionType 操作类型
@@ -122,6 +152,12 @@ const (
 	ActionSelectSource  ActionType = "select_source"  // 选择输入源
 )
 
+// 智能门锁操作
+const (
+	ActionLock   ActionType = "lock"   // 上锁
+	ActionUnlock ActionType = "unlock" // 解锁
+)
+
 // DeviceActions 设备支持的操作映射
 var DeviceActions = map[DeviceType][]ActionType{
 	DeviceTypeLight: {
@@ -204,7 +240,30 @@ var DeviceActions = map[DeviceType][]ActionType{
 		ActionSetTemperature,
 		ActionSetOperationMode,
 	},
-	DeviceTypeMediaPlayer: {
+	// 媒体播放器子类型
+	DeviceTypeTV: {
+		ActionTurnOn,
+		ActionTurnOff,
+		ActionGetState,
+		ActionPlay,
+		ActionPause,
+		ActionStop,
+		ActionSetVolume,
+		ActionMute,
+		ActionSelectSource,
+	},
+	DeviceTypeTVBox: {
+		ActionTurnOn,
+		ActionTurnOff,
+		ActionGetState,
+		ActionPlay,
+		ActionPause,
+		ActionStop,
+		ActionSetVolume,
+		ActionMute,
+		ActionSelectSource,
+	},
+	DeviceTypeSpeaker: {
 		ActionTurnOn,
 		ActionTurnOff,
 		ActionGetState,
@@ -215,10 +274,43 @@ var DeviceActions = map[DeviceType][]ActionType{
 		ActionPreviousTrack,
 		ActionSetVolume,
 		ActionMute,
-		ActionSelectSource,
 	},
-	DeviceTypeSensor: {
-		ActionGetState, // 传感器只支持获取状态
+	// 安防设备
+	DeviceTypeLock: {
+		ActionLock,
+		ActionUnlock,
+		ActionGetState,
+	},
+	DeviceTypeDoorbell: {
+		ActionGetState,
+	},
+	// 传感器子类型
+	DeviceTypeSensorMotion: {
+		ActionGetState,
+	},
+	DeviceTypeSensorTemperature: {
+		ActionGetState,
+	},
+	DeviceTypeSensorHumidity: {
+		ActionGetState,
+	},
+	DeviceTypeSensorSmoke: {
+		ActionGetState,
+	},
+	DeviceTypeSensorGas: {
+		ActionGetState,
+	},
+	DeviceTypeSensorDoor: {
+		ActionGetState,
+	},
+	DeviceTypeSensorWaterLeak: {
+		ActionGetState,
+	},
+	DeviceTypeSensorIlluminance: {
+		ActionGetState,
+	},
+	DeviceTypeSensorAirQuality: {
+		ActionGetState,
 	},
 }
 
@@ -233,8 +325,23 @@ var DeviceTypeNames = map[DeviceType]string{
 	DeviceTypeCover:       "窗帘/晾衣架/窗户",
 	DeviceTypeHumidifier:  "加湿器/除湿机",
 	DeviceTypeWaterHeater: "热水器/饮水机",
-	DeviceTypeMediaPlayer: "电视/音箱/投影仪",
-	DeviceTypeSensor:      "传感器",
+	// 媒体播放器子类型
+	DeviceTypeTV:      "电视",
+	DeviceTypeTVBox:   "电视盒子",
+	DeviceTypeSpeaker: "音箱",
+	// 安防设备
+	DeviceTypeLock:     "智能门锁",
+	DeviceTypeDoorbell: "门铃",
+	// 传感器子类型
+	DeviceTypeSensorMotion:      "人体/红外传感器",
+	DeviceTypeSensorTemperature: "温度传感器",
+	DeviceTypeSensorHumidity:    "湿度传感器",
+	DeviceTypeSensorSmoke:       "烟雾/火灾传感器",
+	DeviceTypeSensorGas:         "燃气/煤气传感器",
+	DeviceTypeSensorDoor:        "门窗传感器",
+	DeviceTypeSensorWaterLeak:   "水浸传感器",
+	DeviceTypeSensorIlluminance: "光照传感器",
+	DeviceTypeSensorAirQuality:  "空气质量传感器",
 }
 
 // ActionTypeNames 操作类型的中文名称
@@ -296,6 +403,9 @@ var ActionTypeNames = map[ActionType]string{
 	ActionSetVolume:     "设置音量",
 	ActionMute:          "静音",
 	ActionSelectSource:  "选择输入源",
+	// 智能门锁操作
+	ActionLock:   "上锁",
+	ActionUnlock: "解锁",
 }
 
 // GetDeviceActions 获取指定设备类型支持的操作列表
@@ -315,8 +425,20 @@ func GetAllDeviceTypes() []DeviceType {
 		DeviceTypeCover,
 		DeviceTypeHumidifier,
 		DeviceTypeWaterHeater,
-		DeviceTypeMediaPlayer,
-		DeviceTypeSensor,
+		DeviceTypeTV,
+		DeviceTypeTVBox,
+		DeviceTypeSpeaker,
+		DeviceTypeLock,
+		DeviceTypeDoorbell,
+		DeviceTypeSensorMotion,
+		DeviceTypeSensorTemperature,
+		DeviceTypeSensorHumidity,
+		DeviceTypeSensorSmoke,
+		DeviceTypeSensorGas,
+		DeviceTypeSensorDoor,
+		DeviceTypeSensorWaterLeak,
+		DeviceTypeSensorIlluminance,
+		DeviceTypeSensorAirQuality,
 	}
 }
 

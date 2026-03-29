@@ -23,7 +23,7 @@ func NewListDevicesTool(store data.DeviceStore) *ListDevicesTool {
 func (t *ListDevicesTool) Name() string { return "hc_list_devices" }
 
 func (t *ListDevicesTool) Description() string {
-	return "List all registered HomeClaw smart devices with full details including all fields and current state."
+	return "List all  smart devices "
 }
 
 func (t *ListDevicesTool) Parameters() map[string]any {
