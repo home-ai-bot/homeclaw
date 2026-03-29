@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/sipeed/picoclaw/pkg/homeclaw/video"
+	"github.com/sipeed/picoclaw/pkg/media"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
@@ -25,6 +26,7 @@ type IntentProviderFactory interface {
 type RTSPAnalyzeTool struct {
 	grabber         *video.FrameGrabber
 	providerFactory IntentProviderFactory
+	mediaStore      media.MediaStore
 }
 
 // NewRTSPAnalyzeTool creates an RTSPAnalyzeTool backed by the given FrameGrabber
@@ -34,6 +36,11 @@ func NewRTSPAnalyzeTool(grabber *video.FrameGrabber, factory IntentProviderFacto
 		grabber:         grabber,
 		providerFactory: factory,
 	}
+}
+
+// SetMediaStore sets the media store for sending images to channels.
+func (t *RTSPAnalyzeTool) SetMediaStore(store media.MediaStore) {
+	t.mediaStore = store
 }
 
 func (t *RTSPAnalyzeTool) Name() string { return "hc_internal_3" }
@@ -75,10 +82,27 @@ func (t *RTSPAnalyzeTool) Execute(ctx context.Context, params map[string]any) *t
 		prompt = p
 	}
 
-	// 1. Capture a frame from the RTSP stream
-	dataURI, err := t.grabber.GrabFrameAsDataURI(ctx, rtspURL)
+	// 1. Capture a frame from the RTSP stream (returns both dataURI and file path)
+	dataURI, filePath, err := t.grabber.GrabFrameWithPath(ctx, rtspURL)
 	if err != nil {
 		return tools.ErrorResult(fmt.Sprintf("failed to capture frame from %q: %v", rtspURL, err))
+	}
+
+	// 1.5. Send the captured frame as media to the current channel
+	channel := tools.ToolChannel(ctx)
+	chatID := tools.ToolChatID(ctx)
+	var mediaRefs []string
+
+	if t.mediaStore != nil && channel != "" && chatID != "" && filePath != "" {
+		scope := fmt.Sprintf("tool:camera:%s:%s", channel, chatID)
+		ref, err := t.mediaStore.Store(filePath, media.MediaMeta{
+			Filename:    "camera_frame.jpg",
+			ContentType: "image/jpeg",
+			Source:      "tool:hc_internal_3",
+		}, scope)
+		if err == nil {
+			mediaRefs = append(mediaRefs, ref)
+		}
 	}
 
 	// 2. Get the intent LLM provider
@@ -103,11 +127,15 @@ func (t *RTSPAnalyzeTool) Execute(ctx context.Context, params map[string]any) *t
 		return tools.ErrorResult(fmt.Sprintf("vision analysis failed: %v", err))
 	}
 
-	// 5. Return the analysis result as JSON
+	// 5. Return the analysis result as JSON (with media if available)
 	result := map[string]any{
 		"analysis": resp.Content,
 		"rtsp_url": rtspURL,
 	}
 	b, _ := json.Marshal(result)
+
+	if len(mediaRefs) > 0 {
+		return tools.MediaResult(string(b), mediaRefs)
+	}
 	return tools.NewToolResult(string(b))
 }

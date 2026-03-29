@@ -227,6 +227,7 @@ func (c *MiClient) GetDevices(homeID string) ([]*data.Device, error) {
 			Token:     d.Token,
 			URN:       d.SpecType,
 			SpaceName: d.RoomName,
+			Online:    d.IsOnline,
 		})
 	}
 

@@ -61,14 +61,6 @@ const (
 	// IntentSpaceQuery queries the space structure.
 	IntentSpaceQuery IntentType = "space.query"
 
-	// ── User management ─────────────────────────────────────────────────────
-	// IntentUserAdd adds a new family member.
-	IntentUserAdd IntentType = "user.add"
-	// IntentUserRemove removes a family member.
-	IntentUserRemove IntentType = "user.remove"
-	// IntentUserQuery queries the member list.
-	IntentUserQuery IntentType = "user.query"
-
 	// ── System configuration ─────────────────────────────────────────────────
 	// IntentConfigSkillEnable enables a skill plugin.
 	IntentConfigSkillEnable IntentType = "config.skill.enable"

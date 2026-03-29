@@ -201,12 +201,45 @@ func (g *FrameGrabber) GrabFrameToBuffer(ctx context.Context, streamURL string) 
 //
 //	"data:image/jpeg;base64,<base64data>"
 func (g *FrameGrabber) GrabFrameAsDataURI(ctx context.Context, streamURL string) (string, error) {
-	raw, err := g.GrabFrameBytes(ctx, streamURL)
-	if err != nil {
-		return "", err
+	dataURI, _, err := g.GrabFrameWithPath(ctx, streamURL)
+	return dataURI, err
+}
+
+// GrabFrameWithPath captures a single JPEG frame and returns both a base64-encoded
+// data URI and the path to the temp file. The temp file is NOT deleted, so the caller
+// can use it for sending to channels. The caller is responsible for cleanup.
+func (g *FrameGrabber) GrabFrameWithPath(ctx context.Context, streamURL string) (dataURI string, filePath string, err error) {
+	tmpDir := os.TempDir()
+	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("homeclaw_frame_%d.jpg", uniqueID()))
+
+	inputOpts := g.buildInputOpts()
+
+	stream := ffmpeg.Input(streamURL, inputOpts).
+		Output(tmpFile, g.buildOutputOpts(ffmpeg.KwArgs{
+			"frames:v": 1,
+			"f":        "image2",
+		})).
+		OverWriteOutput()
+
+	if err := runWithContext(ctx, stream); err != nil {
+		if ctx.Err() != nil {
+			return "", "", fmt.Errorf("frame capture cancelled: %w", ctx.Err())
+		}
+		return "", "", fmt.Errorf("ffmpeg frame capture failed: %w", err)
 	}
-	encoded := base64.StdEncoding.EncodeToString(raw)
-	return "data:image/jpeg;base64," + encoded, nil
+
+	data, err := os.ReadFile(tmpFile)
+	if err != nil {
+		os.Remove(tmpFile) //nolint:errcheck
+		return "", "", fmt.Errorf("failed to read captured frame: %w", err)
+	}
+	if len(data) == 0 {
+		os.Remove(tmpFile) //nolint:errcheck
+		return "", "", fmt.Errorf("captured frame is empty")
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(data)
+	return "data:image/jpeg;base64," + encoded, tmpFile, nil
 }
 
 // uniqueID returns a monotonically increasing integer used for temp file names.

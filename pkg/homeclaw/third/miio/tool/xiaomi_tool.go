@@ -189,9 +189,7 @@ func (t *SyncDevicesTool) Execute(ctx context.Context, args map[string]any) *too
 			deviceValues = append(deviceValues, *d)
 		}
 	}
-	if len(deviceValues) > 0 {
-		t.deviceStore.Save(deviceValues...)
-	}
+	t.deviceStore.Save(deviceValues...)
 
 	// Process and save spec for all devices
 	var specProcessed int

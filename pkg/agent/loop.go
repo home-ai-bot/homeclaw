@@ -531,6 +531,11 @@ func (al *AgentLoop) SetMediaStore(s media.MediaStore) {
 			sf.SetMediaStore(s)
 		}
 	})
+
+	// Propagate store to HomeClaw for camera tools.
+	if al.homeclaw != nil {
+		al.homeclaw.SetMediaStore(s)
+	}
 }
 
 // SetTranscriber injects a voice transcriber for agent-level audio transcription.

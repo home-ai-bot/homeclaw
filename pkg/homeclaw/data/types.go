@@ -32,14 +32,6 @@ type Home struct {
 	Current bool   `json:"current"`
 }
 
-// Member represents a family member
-type Member struct {
-	Name       string   `json:"name"`
-	Role       string   `json:"role"`        // "admin", "member"
-	MySpaces   []string `json:"my_spaces"`   // spaces this member can access
-	SleepSpace string   `json:"sleep_space"` // the space where this member sleeps
-}
-
 // SpacesData is the root structure for spaces.json
 type SpacesData struct {
 	Version string  `json:"version"`
@@ -56,12 +48,6 @@ type DevicesData struct {
 type HomesData struct {
 	Version string `json:"version"`
 	Homes   []Home `json:"homes"`
-}
-
-// MembersData is the root structure for members.json
-type MembersData struct {
-	Version string   `json:"version"`
-	Members []Member `json:"members"`
 }
 
 // ==================== Workflow Types ====================

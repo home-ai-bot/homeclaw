@@ -13,6 +13,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/homeclaw/intent"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/ioc"
 	third "github.com/sipeed/picoclaw/pkg/homeclaw/third/ioc"
+	"github.com/sipeed/picoclaw/pkg/media"
 
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/tools"
@@ -142,7 +143,7 @@ func registerTool[T tools.Tool](toolRegistry *tools.ToolRegistry, create func() 
 	toolRegistry.Register(t)
 }
 
-// RegisterTools registers all HomeClaw tools (device, space, member, workflow)
+// RegisterTools registers all HomeClaw tools (device, space, workflow)
 // into the given tool registry.
 // It is safe to call when hc is nil — the method becomes a no-op.
 func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
@@ -158,11 +159,6 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	// Device tools
 	registerTool(toolRegistry, f.GetListDevicesTool)
 	registerTool(toolRegistry, f.GetListCamerasTool)
-
-	// Member tools
-	registerTool(toolRegistry, f.GetListMembersTool)
-	registerTool(toolRegistry, f.GetSaveMemberTool)
-	registerTool(toolRegistry, f.GetDeleteMemberTool)
 
 	// Workflow tools
 	registerTool(toolRegistry, f.GetListWorkflowsTool)
@@ -182,4 +178,12 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	registerTool(toolRegistry, thirdf.GetExecuteActionTool)
 	registerTool(toolRegistry, thirdf.GetSpecCommandsTool)
 	registerTool(toolRegistry, thirdf.GetSyncHomesTool)
+}
+
+// SetMediaStore sets the media store for HomeClaw tools that need to send images to channels.
+func (hc *HomeClaw) SetMediaStore(store media.MediaStore) {
+	if hc == nil || hc.f == nil {
+		return
+	}
+	hc.f.SetMediaStore(store)
 }

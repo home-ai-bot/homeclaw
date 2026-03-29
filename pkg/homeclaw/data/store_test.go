@@ -161,45 +161,6 @@ func TestDeviceStore(t *testing.T) {
 	}
 }
 
-func TestMemberStore(t *testing.T) {
-	tmpDir := t.TempDir()
-	store, _ := NewJSONStore(tmpDir)
-	memberStore, err := NewMemberStore(store)
-	if err != nil {
-		t.Fatalf("Failed to create member store: %v", err)
-	}
-
-	// Save member
-	member := Member{
-		Name:       "爸爸",
-		Role:       "admin",
-		MySpaces:   []string{"客厅", "书房"},
-		SleepSpace: "主卧",
-	}
-	if err := memberStore.Save(member); err != nil {
-		t.Fatalf("Failed to save member: %v", err)
-	}
-
-	// Get by name via GetAll
-	members, err := memberStore.GetAll()
-	if err != nil {
-		t.Fatalf("Failed to get members: %v", err)
-	}
-	var found *Member
-	for i := range members {
-		if members[i].Name == "爸爸" {
-			found = &members[i]
-			break
-		}
-	}
-	if found == nil {
-		t.Fatal("Member not found")
-	}
-	if found.Role != "admin" {
-		t.Errorf("Expected role 'admin', got '%s'", found.Role)
-	}
-}
-
 func TestWorkflowStore(t *testing.T) {
 	tmpDir := t.TempDir()
 	store, _ := NewJSONStore(tmpDir)

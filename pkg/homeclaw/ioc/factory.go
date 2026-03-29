@@ -17,6 +17,7 @@ import (
 	homeclawtool "github.com/sipeed/picoclaw/pkg/homeclaw/tool"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/video"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/workflow"
+	"github.com/sipeed/picoclaw/pkg/media"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
@@ -39,7 +40,6 @@ type Factory struct {
 	jsonStore      *data.JSONStore
 	deviceStore    data.DeviceStore
 	spaceStore     data.SpaceStore
-	memberStore    data.MemberStore
 	workflowStore  data.WorkflowStore
 	homeStore      data.HomeStore
 	eventCenter    *event.Center
@@ -62,9 +62,6 @@ type Factory struct {
 	// Tool singleton instances - lazy loaded
 	listDevicesTool     *homeclawtool.ListDevicesTool
 	listCamerasTool     *homeclawtool.ListCamerasTool
-	listMembersTool     *homeclawtool.ListMembersTool
-	saveMemberTool      *homeclawtool.SaveMemberTool
-	deleteMemberTool    *homeclawtool.DeleteMemberTool
 	listWorkflowsTool   *homeclawtool.ListWorkflowsTool
 	getWorkflowTool     *homeclawtool.GetWorkflowTool
 	saveWorkflowTool    *homeclawtool.SaveWorkflowTool
@@ -77,6 +74,9 @@ type Factory struct {
 	rtspAnalyzeTool    *homeclawtool.RTSPAnalyzeTool
 	setCurrentHomeTool *homeclawtool.SetCurrentHomeTool
 	getCurrentHomeTool *homeclawtool.GetCurrentHomeTool
+
+	// Media store for sending images to channels
+	mediaStore media.MediaStore
 }
 
 // NewFactory creates a new Factory instance.
@@ -146,24 +146,6 @@ func (f *Factory) GetSpaceStore() (data.SpaceStore, error) {
 		return nil, fmt.Errorf("space store init failed: %w", err)
 	}
 	return f.spaceStore, nil
-}
-
-// GetMemberStore returns the singleton MemberStore instance (lazy initialized)
-func (f *Factory) GetMemberStore() (data.MemberStore, error) {
-	if f.memberStore != nil {
-		return f.memberStore, nil
-	}
-
-	store, err := f.GetJSONStore()
-	if err != nil {
-		return nil, err
-	}
-
-	f.memberStore, err = data.NewMemberStore(store)
-	if err != nil {
-		return nil, fmt.Errorf("member store init failed: %w", err)
-	}
-	return f.memberStore, nil
 }
 
 // GetWorkflowStore returns the singleton WorkflowStore instance (lazy initialized)
@@ -311,11 +293,6 @@ func (f *Factory) GetIntentRouter() (*intent.Router, error) {
 		return nil, err
 	}
 
-	memberStore, err := f.GetMemberStore()
-	if err != nil {
-		return nil, err
-	}
-
 	chatHandler := &intent.ChatIntent{}
 
 	workflowStore, err := f.GetWorkflowStore()
@@ -330,7 +307,6 @@ func (f *Factory) GetIntentRouter() (*intent.Router, error) {
 		deviceControlHandler,
 		intent.NewDeviceMgmtIntent(deviceStore, spaceStore),
 		intent.NewSpaceMgmtIntent(spaceStore),
-		intent.NewUserMgmtIntent(memberStore),
 		&intent.SystemConfigIntent{},
 	)
 
@@ -386,45 +362,6 @@ func (f *Factory) GetListCamerasTool() (*homeclawtool.ListCamerasTool, error) {
 	}
 	f.listCamerasTool = homeclawtool.NewListCamerasTool(store)
 	return f.listCamerasTool, nil
-}
-
-// GetListMembersTool returns the singleton ListMembersTool instance (lazy initialized)
-func (f *Factory) GetListMembersTool() (*homeclawtool.ListMembersTool, error) {
-	if f.listMembersTool != nil {
-		return f.listMembersTool, nil
-	}
-	store, err := f.GetMemberStore()
-	if err != nil {
-		return nil, err
-	}
-	f.listMembersTool = homeclawtool.NewListMembersTool(store)
-	return f.listMembersTool, nil
-}
-
-// GetSaveMemberTool returns the singleton SaveMemberTool instance (lazy initialized)
-func (f *Factory) GetSaveMemberTool() (*homeclawtool.SaveMemberTool, error) {
-	if f.saveMemberTool != nil {
-		return f.saveMemberTool, nil
-	}
-	store, err := f.GetMemberStore()
-	if err != nil {
-		return nil, err
-	}
-	f.saveMemberTool = homeclawtool.NewSaveMemberTool(store)
-	return f.saveMemberTool, nil
-}
-
-// GetDeleteMemberTool returns the singleton DeleteMemberTool instance (lazy initialized)
-func (f *Factory) GetDeleteMemberTool() (*homeclawtool.DeleteMemberTool, error) {
-	if f.deleteMemberTool != nil {
-		return f.deleteMemberTool, nil
-	}
-	store, err := f.GetMemberStore()
-	if err != nil {
-		return nil, err
-	}
-	f.deleteMemberTool = homeclawtool.NewDeleteMemberTool(store)
-	return f.deleteMemberTool, nil
 }
 
 // GetListWorkflowsTool returns the singleton ListWorkflowsTool instance (lazy initialized)
@@ -539,7 +476,20 @@ func (f *Factory) GetRTSPAnalyzeTool() (*homeclawtool.RTSPAnalyzeTool, error) {
 		return f.rtspAnalyzeTool, nil
 	}
 	f.rtspAnalyzeTool = homeclawtool.NewRTSPAnalyzeTool(f.GetFrameGrabber(), f)
+	// Inject media store if available
+	if f.mediaStore != nil {
+		f.rtspAnalyzeTool.SetMediaStore(f.mediaStore)
+	}
 	return f.rtspAnalyzeTool, nil
+}
+
+// SetMediaStore sets the media store for tools that need to send images to channels.
+func (f *Factory) SetMediaStore(store media.MediaStore) {
+	f.mediaStore = store
+	// Propagate to already-created RTSPAnalyzeTool if exists
+	if f.rtspAnalyzeTool != nil {
+		f.rtspAnalyzeTool.SetMediaStore(store)
+	}
 }
 
 // GetSetCurrentHomeTool returns the singleton SetCurrentHomeTool instance (lazy initialized).
