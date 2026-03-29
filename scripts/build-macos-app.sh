@@ -1,5 +1,6 @@
 #!/bin/bash
 # Build macOS .app bundle for PicoClaw Launcher
+# Embeds workspace and config files into the binary
 
 set -e
 
@@ -19,6 +20,33 @@ APP_MACOS="${APP_CONTENTS}/MacOS"
 APP_RESOURCES="${APP_CONTENTS}/Resources"
 APP_EXECUTABLE="picoclaw-launcher"
 ICON_SOURCE="./scripts/icon.icns"
+
+# Workspace embedding paths
+WORKSPACE_SOURCE="./homeclaw-workspace"
+ONBOARD_DIR="./cmd/picoclaw/internal/onboard"
+WORKSPACE_TARGET="${ONBOARD_DIR}/workspace"
+
+echo "=========================================="
+echo "  Step 0: Preparing workspace for embedding"
+echo "=========================================="
+
+# Remove existing workspace in onboard directory
+if [ -d "$WORKSPACE_TARGET" ]; then
+    echo "Removing existing workspace copy..."
+    rm -rf "$WORKSPACE_TARGET"
+fi
+
+# Copy workspace directory to onboard package for embedding
+if [ -d "$WORKSPACE_SOURCE" ]; then
+    echo "Copying workspace to ${WORKSPACE_TARGET}..."
+    cp -r "$WORKSPACE_SOURCE" "$WORKSPACE_TARGET"
+    echo "Workspace prepared for embedding!"
+else
+    echo "Error: Workspace source directory not found: $WORKSPACE_SOURCE"
+    exit 1
+fi
+
+echo ""
 
 # Clean up existing .app
 if [ -d "$APP_PATH" ]; then

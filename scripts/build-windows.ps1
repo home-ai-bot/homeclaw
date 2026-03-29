@@ -1,5 +1,6 @@
 # PicoClaw Windows Build Script
 # Builds all 3 executables: picoclaw, picoclaw-launcher, picoclaw-launcher-tui
+# Embeds workspace and config files into the exe
 
 $ErrorActionPreference = "Stop"
 
@@ -17,6 +18,11 @@ $BuildDir = Join-Path $ProjectRoot "build"
 $GoFlags = "-v -tags stdjson"
 $LdFlags = "-s -w"
 
+# Workspace paths
+$WorkspaceSource = Join-Path $ProjectRoot "homeclaw-workspace"
+$OnboardDir = Join-Path $ProjectRoot "cmd\picoclaw\internal\onboard"
+$WorkspaceTarget = Join-Path $OnboardDir "workspace"
+
 # Ensure build directory exists
 if (!(Test-Path $BuildDir)) {
     New-Item -ItemType Directory -Path $BuildDir | Out-Null
@@ -30,6 +36,24 @@ Write-Color "========================================`n" "Cyan"
 Push-Location $ProjectRoot
 
 try {
+    # Step 0: Copy workspace to embed directory (equivalent to go:generate)
+    Write-Color "[0/3] Preparing workspace for embedding..." "Magenta"
+    
+    # Remove existing workspace in onboard directory
+    if (Test-Path $WorkspaceTarget) {
+        Write-Color "      Removing existing workspace copy..." "Gray"
+        Remove-Item -Recurse -Force $WorkspaceTarget
+    }
+    
+    # Copy workspace directory to onboard package for embedding
+    if (Test-Path $WorkspaceSource) {
+        Write-Color "      Copying workspace to $WorkspaceTarget..." "Gray"
+        Copy-Item -Recurse -Force $WorkspaceSource $WorkspaceTarget
+        Write-Color "      Workspace prepared for embedding!" "Green"
+    } else {
+        throw "Workspace source directory not found: $WorkspaceSource"
+    }
+
     # Build 1: picoclaw.exe
     Write-Color "[1/3] Building picoclaw.exe..." "Yellow"
     $env:CGO_ENABLED = "0"
