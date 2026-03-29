@@ -67,6 +67,23 @@
         "stopping": "服务停止中..."
       },
       "restartRequired": "切换默认模型后需要重启服务才能生效。"
+    },
+    "go2rtc": {
+      "stopDialog": {
+        "title": "停止视频？",
+        "description": "您确定要停止视频服务吗？这将断开当前的视频流。",
+        "confirm": "停止视频"
+      },
+      "action": {
+        "start": "启动视频",
+        "stop": "停止视频",
+        "restart": "重启视频"
+      },
+      "status": {
+        "starting": "视频启动中...",
+        "restarting": "视频重启中...",
+        "stopping": "视频停止中..."
+      }
     }
   },
   "common": {

@@ -67,6 +67,23 @@
         "stopping": "Stopping Gateway..."
       },
       "restartRequired": "Model changes require a gateway restart to take effect."
+    },
+    "go2rtc": {
+      "stopDialog": {
+        "title": "Stop Video Service?",
+        "description": "Are you sure you want to stop the video service? This will disconnect active video streams.",
+        "confirm": "Stop Video"
+      },
+      "action": {
+        "start": "Start Video",
+        "stop": "Stop Video",
+        "restart": "Restart Video"
+      },
+      "status": {
+        "starting": "Starting Video...",
+        "restarting": "Restarting Video...",
+        "stopping": "Stopping Video..."
+      }
     }
   },
   "common": {

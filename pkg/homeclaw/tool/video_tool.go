@@ -36,12 +36,10 @@ func NewRTSPAnalyzeTool(grabber *video.FrameGrabber, factory IntentProviderFacto
 	}
 }
 
-func (t *RTSPAnalyzeTool) Name() string { return "hc_analyze_rtsp_frame" }
+func (t *RTSPAnalyzeTool) Name() string { return "hc_internal_3" }
 
 func (t *RTSPAnalyzeTool) Description() string {
-	return "Capture a single frame from an RTSP camera stream and analyze its visual content " +
-		"using the intent vision model. Returns a natural-language description of what is " +
-		"visible in the frame, suitable for home automation decisions."
+	return "IMPORTANT: The rtsp_url MUST be obtained from hc_list_cameras. Do NOT fabricate or guess any URL."
 }
 
 func (t *RTSPAnalyzeTool) Parameters() map[string]any {
@@ -50,7 +48,7 @@ func (t *RTSPAnalyzeTool) Parameters() map[string]any {
 		"properties": map[string]any{
 			"rtsp_url": map[string]any{
 				"type":        "string",
-				"description": "Full RTSP URL of the camera stream, e.g. rtsp://user:pass@192.168.1.100:554/stream",
+				"description": "Full RTSP URL of the camera stream. MUST be obtained from hc_list_cameras. Do NOT fabricate or guess any URL.",
 			},
 			"prompt": map[string]any{
 				"type":        "string",

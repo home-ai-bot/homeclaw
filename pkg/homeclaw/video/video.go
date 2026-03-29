@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
@@ -19,7 +21,11 @@ import (
 // supported across all ffmpeg builds. For a single-frame capture ffmpeg exits as
 // soon as the frame is written, so this only fires when the stream is unreachable
 // or stalled, preventing indefinite hangs.
-const rtspConnTimeoutSec = 4 // 10 seconds
+const rtspConnTimeoutSec = 4 // 4 seconds
+
+// ffmpegTimeout is the maximum duration allowed for ffmpeg execution.
+// This ensures the operation never hangs indefinitely even if ffmpeg gets stuck.
+const ffmpegTimeout = 6 * time.Second
 
 // FrameGrabber captures a single frame from an RTSP (or any FFmpeg-compatible) stream.
 type FrameGrabber struct {
@@ -48,7 +54,13 @@ func NewFrameGrabber() *FrameGrabber {
 // Instead, -ss is placed on the output side so ffmpeg decodes and discards
 // frames for SeekSeconds before capturing, which works universally.
 func (g *FrameGrabber) buildInputOpts() ffmpeg.KwArgs {
-	opts := ffmpeg.KwArgs{}
+	opts := ffmpeg.KwArgs{
+		// Ignore decoding errors (e.g., HEVC "Could not find ref with POC 0")
+		// that occur when starting mid-stream without reference frames.
+		"err_detect": "ignore_err",
+		// Discard corrupt packets and generate missing PTS values
+		"fflags": "+discardcorrupt+genpts",
+	}
 	if g.RTSPTransport != "" {
 		opts["rtsp_transport"] = g.RTSPTransport
 	}
@@ -76,8 +88,14 @@ func (g *FrameGrabber) buildOutputOpts(extra ffmpeg.KwArgs) ffmpeg.KwArgs {
 // runWithContext compiles a Stream to an *exec.Cmd, starts it, and waits for
 // completion while honouring ctx cancellation. When ctx is cancelled the
 // ffmpeg process is killed immediately.
+// An internal timeout of ffmpegTimeout is enforced to prevent indefinite hangs.
 // stderr is captured and included in the returned error to aid diagnosis.
 func runWithContext(ctx context.Context, stream *ffmpeg.Stream) error {
+	// Enforce an internal timeout to prevent hangs when ffmpeg gets stuck
+	// (e.g., TCP connection waiting for unreachable RTSP server).
+	ctx, cancel := context.WithTimeout(ctx, ffmpegTimeout)
+	defer cancel()
+
 	cmd := stream.Compile()
 
 	var stderrBuf bytes.Buffer
@@ -204,8 +222,15 @@ func uniqueID() uint64 {
 // Call this at startup or in tool.Execute to surface a clear message
 // instead of a cryptic process-launch failure.
 func CheckFFmpeg() error {
-	_, err := exec.LookPath("ffmpeg")
+	path, err := exec.LookPath("ffmpeg")
 	if err != nil {
+		// Go 1.19+ returns exec.ErrDot when executable is found in current directory.
+		// This is a security feature, but if LookPath returned a path, ffmpeg exists.
+		// We accept it if the path is valid (user explicitly placed ffmpeg there).
+		if path != "" && errors.Is(err, exec.ErrDot) {
+			// ffmpeg found in current directory - this is acceptable
+			return nil
+		}
 		return fmt.Errorf("ffmpeg binary not found on PATH: %w\nInstall ffmpeg and ensure it is accessible (e.g. add its directory to the system PATH)", err)
 	}
 	return nil

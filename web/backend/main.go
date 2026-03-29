@@ -211,6 +211,12 @@ func main() {
 		apiHandler.TryAutoStartGateway()
 	}()
 
+	// Auto-start go2rtc after backend starts listening.
+	go func() {
+		time.Sleep(1 * time.Second)
+		apiHandler.TryAutoStartGo2RTC()
+	}()
+
 	// Start the Server in a goroutine
 	server = &http.Server{Addr: addr, Handler: handler}
 	go func() {

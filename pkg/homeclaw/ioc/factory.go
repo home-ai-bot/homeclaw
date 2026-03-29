@@ -61,6 +61,7 @@ type Factory struct {
 
 	// Tool singleton instances - lazy loaded
 	listDevicesTool     *homeclawtool.ListDevicesTool
+	listCamerasTool     *homeclawtool.ListCamerasTool
 	listMembersTool     *homeclawtool.ListMembersTool
 	saveMemberTool      *homeclawtool.SaveMemberTool
 	deleteMemberTool    *homeclawtool.DeleteMemberTool
@@ -372,6 +373,19 @@ func (f *Factory) GetListDevicesTool() (*homeclawtool.ListDevicesTool, error) {
 	}
 	f.listDevicesTool = homeclawtool.NewListDevicesTool(store)
 	return f.listDevicesTool, nil
+}
+
+// GetListCamerasTool returns the singleton ListCamerasTool instance (lazy initialized)
+func (f *Factory) GetListCamerasTool() (*homeclawtool.ListCamerasTool, error) {
+	if f.listCamerasTool != nil {
+		return f.listCamerasTool, nil
+	}
+	store, err := f.GetDeviceStore()
+	if err != nil {
+		return nil, err
+	}
+	f.listCamerasTool = homeclawtool.NewListCamerasTool(store)
+	return f.listCamerasTool, nil
 }
 
 // GetListMembersTool returns the singleton ListMembersTool instance (lazy initialized)

@@ -48,6 +48,9 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// Gateway process lifecycle
 	h.registerGatewayRoutes(mux)
 
+	// Go2RTC process lifecycle
+	h.registerGo2RTCRoutes(mux)
+
 	// Session history
 	h.registerSessionRoutes(mux)
 
@@ -71,7 +74,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	h.registerLauncherConfigRoutes(mux)
 }
 
-// Shutdown gracefully shuts down the handler, stopping the gateway if it was started by this handler.
+// Shutdown gracefully shuts down the handler, stopping the gateway and go2rtc if they were started by this handler.
 func (h *Handler) Shutdown() {
 	h.StopGateway()
+	h.StopGo2RTC()
 }

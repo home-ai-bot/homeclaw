@@ -157,6 +157,7 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	registerTool(toolRegistry, f.GetGetCurrentHomeTool)
 	// Device tools
 	registerTool(toolRegistry, f.GetListDevicesTool)
+	registerTool(toolRegistry, f.GetListCamerasTool)
 
 	// Member tools
 	registerTool(toolRegistry, f.GetListMembersTool)

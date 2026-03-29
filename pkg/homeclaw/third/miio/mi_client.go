@@ -43,6 +43,7 @@ type MiClient struct {
 	specFetcher *SpecFetcher
 	deviceStore midata.MiDeviceStore
 	baseURL     string
+	country     string // region code (cn, de, ru, sg, i2, us, etc.)
 
 	// in-memory cache for quick access
 	deviceCache map[string]*midata.DeviceInfo // deviceID -> DeviceInfo
@@ -64,8 +65,15 @@ func NewMiClient(cloud *xiaomi.Cloud, country, workspace string, deviceStore mid
 		specFetcher: NewSpecFetcher(workspace),
 		deviceStore: deviceStore,
 		baseURL:     getBaseURL(country),
+		country:     country,
 		deviceCache: make(map[string]*midata.DeviceInfo),
 	}
+}
+
+// GetUserAndRegion returns the authenticated user ID and region code.
+func (c *MiClient) GetUserAndRegion() (userID string, region string) {
+	userID, _ = c.cloud.UserToken()
+	return userID, c.country
 }
 
 // Brand returns the brand identifier for Xiaomi platform.

@@ -8,6 +8,8 @@ import {
   IconPower,
   IconRefresh,
   IconSun,
+  IconVideo,
+  IconVideoOff,
 } from "@tabler/icons-react"
 import { Link } from "@tanstack/react-router"
 import * as React from "react"
@@ -38,6 +40,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { useGateway } from "@/hooks/use-gateway.ts"
+import { useGo2RTC } from "@/hooks/use-go2rtc.ts"
 import { useTheme } from "@/hooks/use-theme.ts"
 
 export function AppHeader() {
@@ -53,6 +56,15 @@ export function AppHeader() {
     stop,
   } = useGateway()
 
+  const {
+    state: videoState,
+    loading: videoLoading,
+    canStart: videoCanStart,
+    start: videoStart,
+    restart: videoRestart,
+    stop: videoStop,
+  } = useGo2RTC()
+
   const isRunning = gwState === "running"
   const isStarting = gwState === "starting"
   const isRestarting = gwState === "restarting"
@@ -64,7 +76,14 @@ export function AppHeader() {
     canStart &&
     (gwState === "stopped" || gwState === "error")
 
+  const videoIsRunning = videoState === "running"
+  const videoIsStarting = videoState === "starting"
+  const videoIsRestarting = videoState === "restarting"
+  const videoIsStopping = videoState === "stopping"
+  const videoIsStopped = videoState === "stopped" || videoState === "unknown"
+
   const [showStopDialog, setShowStopDialog] = React.useState(false)
+  const [showVideoStopDialog, setShowVideoStopDialog] = React.useState(false)
 
   const handleGatewayToggle = () => {
     if (gwLoading || isRestarting || isStopping || (!isRunning && !canStart)) {
@@ -85,6 +104,27 @@ export function AppHeader() {
   const confirmStop = () => {
     setShowStopDialog(false)
     stop()
+  }
+
+  const handleVideoToggle = () => {
+    if (videoLoading || videoIsRestarting || videoIsStopping || (!videoIsRunning && !videoCanStart)) {
+      return
+    }
+    if (videoIsRunning) {
+      setShowVideoStopDialog(true)
+    } else {
+      void videoStart()
+    }
+  }
+
+  const handleVideoRestart = () => {
+    if (videoLoading || videoIsRestarting || !videoIsRunning) return
+    void videoRestart()
+  }
+
+  const confirmVideoStop = () => {
+    setShowVideoStopDialog(false)
+    videoStop()
   }
 
   return (
@@ -129,6 +169,28 @@ export function AppHeader() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {t("header.gateway.stopDialog.confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showVideoStopDialog} onOpenChange={setShowVideoStopDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("header.go2rtc.stopDialog.title")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("header.go2rtc.stopDialog.description")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmVideoStop}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t("header.go2rtc.stopDialog.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -199,6 +261,72 @@ export function AppHeader() {
                   : isStarting
                     ? t("header.gateway.status.starting")
                     : t("header.gateway.action.start")}
+            </span>
+          </Button>
+        )}
+
+        {/* Video Start/Restart/Stop */}
+        {videoIsRunning && (
+          <Tooltip delayDuration={700}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="secondary"
+                size="icon-sm"
+                className="size-8 bg-amber-500/15 text-amber-700 hover:bg-amber-500/25 hover:text-amber-800 dark:text-amber-300 dark:hover:bg-amber-500/25"
+                onClick={handleVideoRestart}
+                disabled={videoLoading || videoIsRestarting || videoIsStopping}
+                aria-label={t("header.go2rtc.action.restart")}
+              >
+                <IconRefresh className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("header.go2rtc.action.restart")}</TooltipContent>
+          </Tooltip>
+        )}
+
+        {videoIsRunning ? (
+          <Tooltip delayDuration={700}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="destructive"
+                size="icon-sm"
+                className="size-8"
+                onClick={handleVideoToggle}
+                disabled={videoLoading}
+                aria-label={t("header.go2rtc.action.stop")}
+              >
+                <IconVideoOff className="h-4 w-4 opacity-80" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("header.go2rtc.action.stop")}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <Button
+            variant={
+              videoIsStarting || videoIsRestarting || videoIsStopping ? "secondary" : "outline"
+            }
+            size="sm"
+            className={`h-8 gap-2 px-3 ${
+              videoIsStopped ? "border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-500/10" : ""
+            }`}
+            onClick={handleVideoToggle}
+            disabled={
+              videoLoading || videoIsStarting || videoIsRestarting || videoIsStopping || !videoCanStart
+            }
+          >
+            {videoLoading || videoIsStarting || videoIsRestarting || videoIsStopping ? (
+              <IconLoader2 className="h-4 w-4 animate-spin opacity-70" />
+            ) : (
+              <IconVideo className="h-4 w-4 opacity-80" />
+            )}
+            <span className="text-xs font-semibold">
+              {videoIsStopping
+                ? t("header.go2rtc.status.stopping")
+                : videoIsRestarting
+                  ? t("header.go2rtc.status.restarting")
+                  : videoIsStarting
+                    ? t("header.go2rtc.status.starting")
+                    : t("header.go2rtc.action.start")}
             </span>
           </Button>
         )}

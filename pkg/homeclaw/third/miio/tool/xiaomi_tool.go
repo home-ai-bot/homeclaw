@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio/util"
@@ -224,6 +225,19 @@ func (t *SyncDevicesTool) Execute(ctx context.Context, args map[string]any) *too
 				continue
 			}
 		}
+
+		// Check if device is a camera and add to go2rtc streams config
+		if hasCamera(d.Type) && d.IP != "" {
+			user, region := t.client.GetUserAndRegion()
+			if user != "" {
+				streamName := d.From + "_" + d.FromID
+				streamURL := fmt.Sprintf("xiaomi://%s:%s@%s?did=%s&model=%s#video=copy#audio=pcmu",
+					user, region, d.IP, d.FromID, d.Type)
+				if err := config.PatchGo2RTCConfig([]string{"streams", streamName}, []string{streamURL}); err != nil {
+					specErrors = append(specErrors, fmt.Sprintf("%s: go2rtc config error - %v", d.Name, err))
+				}
+			}
+		}
 		specProcessed++
 	}
 
@@ -368,4 +382,33 @@ func (t *GetSpecCommandsTool) Execute(_ context.Context, args map[string]any) *t
 	}
 
 	return tools.NewToolResult(commandsJSON)
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Helper functions
+// ────────────────────────────────────────────────────────────────────────────────
+
+// hasCamera checks if the device model indicates a camera device.
+func hasCamera(model string) bool {
+	return strings.Contains(model, ".camera.") ||
+		strings.Contains(model, ".cateye.") ||
+		strings.Contains(model, ".feeder.")
+}
+
+// sanitizeStreamName converts device name to a valid stream name.
+// It replaces spaces with underscores and removes special characters.
+func sanitizeStreamName(name string) string {
+	name = strings.ReplaceAll(name, " ", "_")
+	name = strings.ReplaceAll(name, "-", "_")
+	// Remove any non-alphanumeric characters except underscore
+	var result strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r > 127 {
+			result.WriteRune(r)
+		}
+	}
+	if result.Len() == 0 {
+		return "xiaomi_camera"
+	}
+	return result.String()
 }
