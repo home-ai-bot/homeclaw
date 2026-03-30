@@ -218,6 +218,9 @@ func (c *MiClient) GetDevices(homeID string) ([]*data.Device, error) {
 		if c.deviceStore != nil {
 			_ = c.deviceStore.Save(d)
 		}
+		if !d.IsOnline {
+			continue
+		}
 		result = append(result, &data.Device{
 			FromID:    d.DID,
 			From:      BrandXiaomi,
@@ -227,7 +230,6 @@ func (c *MiClient) GetDevices(homeID string) ([]*data.Device, error) {
 			Token:     d.Token,
 			URN:       d.SpecType,
 			SpaceName: d.RoomName,
-			Online:    d.IsOnline,
 		})
 	}
 

@@ -40,7 +40,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { useGateway } from "@/hooks/use-gateway.ts"
-import { useGo2RTC } from "@/hooks/use-go2rtc.ts"
+import { useGo2RTC } from "@/homeclaw/hooks/use-go2rtc"
 import { useTheme } from "@/hooks/use-theme.ts"
 
 export function AppHeader() {

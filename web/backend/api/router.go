@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/sipeed/picoclaw/web/backend/homeclaw"
 	"github.com/sipeed/picoclaw/web/backend/launcherconfig"
 )
 
@@ -17,15 +18,17 @@ type Handler struct {
 	oauthMu              sync.Mutex
 	oauthFlows           map[string]*oauthFlow
 	oauthState           map[string]string
+	go2rtcManager        *homeclaw.Go2RTCManager
 }
 
 // NewHandler creates an instance of the API handler.
 func NewHandler(configPath string) *Handler {
 	return &Handler{
-		configPath: configPath,
-		serverPort: launcherconfig.DefaultPort,
-		oauthFlows: make(map[string]*oauthFlow),
-		oauthState: make(map[string]string),
+		configPath:    configPath,
+		serverPort:    launcherconfig.DefaultPort,
+		oauthFlows:    make(map[string]*oauthFlow),
+		oauthState:    make(map[string]string),
+		go2rtcManager: homeclaw.NewGo2RTCManager(),
 	}
 }
 
@@ -48,8 +51,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// Gateway process lifecycle
 	h.registerGatewayRoutes(mux)
 
-	// Go2RTC process lifecycle
-	h.registerGo2RTCRoutes(mux)
+	// Go2RTC process lifecycle (homeclaw)
+	h.go2rtcManager.RegisterRoutes(mux)
 
 	// Session history
 	h.registerSessionRoutes(mux)
@@ -77,5 +80,10 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 // Shutdown gracefully shuts down the handler, stopping the gateway and go2rtc if they were started by this handler.
 func (h *Handler) Shutdown() {
 	h.StopGateway()
-	h.StopGo2RTC()
+	h.go2rtcManager.Stop()
+}
+
+// TryAutoStartGo2RTC delegates to the Go2RTCManager to auto-start go2rtc.
+func (h *Handler) TryAutoStartGo2RTC() {
+	h.go2rtcManager.TryAutoStart()
 }

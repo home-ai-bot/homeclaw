@@ -1,7 +1,7 @@
 import { useAtomValue } from "jotai"
 import { useCallback, useEffect, useState } from "react"
 
-import { restartGo2RTC, startGo2RTC, stopGo2RTC } from "@/api/go2rtc"
+import { restartGo2RTC, startGo2RTC, stopGo2RTC } from "@/homeclaw/api/go2rtc"
 import {
   beginGo2RTCStoppingTransition,
   cancelGo2RTCStoppingTransition,
@@ -9,7 +9,7 @@ import {
   refreshGo2RTCState,
   subscribeGo2RTCPolling,
   updateGo2RTCStore,
-} from "@/store"
+} from "@/homeclaw/store/go2rtc"
 
 export function useGo2RTC() {
   const go2rtc = useAtomValue(go2rtcAtom)

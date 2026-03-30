@@ -15,7 +15,6 @@ type Device struct {
 	From      string   `json:"from"`
 	Name      string   `json:"name"`
 	Type      string   `json:"type"`
-	Online    bool     `json:"online"` // Whether the device is online
 	IP        string   `json:"ip"`
 	Token     string   `json:"token"`
 	URN       string   `json:"urn,omitempty"`

@@ -1,6 +1,6 @@
 import { atom, getDefaultStore } from "jotai"
 
-import { type Go2RTCStatusResponse, getGo2RTCStatus } from "@/api/go2rtc"
+import { type Go2RTCStatusResponse, getGo2RTCStatus } from "@/homeclaw/api/go2rtc"
 
 export type Go2RTCState =
   | "running"

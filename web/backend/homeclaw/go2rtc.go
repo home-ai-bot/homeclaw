@@ -1,4 +1,4 @@
-package api
+package homeclaw
 
 import (
 	"bufio"
@@ -20,16 +20,13 @@ import (
 	"github.com/sipeed/picoclaw/web/backend/utils"
 )
 
-// go2rtcProcess holds the state for the managed go2rtc process.
-var go2rtcProcess = struct {
+// Go2RTCManager manages the go2rtc subprocess lifecycle.
+type Go2RTCManager struct {
 	mu            sync.Mutex
 	cmd           *exec.Cmd
 	owned         bool // true if we started the process, false if we attached to an existing one
 	runtimeStatus string
 	logs          *LogBuffer
-}{
-	runtimeStatus: "stopped",
-	logs:          NewLogBuffer(200),
 }
 
 var (
@@ -38,27 +35,35 @@ var (
 	go2rtcRestartPollInterval    = 100 * time.Millisecond
 )
 
-// registerGo2RTCRoutes binds go2rtc lifecycle endpoints to the ServeMux.
-func (h *Handler) registerGo2RTCRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/go2rtc/status", h.handleGo2RTCStatus)
-	mux.HandleFunc("GET /api/go2rtc/logs", h.handleGo2RTCLogs)
-	mux.HandleFunc("POST /api/go2rtc/logs/clear", h.handleGo2RTCClearLogs)
-	mux.HandleFunc("POST /api/go2rtc/start", h.handleGo2RTCStart)
-	mux.HandleFunc("POST /api/go2rtc/stop", h.handleGo2RTCStop)
-	mux.HandleFunc("POST /api/go2rtc/restart", h.handleGo2RTCRestart)
+// NewGo2RTCManager creates a new Go2RTCManager instance.
+func NewGo2RTCManager() *Go2RTCManager {
+	return &Go2RTCManager{
+		runtimeStatus: "stopped",
+		logs:          NewLogBuffer(200),
+	}
 }
 
-// TryAutoStartGo2RTC checks whether go2rtc start preconditions are met and
-// starts it when possible. Intended to be called by the backend at startup.
-func (h *Handler) TryAutoStartGo2RTC() {
-	go2rtcProcess.mu.Lock()
-	defer go2rtcProcess.mu.Unlock()
+// RegisterRoutes binds go2rtc lifecycle endpoints to the ServeMux.
+func (m *Go2RTCManager) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/go2rtc/status", m.handleStatus)
+	mux.HandleFunc("GET /api/go2rtc/logs", m.handleLogs)
+	mux.HandleFunc("POST /api/go2rtc/logs/clear", m.handleClearLogs)
+	mux.HandleFunc("POST /api/go2rtc/start", m.handleStart)
+	mux.HandleFunc("POST /api/go2rtc/stop", m.handleStop)
+	mux.HandleFunc("POST /api/go2rtc/restart", m.handleRestart)
+}
 
-	if go2rtcProcess.cmd != nil && go2rtcProcess.cmd.Process != nil {
-		go2rtcProcess.cmd = nil
+// TryAutoStart checks whether go2rtc start preconditions are met and
+// starts it when possible. Intended to be called by the backend at startup.
+func (m *Go2RTCManager) TryAutoStart() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.cmd != nil && m.cmd.Process != nil {
+		m.cmd = nil
 	}
 
-	ready, reason, err := h.go2rtcStartReady()
+	ready, reason, err := m.startReady()
 	if err != nil {
 		logger.ErrorC("go2rtc", fmt.Sprintf("Skip auto-starting go2rtc: %v", err))
 		return
@@ -68,7 +73,7 @@ func (h *Handler) TryAutoStartGo2RTC() {
 		return
 	}
 
-	pid, err := h.startGo2RTCLocked()
+	pid, err := m.startLocked()
 	if err != nil {
 		logger.ErrorC("go2rtc", fmt.Sprintf("Failed to auto-start go2rtc: %v", err))
 		return
@@ -76,8 +81,8 @@ func (h *Handler) TryAutoStartGo2RTC() {
 	logger.InfoC("go2rtc", fmt.Sprintf("go2rtc auto-started (PID: %d)", pid))
 }
 
-// go2rtcStartReady validates whether current config can start go2rtc.
-func (h *Handler) go2rtcStartReady() (bool, string, error) {
+// startReady validates whether current config can start go2rtc.
+func (m *Go2RTCManager) startReady() (bool, string, error) {
 	configPath := hcconfig.GetGo2RTCPath()
 
 	// Check if config file exists
@@ -124,7 +129,7 @@ func findGo2RTCBinary() string {
 	return binaryName
 }
 
-func isGo2RTCProcessAliveLocked(cmd *exec.Cmd) bool {
+func (m *Go2RTCManager) isProcessAliveLocked(cmd *exec.Cmd) bool {
 	if cmd == nil || cmd.Process == nil {
 		return false
 	}
@@ -143,18 +148,18 @@ func isGo2RTCProcessAliveLocked(cmd *exec.Cmd) bool {
 	return cmd.Process.Signal(syscall.Signal(0)) == nil
 }
 
-func setGo2RTCRuntimeStatusLocked(status string) {
-	go2rtcProcess.runtimeStatus = status
+func (m *Go2RTCManager) setRuntimeStatusLocked(status string) {
+	m.runtimeStatus = status
 }
 
-func waitForGo2RTCProcessExit(cmd *exec.Cmd, timeout time.Duration) bool {
+func (m *Go2RTCManager) waitForProcessExit(cmd *exec.Cmd, timeout time.Duration) bool {
 	if cmd == nil || cmd.Process == nil {
 		return true
 	}
 
 	deadline := time.Now().Add(timeout)
 	for {
-		if !isGo2RTCProcessAliveLocked(cmd) {
+		if !m.isProcessAliveLocked(cmd) {
 			return true
 		}
 		if time.Now().After(deadline) {
@@ -164,20 +169,20 @@ func waitForGo2RTCProcessExit(cmd *exec.Cmd, timeout time.Duration) bool {
 	}
 }
 
-// StopGo2RTC stops the go2rtc process if it was started by this handler.
+// Stop stops the go2rtc process if it was started by this manager.
 // This method is called during application shutdown to ensure the go2rtc subprocess
-// is properly terminated. It only stops processes that were started by this handler,
+// is properly terminated. It only stops processes that were started by this manager,
 // not processes that were attached to from existing instances.
-func (h *Handler) StopGo2RTC() {
-	go2rtcProcess.mu.Lock()
-	defer go2rtcProcess.mu.Unlock()
+func (m *Go2RTCManager) Stop() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	// Only stop if we own the process (started it ourselves)
-	if !go2rtcProcess.owned || go2rtcProcess.cmd == nil || go2rtcProcess.cmd.Process == nil {
+	if !m.owned || m.cmd == nil || m.cmd.Process == nil {
 		return
 	}
 
-	pid, err := stopGo2RTCLocked()
+	pid, err := m.stopLocked()
 	if err != nil {
 		logger.ErrorC("go2rtc", fmt.Sprintf("Failed to stop go2rtc (PID %d): %v", pid, err))
 		return
@@ -186,22 +191,22 @@ func (h *Handler) StopGo2RTC() {
 	logger.InfoC("go2rtc", fmt.Sprintf("go2rtc stopped (PID: %d)", pid))
 }
 
-// stopGo2RTCLocked sends a stop signal to the go2rtc process.
-// Assumes go2rtcProcess.mu is held by the caller.
+// stopLocked sends a stop signal to the go2rtc process.
+// Assumes m.mu is held by the caller.
 // Returns the PID of the stopped process and any error encountered.
-func stopGo2RTCLocked() (int, error) {
-	if go2rtcProcess.cmd == nil || go2rtcProcess.cmd.Process == nil {
+func (m *Go2RTCManager) stopLocked() (int, error) {
+	if m.cmd == nil || m.cmd.Process == nil {
 		return 0, nil
 	}
 
-	pid := go2rtcProcess.cmd.Process.Pid
+	pid := m.cmd.Process.Pid
 
 	// Send SIGTERM for graceful shutdown (SIGKILL on Windows)
 	var sigErr error
 	if runtime.GOOS == "windows" {
-		sigErr = go2rtcProcess.cmd.Process.Kill()
+		sigErr = m.cmd.Process.Kill()
 	} else {
-		sigErr = go2rtcProcess.cmd.Process.Signal(syscall.SIGTERM)
+		sigErr = m.cmd.Process.Signal(syscall.SIGTERM)
 	}
 
 	if sigErr != nil {
@@ -209,15 +214,15 @@ func stopGo2RTCLocked() (int, error) {
 	}
 
 	logger.InfoC("go2rtc", fmt.Sprintf("Sent stop signal to go2rtc (PID: %d)", pid))
-	go2rtcProcess.cmd = nil
-	go2rtcProcess.owned = false
-	setGo2RTCRuntimeStatusLocked("stopped")
+	m.cmd = nil
+	m.owned = false
+	m.setRuntimeStatusLocked("stopped")
 
 	return pid, nil
 }
 
-func stopGo2RTCProcessForRestart(cmd *exec.Cmd) error {
-	if cmd == nil || cmd.Process == nil || !isGo2RTCProcessAliveLocked(cmd) {
+func (m *Go2RTCManager) stopProcessForRestart(cmd *exec.Cmd) error {
+	if cmd == nil || cmd.Process == nil || !m.isProcessAliveLocked(cmd) {
 		return nil
 	}
 
@@ -227,20 +232,20 @@ func stopGo2RTCProcessForRestart(cmd *exec.Cmd) error {
 	} else {
 		stopErr = cmd.Process.Signal(syscall.SIGTERM)
 	}
-	if stopErr != nil && isGo2RTCProcessAliveLocked(cmd) {
+	if stopErr != nil && m.isProcessAliveLocked(cmd) {
 		return fmt.Errorf("failed to stop existing go2rtc: %w", stopErr)
 	}
 
-	if waitForGo2RTCProcessExit(cmd, go2rtcRestartGracePeriod) {
+	if m.waitForProcessExit(cmd, go2rtcRestartGracePeriod) {
 		return nil
 	}
 
 	if runtime.GOOS != "windows" {
 		killErr := cmd.Process.Signal(syscall.SIGKILL)
-		if killErr != nil && isGo2RTCProcessAliveLocked(cmd) {
+		if killErr != nil && m.isProcessAliveLocked(cmd) {
 			return fmt.Errorf("failed to force-stop existing go2rtc: %w", killErr)
 		}
-		if waitForGo2RTCProcessExit(cmd, go2rtcRestartForceKillWindow) {
+		if m.waitForProcessExit(cmd, go2rtcRestartForceKillWindow) {
 			return nil
 		}
 	}
@@ -248,7 +253,7 @@ func stopGo2RTCProcessForRestart(cmd *exec.Cmd) error {
 	return fmt.Errorf("existing go2rtc did not exit before restart")
 }
 
-func (h *Handler) startGo2RTCLocked() (int, error) {
+func (m *Go2RTCManager) startLocked() (int, error) {
 	configPath := hcconfig.GetGo2RTCPath()
 
 	// Locate the go2rtc executable
@@ -268,21 +273,21 @@ func (h *Handler) startGo2RTCLocked() (int, error) {
 	}
 
 	// Clear old logs for this new run
-	go2rtcProcess.logs.Reset()
+	m.logs.Reset()
 
 	if err := cmd.Start(); err != nil {
 		return 0, fmt.Errorf("failed to start go2rtc: %w", err)
 	}
 
-	go2rtcProcess.cmd = cmd
-	go2rtcProcess.owned = true // We started this process
-	setGo2RTCRuntimeStatusLocked("running")
+	m.cmd = cmd
+	m.owned = true // We started this process
+	m.setRuntimeStatusLocked("running")
 	pid := cmd.Process.Pid
 	logger.InfoC("go2rtc", fmt.Sprintf("Started go2rtc (PID: %d) from %s with config %s", pid, execPath, configPath))
 
 	// Capture stdout/stderr in background
-	go scanGo2RTCPipe(stdoutPipe, go2rtcProcess.logs)
-	go scanGo2RTCPipe(stderrPipe, go2rtcProcess.logs)
+	go scanPipe(stdoutPipe, m.logs)
+	go scanPipe(stderrPipe, m.logs)
 
 	// Wait for exit in background and clean up
 	go func() {
@@ -292,40 +297,40 @@ func (h *Handler) startGo2RTCLocked() (int, error) {
 			logger.InfoC("go2rtc", "go2rtc process exited normally")
 		}
 
-		go2rtcProcess.mu.Lock()
-		if go2rtcProcess.cmd == cmd {
-			go2rtcProcess.cmd = nil
-			setGo2RTCRuntimeStatusLocked("stopped")
+		m.mu.Lock()
+		if m.cmd == cmd {
+			m.cmd = nil
+			m.setRuntimeStatusLocked("stopped")
 		}
-		go2rtcProcess.mu.Unlock()
+		m.mu.Unlock()
 	}()
 
 	return pid, nil
 }
 
-// handleGo2RTCStart starts the go2rtc subprocess.
+// handleStart starts the go2rtc subprocess.
 //
 //	POST /api/go2rtc/start
-func (h *Handler) handleGo2RTCStart(w http.ResponseWriter, r *http.Request) {
-	go2rtcProcess.mu.Lock()
-	defer go2rtcProcess.mu.Unlock()
+func (m *Go2RTCManager) handleStart(w http.ResponseWriter, r *http.Request) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	if go2rtcProcess.cmd != nil && go2rtcProcess.cmd.Process != nil && isGo2RTCProcessAliveLocked(go2rtcProcess.cmd) {
+	if m.cmd != nil && m.cmd.Process != nil && m.isProcessAliveLocked(m.cmd) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"status": "already_running",
-			"pid":    go2rtcProcess.cmd.Process.Pid,
+			"pid":    m.cmd.Process.Pid,
 		})
 		return
 	}
 
 	// Clear any stale cmd reference
-	if go2rtcProcess.cmd != nil {
-		go2rtcProcess.cmd = nil
-		setGo2RTCRuntimeStatusLocked("stopped")
+	if m.cmd != nil {
+		m.cmd = nil
+		m.setRuntimeStatusLocked("stopped")
 	}
 
-	ready, reason, err := h.go2rtcStartReady()
+	ready, reason, err := m.startReady()
 	if err != nil {
 		http.Error(
 			w,
@@ -344,7 +349,7 @@ func (h *Handler) handleGo2RTCStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pid, err := h.startGo2RTCLocked()
+	pid, err := m.startLocked()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to start go2rtc: %v", err), http.StatusInternalServerError)
 		return
@@ -357,14 +362,14 @@ func (h *Handler) handleGo2RTCStart(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleGo2RTCStop stops the running go2rtc subprocess gracefully.
+// handleStop stops the running go2rtc subprocess gracefully.
 //
 //	POST /api/go2rtc/stop
-func (h *Handler) handleGo2RTCStop(w http.ResponseWriter, r *http.Request) {
-	go2rtcProcess.mu.Lock()
-	defer go2rtcProcess.mu.Unlock()
+func (m *Go2RTCManager) handleStop(w http.ResponseWriter, r *http.Request) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	if go2rtcProcess.cmd == nil || go2rtcProcess.cmd.Process == nil {
+	if m.cmd == nil || m.cmd.Process == nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"status": "not_running",
@@ -372,7 +377,7 @@ func (h *Handler) handleGo2RTCStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pid, err := stopGo2RTCLocked()
+	pid, err := m.stopLocked()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to stop go2rtc (PID %d): %v", pid, err), http.StatusInternalServerError)
 		return
@@ -385,47 +390,47 @@ func (h *Handler) handleGo2RTCStop(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// RestartGo2RTC restarts the go2rtc process. This is a non-blocking operation
+// Restart restarts the go2rtc process. This is a non-blocking operation
 // that stops the current go2rtc (if running) and starts a new one.
 // Returns the PID of the new go2rtc process or an error.
-func (h *Handler) RestartGo2RTC() (int, error) {
-	ready, reason, err := h.go2rtcStartReady()
+func (m *Go2RTCManager) Restart() (int, error) {
+	ready, reason, err := m.startReady()
 	if err != nil {
 		return 0, fmt.Errorf("failed to validate go2rtc start conditions: %w", err)
 	}
 	if !ready {
-		return 0, &go2rtcPreconditionFailedError{reason: reason}
+		return 0, &PreconditionFailedError{reason: reason}
 	}
 
-	go2rtcProcess.mu.Lock()
-	previousCmd := go2rtcProcess.cmd
-	setGo2RTCRuntimeStatusLocked("restarting")
-	go2rtcProcess.mu.Unlock()
+	m.mu.Lock()
+	previousCmd := m.cmd
+	m.setRuntimeStatusLocked("restarting")
+	m.mu.Unlock()
 
-	if err = stopGo2RTCProcessForRestart(previousCmd); err != nil {
-		go2rtcProcess.mu.Lock()
-		if go2rtcProcess.cmd == previousCmd {
-			if isGo2RTCProcessAliveLocked(previousCmd) {
-				setGo2RTCRuntimeStatusLocked("running")
+	if err = m.stopProcessForRestart(previousCmd); err != nil {
+		m.mu.Lock()
+		if m.cmd == previousCmd {
+			if m.isProcessAliveLocked(previousCmd) {
+				m.setRuntimeStatusLocked("running")
 			} else {
-				go2rtcProcess.cmd = nil
-				setGo2RTCRuntimeStatusLocked("error")
+				m.cmd = nil
+				m.setRuntimeStatusLocked("error")
 			}
 		}
-		go2rtcProcess.mu.Unlock()
+		m.mu.Unlock()
 		return 0, fmt.Errorf("failed to stop go2rtc: %w", err)
 	}
 
-	go2rtcProcess.mu.Lock()
-	if go2rtcProcess.cmd == previousCmd {
-		go2rtcProcess.cmd = nil
+	m.mu.Lock()
+	if m.cmd == previousCmd {
+		m.cmd = nil
 	}
-	pid, err := h.startGo2RTCLocked()
+	pid, err := m.startLocked()
 	if err != nil {
-		go2rtcProcess.cmd = nil
-		setGo2RTCRuntimeStatusLocked("error")
+		m.cmd = nil
+		m.setRuntimeStatusLocked("error")
 	}
-	go2rtcProcess.mu.Unlock()
+	m.mu.Unlock()
 	if err != nil {
 		return 0, fmt.Errorf("failed to start go2rtc: %w", err)
 	}
@@ -433,29 +438,29 @@ func (h *Handler) RestartGo2RTC() (int, error) {
 	return pid, nil
 }
 
-// go2rtcPreconditionFailedError is returned when go2rtc restart preconditions are not met
-type go2rtcPreconditionFailedError struct {
+// PreconditionFailedError is returned when go2rtc restart preconditions are not met
+type PreconditionFailedError struct {
 	reason string
 }
 
-func (e *go2rtcPreconditionFailedError) Error() string {
+func (e *PreconditionFailedError) Error() string {
 	return e.reason
 }
 
 // IsBadRequest returns true if the error should result in a 400 Bad Request status
-func (e *go2rtcPreconditionFailedError) IsBadRequest() bool {
+func (e *PreconditionFailedError) IsBadRequest() bool {
 	return true
 }
 
-// handleGo2RTCRestart stops go2rtc (if running) and starts a new instance.
+// handleRestart stops go2rtc (if running) and starts a new instance.
 //
 //	POST /api/go2rtc/restart
-func (h *Handler) handleGo2RTCRestart(w http.ResponseWriter, r *http.Request) {
-	pid, err := h.RestartGo2RTC()
+func (m *Go2RTCManager) handleRestart(w http.ResponseWriter, r *http.Request) {
+	pid, err := m.Restart()
 	if err != nil {
 		// Check if it's a precondition failed error
-		var precondErr *go2rtcPreconditionFailedError
-		if ok := isGo2RTCPreconditionError(err, &precondErr); ok {
+		var precondErr *PreconditionFailedError
+		if ok := isPreconditionError(err, &precondErr); ok {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]any{
@@ -475,9 +480,9 @@ func (h *Handler) handleGo2RTCRestart(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func isGo2RTCPreconditionError(err error, target **go2rtcPreconditionFailedError) bool {
+func isPreconditionError(err error, target **PreconditionFailedError) bool {
 	for err != nil {
-		if e, ok := err.(*go2rtcPreconditionFailedError); ok {
+		if e, ok := err.(*PreconditionFailedError); ok {
 			*target = e
 			return true
 		}
@@ -490,54 +495,54 @@ func isGo2RTCPreconditionError(err error, target **go2rtcPreconditionFailedError
 	return false
 }
 
-// handleGo2RTCClearLogs clears the in-memory go2rtc log buffer.
+// handleClearLogs clears the in-memory go2rtc log buffer.
 //
 //	POST /api/go2rtc/logs/clear
-func (h *Handler) handleGo2RTCClearLogs(w http.ResponseWriter, r *http.Request) {
-	go2rtcProcess.logs.Clear()
+func (m *Go2RTCManager) handleClearLogs(w http.ResponseWriter, r *http.Request) {
+	m.logs.Clear()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"status":     "cleared",
 		"log_total":  0,
-		"log_run_id": go2rtcProcess.logs.RunID(),
+		"log_run_id": m.logs.RunID(),
 	})
 }
 
-// handleGo2RTCStatus returns the go2rtc run status.
+// handleStatus returns the go2rtc run status.
 //
 //	GET /api/go2rtc/status
-func (h *Handler) handleGo2RTCStatus(w http.ResponseWriter, r *http.Request) {
-	data := h.go2rtcStatusData()
+func (m *Go2RTCManager) handleStatus(w http.ResponseWriter, r *http.Request) {
+	data := m.statusData()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(data)
 }
 
-func (h *Handler) go2rtcStatusData() map[string]any {
+func (m *Go2RTCManager) statusData() map[string]any {
 	data := map[string]any{}
 
-	go2rtcProcess.mu.Lock()
-	defer go2rtcProcess.mu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	// Check if process is still alive
-	if go2rtcProcess.cmd != nil && go2rtcProcess.cmd.Process != nil {
-		if isGo2RTCProcessAliveLocked(go2rtcProcess.cmd) {
+	if m.cmd != nil && m.cmd.Process != nil {
+		if m.isProcessAliveLocked(m.cmd) {
 			data["go2rtc_status"] = "running"
-			data["pid"] = go2rtcProcess.cmd.Process.Pid
+			data["pid"] = m.cmd.Process.Pid
 		} else {
 			data["go2rtc_status"] = "stopped"
-			go2rtcProcess.cmd = nil
-			setGo2RTCRuntimeStatusLocked("stopped")
+			m.cmd = nil
+			m.setRuntimeStatusLocked("stopped")
 		}
 	} else {
-		data["go2rtc_status"] = go2rtcProcess.runtimeStatus
+		data["go2rtc_status"] = m.runtimeStatus
 	}
 
 	// Add config path info
 	data["config_path"] = hcconfig.GetGo2RTCPath()
 	data["binary_path"] = findGo2RTCBinary()
 
-	ready, reason, readyErr := h.go2rtcStartReady()
+	ready, reason, readyErr := m.startReady()
 	if readyErr != nil {
 		data["go2rtc_start_allowed"] = false
 		data["go2rtc_start_reason"] = readyErr.Error()
@@ -551,18 +556,18 @@ func (h *Handler) go2rtcStatusData() map[string]any {
 	return data
 }
 
-// handleGo2RTCLogs returns buffered go2rtc logs, optionally incrementally.
+// handleLogs returns buffered go2rtc logs, optionally incrementally.
 //
 //	GET /api/go2rtc/logs
-func (h *Handler) handleGo2RTCLogs(w http.ResponseWriter, r *http.Request) {
-	data := go2rtcLogsData(r)
+func (m *Go2RTCManager) handleLogs(w http.ResponseWriter, r *http.Request) {
+	data := m.logsData(r)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(data)
 }
 
-// go2rtcLogsData reads log_offset and log_run_id query params from the request
+// logsData reads log_offset and log_run_id query params from the request
 // and returns incremental log lines.
-func go2rtcLogsData(r *http.Request) map[string]any {
+func (m *Go2RTCManager) logsData(r *http.Request) map[string]any {
 	data := map[string]any{}
 	clientOffset := 0
 	clientRunID := -1
@@ -579,7 +584,7 @@ func go2rtcLogsData(r *http.Request) map[string]any {
 		}
 	}
 
-	runID := go2rtcProcess.logs.RunID()
+	runID := m.logs.RunID()
 
 	if runID == 0 {
 		data["logs"] = []string{}
@@ -594,7 +599,7 @@ func go2rtcLogsData(r *http.Request) map[string]any {
 		offset = 0
 	}
 
-	lines, total, runID := go2rtcProcess.logs.LinesSince(offset)
+	lines, total, runID := m.logs.LinesSince(offset)
 	if lines == nil {
 		lines = []string{}
 	}
@@ -605,8 +610,8 @@ func go2rtcLogsData(r *http.Request) map[string]any {
 	return data
 }
 
-// scanGo2RTCPipe reads lines from r and appends them to buf. Returns when r reaches EOF.
-func scanGo2RTCPipe(r io.Reader, buf *LogBuffer) {
+// scanPipe reads lines from r and appends them to buf. Returns when r reaches EOF.
+func scanPipe(r io.Reader, buf *LogBuffer) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {

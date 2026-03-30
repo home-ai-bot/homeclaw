@@ -97,7 +97,6 @@ func (t *ListCamerasTool) Execute(_ context.Context, _ map[string]any) *tools.To
 				From:      d.From,
 				Name:      d.Name,
 				Type:      d.Type,
-				Online:    d.Online,
 				SpaceName: d.SpaceName,
 				RtspURL:   fmt.Sprintf("rtsp://127.0.0.1:8554/%s_%s", d.From, d.FromID),
 			})
