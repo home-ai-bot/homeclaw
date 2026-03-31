@@ -10,10 +10,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
-
-	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
 // rtspConnTimeoutSec is the maximum number of seconds ffmpeg is allowed to run
@@ -48,55 +47,80 @@ func NewFrameGrabber() *FrameGrabber {
 	}
 }
 
-// buildInputOpts returns ffmpeg input KwArgs populated from the grabber settings.
+// findFFmpegBinary locates the ffmpeg executable.
+// Search order:
+//  1. Same directory as the current executable
+//  2. Falls back to "ffmpeg" and relies on $PATH
+func findFFmpegBinary() string {
+	binaryName := "ffmpeg"
+	if runtime.GOOS == "windows" {
+		binaryName = "ffmpeg.exe"
+	}
+
+	// Check same directory as current executable
+	if exe, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(exe), binaryName)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+
+	return binaryName
+}
+
+// buildInputArgs returns ffmpeg input arguments populated from the grabber settings.
 // NOTE: -ss is intentionally NOT placed here (input side) because many RTSP
 // servers (e.g. Xiaomi cameras) do not support seeking and will return an error.
 // Instead, -ss is placed on the output side so ffmpeg decodes and discards
 // frames for SeekSeconds before capturing, which works universally.
-func (g *FrameGrabber) buildInputOpts() ffmpeg.KwArgs {
-	opts := ffmpeg.KwArgs{
+func (g *FrameGrabber) buildInputArgs(streamURL string) []string {
+	args := []string{
 		// Ignore decoding errors (e.g., HEVC "Could not find ref with POC 0")
 		// that occur when starting mid-stream without reference frames.
-		"err_detect": "ignore_err",
+		"-err_detect", "ignore_err",
 		// Discard corrupt packets and generate missing PTS values
-		"fflags": "+discardcorrupt+genpts",
+		"-fflags", "+discardcorrupt+genpts",
 	}
 	if g.RTSPTransport != "" {
-		opts["rtsp_transport"] = g.RTSPTransport
+		args = append(args, "-rtsp_transport", g.RTSPTransport)
 	}
-	return opts
+	args = append(args, "-i", streamURL)
+	return args
 }
 
-// buildOutputOpts returns ffmpeg output KwArgs for a single-frame JPEG capture.
+// buildOutputArgs returns ffmpeg output arguments for a single-frame JPEG capture.
 // -ss on the output side causes ffmpeg to decode and discard frames for
 // SeekSeconds before writing the captured frame, avoiding black/green
 // initialization frames without requiring server-side seek support.
 // -t caps the total run time so ffmpeg never hangs indefinitely on a stalled stream.
-func (g *FrameGrabber) buildOutputOpts(extra ffmpeg.KwArgs) ffmpeg.KwArgs {
-	opts := ffmpeg.KwArgs{
-		"t": rtspConnTimeoutSec,
+func (g *FrameGrabber) buildOutputArgs(outputPath string, extra map[string]string) []string {
+	args := []string{
+		"-t", fmt.Sprintf("%d", rtspConnTimeoutSec),
 	}
 	if g.SeekSeconds > 0 {
-		opts["ss"] = g.SeekSeconds
+		args = append(args, "-ss", fmt.Sprintf("%.1f", g.SeekSeconds))
 	}
+	// Add extra args
 	for k, v := range extra {
-		opts[k] = v
+		args = append(args, "-"+k, v)
 	}
-	return opts
+	args = append(args, "-y", outputPath)
+	return args
 }
 
-// runWithContext compiles a Stream to an *exec.Cmd, starts it, and waits for
+// runFFmpegWithContext runs ffmpeg with the given arguments, starts it, and waits for
 // completion while honouring ctx cancellation. When ctx is cancelled the
 // ffmpeg process is killed immediately.
 // An internal timeout of ffmpegTimeout is enforced to prevent indefinite hangs.
 // stderr is captured and included in the returned error to aid diagnosis.
-func runWithContext(ctx context.Context, stream *ffmpeg.Stream) error {
+func runFFmpegWithContext(ctx context.Context, args []string) error {
 	// Enforce an internal timeout to prevent hangs when ffmpeg gets stuck
 	// (e.g., TCP connection waiting for unreachable RTSP server).
 	ctx, cancel := context.WithTimeout(ctx, ffmpegTimeout)
 	defer cancel()
 
-	cmd := stream.Compile()
+	ffmpegPath := findFFmpegBinary()
+	cmd := exec.CommandContext(ctx, ffmpegPath, args...)
 
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
@@ -129,28 +153,26 @@ func runWithContext(ctx context.Context, stream *ffmpeg.Stream) error {
 // GrabFrameBytes captures a single JPEG frame from streamURL and returns the
 // raw bytes. The capture is aborted if ctx is cancelled before completion.
 func (g *FrameGrabber) GrabFrameBytes(ctx context.Context, streamURL string) ([]byte, error) {
-	// Write to a temp file because ffmpeg-go's pipe output does not always
-	// flush cleanly for single-frame JPEG captures.
 	tmpDir := os.TempDir()
 	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("homeclaw_frame_%d.jpg", uniqueID()))
 
 	defer os.Remove(tmpFile) //nolint:errcheck
 
-	inputOpts := g.buildInputOpts()
+	inputArgs := g.buildInputArgs(streamURL)
 
 	// Build the ffmpeg command:
-	//   ffmpeg [-stimeout N] [-rtsp_transport tcp] -i <url>
-	//          [-ss N] -frames:v 1 -f image2 <tmpfile>
+	//   ffmpeg [-err_detect ignore_err] [-fflags +discardcorrupt+genpts] [-rtsp_transport tcp] -i <url>
+	//          [-t N] [-ss N] -frames:v 1 -f image2 -y <tmpfile>
 	// -ss is on the output side so ffmpeg decodes/discards frames instead of
 	// seeking, which works with RTSP servers that do not support seeking.
-	stream := ffmpeg.Input(streamURL, inputOpts).
-		Output(tmpFile, g.buildOutputOpts(ffmpeg.KwArgs{
-			"frames:v": 1,
-			"f":        "image2",
-		})).
-		OverWriteOutput()
+	outputArgs := g.buildOutputArgs(tmpFile, map[string]string{
+		"frames:v": "1",
+		"f":        "image2",
+	})
 
-	if err := runWithContext(ctx, stream); err != nil {
+	args := append(inputArgs, outputArgs...)
+
+	if err := runFFmpegWithContext(ctx, args); err != nil {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("frame capture cancelled: %w", ctx.Err())
 		}
@@ -173,21 +195,60 @@ func (g *FrameGrabber) GrabFrameBytes(ctx context.Context, streamURL string) ([]
 func (g *FrameGrabber) GrabFrameToBuffer(ctx context.Context, streamURL string) (*bytes.Buffer, error) {
 	buf := &bytes.Buffer{}
 
-	inputOpts := g.buildInputOpts()
+	inputArgs := g.buildInputArgs(streamURL)
 
-	stream := ffmpeg.Input(streamURL, inputOpts).
-		Output("pipe:", g.buildOutputOpts(ffmpeg.KwArgs{
-			"frames:v": 1,
-			"format":   "image2",
-			"vcodec":   "mjpeg",
-		})).
-		WithOutput(buf)
+	// Build output args for pipe output
+	outputArgs := []string{
+		"-t", fmt.Sprintf("%d", rtspConnTimeoutSec),
+	}
+	if g.SeekSeconds > 0 {
+		outputArgs = append(outputArgs, "-ss", fmt.Sprintf("%.1f", g.SeekSeconds))
+	}
+	outputArgs = append(outputArgs,
+		"-frames:v", "1",
+		"-f", "image2",
+		"-vcodec", "mjpeg",
+		"-y", "pipe:1",
+	)
 
-	if err := runWithContext(ctx, stream); err != nil {
-		if ctx.Err() != nil {
-			return nil, fmt.Errorf("frame capture cancelled: %w", ctx.Err())
+	args := append(inputArgs, outputArgs...)
+
+	ffmpegPath := findFFmpegBinary()
+	cmd := exec.CommandContext(ctx, ffmpegPath, args...)
+	cmd.Stdout = buf
+
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
+
+	// Enforce an internal timeout
+	ctx, cancel := context.WithTimeout(ctx, ffmpegTimeout)
+	defer cancel()
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("ffmpeg start failed: %w", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("frame capture cancelled: %w", ctx.Err())
+			}
+			stderr := strings.TrimSpace(stderrBuf.String())
+			if stderr != "" {
+				return nil, fmt.Errorf("ffmpeg frame capture failed: %w\nffmpeg stderr: %s", err, stderr)
+			}
+			return nil, fmt.Errorf("ffmpeg frame capture failed: %w", err)
 		}
-		return nil, fmt.Errorf("ffmpeg frame capture failed: %w", err)
+	case <-ctx.Done():
+		_ = cmd.Process.Kill()
+		<-done
+		return nil, fmt.Errorf("frame capture cancelled: %w", ctx.Err())
 	}
 
 	if buf.Len() == 0 {
@@ -212,16 +273,16 @@ func (g *FrameGrabber) GrabFrameWithPath(ctx context.Context, streamURL string) 
 	tmpDir := os.TempDir()
 	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("homeclaw_frame_%d.jpg", uniqueID()))
 
-	inputOpts := g.buildInputOpts()
+	inputArgs := g.buildInputArgs(streamURL)
 
-	stream := ffmpeg.Input(streamURL, inputOpts).
-		Output(tmpFile, g.buildOutputOpts(ffmpeg.KwArgs{
-			"frames:v": 1,
-			"f":        "image2",
-		})).
-		OverWriteOutput()
+	outputArgs := g.buildOutputArgs(tmpFile, map[string]string{
+		"frames:v": "1",
+		"f":        "image2",
+	})
 
-	if err := runWithContext(ctx, stream); err != nil {
+	args := append(inputArgs, outputArgs...)
+
+	if err := runFFmpegWithContext(ctx, args); err != nil {
 		if ctx.Err() != nil {
 			return "", "", fmt.Errorf("frame capture cancelled: %w", ctx.Err())
 		}

@@ -13,7 +13,7 @@ Capture frames from Xiaomi/Mi Home cameras and analyze visual content using visi
 
 ## Workflow
 
-1. **Find Camera** → `hc_list_cameras`
+1. **Find Camera** → `hc_list_cameras` ，if user input rtspurl directly，skip this step
 2. **Capture & Analyze** → `hc_private_camera_analyze`
 
 ## Step 1: Find Camera Device
