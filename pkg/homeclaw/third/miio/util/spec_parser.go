@@ -348,8 +348,8 @@ func hasReadWriteAccess(access []string) bool {
 	return false
 }
 
-// hasWriteAccess checks if a property has write access
-func hasWriteAccess(access []string) bool {
+// HasWriteAccess checks if a property has write access
+func HasWriteAccess(access []string) bool {
 	for _, a := range access {
 		if a == "write" {
 			return true
@@ -358,14 +358,24 @@ func hasWriteAccess(access []string) bool {
 	return false
 }
 
-// hasReadAccess checks if a property has read access
-func hasReadAccess(access []string) bool {
+// HasReadAccess checks if a property has read access
+func HasReadAccess(access []string) bool {
 	for _, a := range access {
 		if a == "read" {
 			return true
 		}
 	}
 	return false
+}
+
+// hasWriteAccess checks if a property has write access (backward compatibility)
+func hasWriteAccess(access []string) bool {
+	return HasWriteAccess(access)
+}
+
+// hasReadAccess checks if a property has read access (backward compatibility)
+func hasReadAccess(access []string) bool {
+	return HasReadAccess(access)
 }
 
 // extractShortType extracts the short type name from a MIoT URN
@@ -453,6 +463,13 @@ type SetPropParam struct {
 	Value string `json:"value"`
 }
 
+// GetPropParam represents parameters for GetProp command
+type GetPropParam struct {
+	DID  string `json:"did"`
+	SIID int    `json:"siid"`
+	PIID int    `json:"piid"`
+}
+
 // ActionCommandParam represents parameters for Action command
 type ActionCommandParam struct {
 	DID  string `json:"did"`
@@ -476,12 +493,10 @@ var invalidServiceTypes = []string{
 	"device-information",
 	"battery",
 	"identify",
-	"indicator-light",
-	"physical-controls-locked",
 }
 
-// isInvalidService checks if a service should be filtered out
-func isInvalidService(svcType string) bool {
+// IsInvalidService checks if a service should be filtered out
+func IsInvalidService(svcType string) bool {
 	svcTypeLower := strings.ToLower(svcType)
 	for _, invalid := range invalidServiceTypes {
 		if strings.Contains(svcTypeLower, invalid) {
@@ -489,6 +504,11 @@ func isInvalidService(svcType string) bool {
 		}
 	}
 	return false
+}
+
+// isInvalidService checks if a service should be filtered out (backward compatibility)
+func isInvalidService(svcType string) bool {
+	return IsInvalidService(svcType)
 }
 
 // GenerateDeviceCommands generates a list of device commands from the spec
@@ -583,24 +603,36 @@ func (s *SimplifiedSpec) GenerateDeviceCommands(did string) []DeviceCommand {
 	return commands
 }
 
-// GenerateDeviceCommandsJSON generates device commands as JSON string
-func (s *SimplifiedSpec) GenerateDeviceCommandsJSON(did string) (string, error) {
-	commands := s.GenerateDeviceCommands(did)
-	data, err := json.MarshalIndent(commands, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal commands: %w", err)
-	}
-	return string(data), nil
-}
+// GenerateStatusCommands generates a list of status commands (GetProp) from the spec
+// It returns commands for all readable properties, filtering out invalid services
+func (s *SimplifiedSpec) GenerateStatusCommands(did string) []DeviceCommand {
+	var commands []DeviceCommand
 
-// GenerateDeviceCommandsCompactJSON generates device commands as compact JSON string
-func (s *SimplifiedSpec) GenerateDeviceCommandsCompactJSON(did string) (string, error) {
-	commands := s.GenerateDeviceCommands(did)
-	data, err := json.Marshal(commands)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal commands: %w", err)
+	for _, svc := range s.Services {
+		// Skip invalid services
+		if isInvalidService(svc.Type) {
+			continue
+		}
+
+		// Generate GetProp commands for readable properties
+		for _, prop := range svc.Properties {
+			if hasReadAccess(prop.Access) {
+				cmd := DeviceCommand{
+					Desc:   fmt.Sprintf("%s-%s", svc.Description, prop.Description),
+					Method: "GetProp",
+					Param: GetPropParam{
+						DID:  did,
+						SIID: svc.IID,
+						PIID: prop.IID,
+					},
+					ParamDesc: prop.Format,
+				}
+				commands = append(commands, cmd)
+			}
+		}
 	}
-	return string(data), nil
+
+	return commands
 }
 
 // ExtractDeviceCommands is a convenience function to extract device commands from spec JSON
@@ -610,13 +642,4 @@ func ExtractDeviceCommands(specJSON string, did string) ([]DeviceCommand, error)
 		return nil, err
 	}
 	return spec.GenerateDeviceCommands(did), nil
-}
-
-// ExtractDeviceCommandsJSON is a convenience function to extract device commands as JSON
-func ExtractDeviceCommandsJSON(specJSON string, did string) (string, error) {
-	spec, err := ParseSpecJSON(specJSON)
-	if err != nil {
-		return "", err
-	}
-	return spec.GenerateDeviceCommandsJSON(did)
 }

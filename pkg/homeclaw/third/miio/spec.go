@@ -182,9 +182,13 @@ func (f *SpecFetcher) getCacheFilename(urn string) string {
 	return encoded + ".json"
 }
 
-// SaveProcessedSpec saves the processed spec (device commands JSON) to _new.json file
+// SaveProcessedSpec saves the processed spec (device commands JSON) to _{mode}_new.json file
 // This stores the simplified/processed version of the spec for quick access
-func (f *SpecFetcher) SaveProcessedSpec(urn string, processedJSON string) error {
+// Parameters:
+//   - urn: device URN
+//   - mode: "read" or "write", determines file suffix (read_new.json or write_new.json)
+//   - processedJSON: processed spec JSON string
+func (f *SpecFetcher) SaveProcessedSpec(urn string, mode string, processedJSON string) error {
 	if urn == "" {
 		return fmt.Errorf("urn is empty")
 	}
@@ -194,20 +198,23 @@ func (f *SpecFetcher) SaveProcessedSpec(urn string, processedJSON string) error 
 		return err
 	}
 
-	filename := f.getProcessedCacheFilename(urn)
+	filename := f.getProcessedCacheFilename(urn, mode)
 	filepath := filepath.Join(f.cacheDir, filename)
 
 	return os.WriteFile(filepath, []byte(processedJSON), 0644)
 }
 
-// GetProcessedSpec reads the processed spec from _new.json file
+// GetProcessedSpec reads the processed spec from _{mode}_new.json file
 // Returns the processed device commands JSON if available
-func (f *SpecFetcher) GetProcessedSpec(urn string) (string, error) {
+// Parameters:
+//   - urn: device URN
+//   - mode: "read" or "write", determines file suffix (read_new.json or write_new.json)
+func (f *SpecFetcher) GetProcessedSpec(urn string, mode string) (string, error) {
 	if urn == "" {
 		return "", fmt.Errorf("urn is empty")
 	}
 
-	filename := f.getProcessedCacheFilename(urn)
+	filename := f.getProcessedCacheFilename(urn, mode)
 	filepath := filepath.Join(f.cacheDir, filename)
 
 	data, err := os.ReadFile(filepath)
@@ -218,10 +225,10 @@ func (f *SpecFetcher) GetProcessedSpec(urn string) (string, error) {
 }
 
 // getProcessedCacheFilename returns the filename for processed spec cache
-// Uses URN's base64 encoding + "_new.json" suffix
-func (f *SpecFetcher) getProcessedCacheFilename(urn string) string {
+// Uses URN's base64 encoding + "_{mode}_new.json" suffix (e.g., "_read_new.json" or "_write_new.json")
+func (f *SpecFetcher) getProcessedCacheFilename(urn string, mode string) string {
 	encoded := base64.URLEncoding.EncodeToString([]byte(urn))
-	return encoded + "_new.json"
+	return encoded + "_" + mode + "_new.json"
 }
 
 // ClearCache 清除所有缓存

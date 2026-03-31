@@ -30,6 +30,7 @@ filter from=xiaomi ，find the right device
 ```
 mi_get_spec_commands
 - urn: the device URN from step 1
+- mode: write or read ， write for changing ，read only get prop value
 ```
 
 

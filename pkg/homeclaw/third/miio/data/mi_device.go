@@ -111,3 +111,97 @@ func (s *miDeviceStore) Delete(did string) error {
 	}
 	return rootdata.ErrRecordNotFound
 }
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Home/Room Store
+// ────────────────────────────────────────────────────────────────────────────────
+
+// HomeRoomInfo represents a home with its rooms (matches API response structure)
+type HomeRoomInfo struct {
+	HomeName string   `json:"name"`
+	HomeID   string   `json:"id"`
+	DIDs     []string `json:"dids"`
+	Rooms    []struct {
+		ID   string   `json:"id"`
+		Name string   `json:"name"`
+		DIDs []string `json:"dids"`
+	} `json:"roomlist"`
+}
+
+// MiHomesData is the root structure for mi-homes.json
+type MiHomesData struct {
+	Version string          `json:"version"`
+	Homes   []*HomeRoomInfo `json:"homes"`
+}
+
+// MiHomeStore defines the interface for MiHome data operations
+type MiHomeStore interface {
+	GetAll() ([]*HomeRoomInfo, error)
+	GetByID(homeID string) (*HomeRoomInfo, error)
+	Save(home *HomeRoomInfo) error
+	Delete(homeID string) error
+}
+
+// miHomeStore implements MiHomeStore using JSONStore
+type miHomeStore struct {
+	store *rootdata.JSONStore
+	data  MiHomesData
+}
+
+// NewMiHomeStore creates a new MiHomeStore
+func NewMiHomeStore(store *rootdata.JSONStore) (MiHomeStore, error) {
+	s := &miHomeStore{store: store}
+	if err := s.load(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// load reads data from file
+func (s *miHomeStore) load() error {
+	s.data = MiHomesData{Version: "1", Homes: []*HomeRoomInfo{}}
+	return s.store.Read("mi-homes", &s.data)
+}
+
+// save writes data to file
+func (s *miHomeStore) save() error {
+	return s.store.Write("mi-homes", s.data)
+}
+
+// GetAll returns all homes
+func (s *miHomeStore) GetAll() ([]*HomeRoomInfo, error) {
+	return s.data.Homes, nil
+}
+
+// GetByID returns a home by ID
+func (s *miHomeStore) GetByID(homeID string) (*HomeRoomInfo, error) {
+	for _, h := range s.data.Homes {
+		if h.HomeID == homeID {
+			return h, nil
+		}
+	}
+	return nil, rootdata.ErrRecordNotFound
+}
+
+// Save saves a home (insert or update by HomeID)
+func (s *miHomeStore) Save(home *HomeRoomInfo) error {
+	for i, h := range s.data.Homes {
+		if h.HomeID == home.HomeID {
+			s.data.Homes[i] = home
+			return s.save()
+		}
+	}
+	s.data.Homes = append(s.data.Homes, home)
+	return s.save()
+}
+
+// Delete deletes a home by ID
+func (s *miHomeStore) Delete(homeID string) error {
+	for i, h := range s.data.Homes {
+		if h.HomeID == homeID {
+			s.data.Homes = append(s.data.Homes[:i], s.data.Homes[i+1:]...)
+			return s.save()
+		}
+	}
+	return rootdata.ErrRecordNotFound
+}

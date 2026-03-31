@@ -10,7 +10,6 @@ import (
 	"github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio"
-	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio/util"
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
 
@@ -29,7 +28,7 @@ func NewSyncHomesTool(client *miio.MiClient, homeStore data.HomeStore) (*SyncHom
 	return &SyncHomesTool{client: client, homeStore: homeStore}, nil
 }
 
-func (t *SyncHomesTool) Name() string { return "mi__internal_1" }
+func (t *SyncHomesTool) Name() string { return "mi_private_sync_homes" }
 
 func (t *SyncHomesTool) Description() string {
 	return "must only invoked by mi-sync skill,when home is empty"
@@ -116,7 +115,7 @@ func NewSyncDevicesTool(
 	}
 }
 
-func (t *SyncDevicesTool) Name() string { return "mi__internal_2" }
+func (t *SyncDevicesTool) Name() string { return "mi_private_sync_devices" }
 
 func (t *SyncDevicesTool) Description() string {
 	return "must only invoked by mi_sync skill, when mi-sync detemine which homeId should be sync"
@@ -195,34 +194,6 @@ func (t *SyncDevicesTool) Execute(ctx context.Context, args map[string]any) *too
 	var specProcessed int
 	var specErrors []string
 	for _, d := range devices {
-		if d == nil || d.URN == "" {
-			continue
-		}
-		// Get spec for this device
-		spec, err := t.client.GetSpec(d.FromID)
-		if err != nil {
-			specErrors = append(specErrors, fmt.Sprintf("%s: %v", d.Name, err))
-			continue
-		}
-		// Parse and process spec using spec_parser
-		parsedSpec, err := util.ParseSpecJSON(spec.Raw)
-		if err != nil {
-			specErrors = append(specErrors, fmt.Sprintf("%s: parse error - %v", d.Name, err))
-			continue
-		}
-		// Generate device commands JSON
-		commandsJSON, err := parsedSpec.GenerateDeviceCommandsCompactJSON(d.FromID)
-		if err != nil {
-			specErrors = append(specErrors, fmt.Sprintf("%s: generate commands error - %v", d.Name, err))
-			continue
-		}
-		// Save processed spec as _new.json
-		if t.specFetcher != nil {
-			if err := t.specFetcher.SaveProcessedSpec(d.URN, commandsJSON); err != nil {
-				specErrors = append(specErrors, fmt.Sprintf("%s: save error - %v", d.Name, err))
-				continue
-			}
-		}
 
 		// Check if device is a camera and add to go2rtc streams config
 		if hasCamera(d.Type) && d.IP != "" {
@@ -358,6 +329,11 @@ func (t *GetSpecCommandsTool) Parameters() map[string]any {
 				"type":        "string",
 				"description": "Device URN (e.g., urn:miot-spec-v2:device:light:0000A001:yeelink-v1)",
 			},
+			"mode": map[string]any{
+				"type":        "string",
+				"description": "Mode for spec file: 'read' or 'write' (default: 'read')",
+				"enum":        []string{"read", "write"},
+			},
 		},
 		"required": []string{"urn"},
 	}
@@ -369,11 +345,16 @@ func (t *GetSpecCommandsTool) Execute(_ context.Context, args map[string]any) *t
 		return &tools.ToolResult{ForLLM: "missing or invalid 'urn' parameter", IsError: true}
 	}
 
+	mode, _ := args["mode"].(string)
+	if mode == "" {
+		mode = "read"
+	}
+
 	if t.specFetcher == nil {
 		return &tools.ToolResult{ForLLM: "spec fetcher not initialized", IsError: true}
 	}
 
-	commandsJSON, err := t.specFetcher.GetProcessedSpec(urn)
+	commandsJSON, err := t.specFetcher.GetProcessedSpec(urn, mode)
 	if err != nil {
 		msg := fmt.Sprintf("failed to get processed spec for URN %s: %v", urn, err)
 		return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}

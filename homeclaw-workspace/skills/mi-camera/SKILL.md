@@ -9,12 +9,12 @@ Capture frames from Xiaomi/Mi Home cameras and analyze visual content using visi
 
 **Tools Used:**
 - **`hc_list_cameras`** - List all camera devices with RTSP URLs
-- **`hc_internal_3`** - Capture and analyze camera frame
+- **`hc_private_camera_analyze`** - Capture and analyze camera frame
 
 ## Workflow
 
 1. **Find Camera** → `hc_list_cameras`
-2. **Capture & Analyze** → `hc_internal_3`
+2. **Capture & Analyze** → `hc_private_camera_analyze`
 
 ## Step 1: Find Camera Device
 
@@ -44,7 +44,7 @@ Example response:
 ## Step 2: Capture & Analyze Frame
 
 ```
-hc_internal_3
+hc_private_camera_analyze
 - rtsp_url: the constructed RTSP URL from step 2
 - prompt: (optional) specific question about the image, e.g. "Is there anyone at the door?"
 ```
@@ -67,7 +67,7 @@ User: "What does the living room camera see?"
 1. hc_list_cameras
    → {"cameras": [{"from_id": "cam001", "name": "Living Room Camera", "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam001", ...}]}
 
-2. hc_internal_3 {
+2. hc_private_camera_analyze {
      "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam001",
      "prompt": "Describe what you see in this living room camera view"
    }
@@ -82,7 +82,7 @@ User: "Is anyone at the front door?"
 1. hc_list_cameras
    → {"cameras": [{"from_id": "door123", "name": "Door Camera", "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_door123", ...}]}
 
-2. hc_internal_3 {
+2. hc_private_camera_analyze {
      "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_door123",
      "prompt": "Is there anyone at the door? Describe any people or activity visible."
    }
@@ -97,7 +97,7 @@ User: "Is the baby sleeping?"
 1. hc_list_cameras
    → {"cameras": [{"from_id": "baby456", "name": "Baby Room Camera", "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_baby456", ...}]}
 
-2. hc_internal_3 {
+2. hc_private_camera_analyze {
      "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_baby456",
      "prompt": "Is there a baby in the crib? Are they sleeping or awake?"
    }
@@ -112,7 +112,7 @@ User: "Did the cat eat the food?"
 1. hc_list_cameras
    → {"cameras": [{"from_id": "feeder789", "name": "Pet Feeder", "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_feeder789", ...}]}
 
-2. hc_internal_3 {
+2. hc_private_camera_analyze {
      "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_feeder789",
      "prompt": "Is there a cat near the feeder? Is the food bowl empty or full?"
    }
@@ -132,12 +132,12 @@ User: "Check all cameras for any activity"
 
 2. For each camera, analyze:
    
-   a) hc_internal_3 {
+   a) hc_private_camera_analyze {
         "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam001",
         "prompt": "Describe any activity or people visible"
       }
    
-   b) hc_internal_3 {
+   b) hc_private_camera_analyze {
         "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam002",
         "prompt": "Describe any activity or people visible"
       }

@@ -108,18 +108,54 @@ func load(path string) (*HomeclawConfig, error) {
 }
 
 // LoadFromDir looks for homeclaw.json inside dir and loads it.
-// Returns (nil, nil) when the file does not exist, so callers can treat
-// a missing file as "HomeClaw not configured" without an error.
+// If the file does not exist, it creates a default config and saves it.
 func LoadHomeclawConfig() (*HomeclawConfig, error) {
 	path := filepath.Join(GetPicoclawHome(), defaultConfigFileName)
 	_, err := os.Stat(path)
 	if os.IsNotExist(err) {
-		return nil, nil
+		// Create default config and save it
+		cfg := DefaultHomeclawConfig()
+		if err := SaveHomeclawConfig(path, cfg); err != nil {
+			return nil, fmt.Errorf("homeclaw config: create default %s: %w", path, err)
+		}
+		return cfg, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("homeclaw config: stat %s: %w", path, err)
 	}
 	return load(path)
+}
+
+// DefaultHomeclawConfig returns a default HomeclawConfig with sensible defaults.
+func DefaultHomeclawConfig() *HomeclawConfig {
+	return &HomeclawConfig{
+		Enabled:             true,
+		IntentEnabled:       false,
+		ConfidenceThreshold: DefaultConfidenceThreshold,
+		IntentModel: IntentModelConfig{
+			ModelName: "local-model",
+		},
+	}
+}
+
+// SaveHomeclawConfig saves the HomeclawConfig to the specified path.
+func SaveHomeclawConfig(path string, cfg *HomeclawConfig) error {
+	// Ensure directory exists
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", dir, err)
+	}
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
 }
 
 var configMu sync.Mutex

@@ -11,16 +11,14 @@ type Space struct {
 
 // Device represents a smart device in the home.
 type Device struct {
-	FromID    string   `json:"from_id"`
-	From      string   `json:"from"`
-	Name      string   `json:"name"`
-	Type      string   `json:"type"`
-	IP        string   `json:"ip"`
-	Token     string   `json:"token"`
-	URN       string   `json:"urn,omitempty"`
-	SpaceName string   `json:"space_name,omitempty"`
-	Tags      []string `json:"tags,omitempty"`
-	Owners    []string `json:"owners,omitempty"`
+	FromID    string `json:"from_id"`
+	From      string `json:"from"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Token     string `json:"token"`
+	IP        string `json:"ip"`
+	URN       string `json:"urn"`
+	SpaceName string `json:"space_name,omitempty"`
 }
 
 // Home represents a home information

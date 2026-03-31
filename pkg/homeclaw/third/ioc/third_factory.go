@@ -28,6 +28,7 @@ type ThirdFactory struct {
 	// Singleton instances - lazy loaded
 	jsonStore           *hcd.JSONStore
 	miDeviceStore       midata.MiDeviceStore
+	miHomeStore         midata.MiHomeStore
 	cloud               *xiaomi.Cloud
 	miClient            *miio.MiClient
 	specFetcher         *miio.SpecFetcher
@@ -76,6 +77,24 @@ func (f *ThirdFactory) GetMiDeviceStore() (midata.MiDeviceStore, error) {
 		return nil, fmt.Errorf("mi device store init failed: %w", err)
 	}
 	return f.miDeviceStore, nil
+}
+
+// GetMiHomeStore returns the singleton MiHomeStore instance (lazy initialized).
+func (f *ThirdFactory) GetMiHomeStore() (midata.MiHomeStore, error) {
+	if f.miHomeStore != nil {
+		return f.miHomeStore, nil
+	}
+
+	store, err := f.GetJSONStore()
+	if err != nil {
+		return nil, fmt.Errorf("get json store: %w", err)
+	}
+
+	f.miHomeStore, err = midata.NewMiHomeStore(store)
+	if err != nil {
+		return nil, fmt.Errorf("mi home store init failed: %w", err)
+	}
+	return f.miHomeStore, nil
 }
 
 // GetCloud returns the singleton Cloud instance (lazy initialized).
@@ -130,7 +149,12 @@ func (f *ThirdFactory) GetMiClient(country string) (*miio.MiClient, error) {
 		return nil, fmt.Errorf("get mi device store: %w", err)
 	}
 
-	f.miClient = miio.NewMiClient(cloud, country, f.Workspace, deviceStore)
+	homeStore, err := f.GetMiHomeStore()
+	if err != nil {
+		return nil, fmt.Errorf("get mi home store: %w", err)
+	}
+
+	f.miClient = miio.NewMiClient(cloud, country, f.Workspace, deviceStore, homeStore, f.GetSpecFetcher())
 	return f.miClient, nil
 }
 

@@ -85,9 +85,14 @@ func (m *Go2RTCManager) TryAutoStart() {
 func (m *Go2RTCManager) startReady() (bool, string, error) {
 	configPath := hcconfig.GetGo2RTCPath()
 
-	// Check if config file exists
+	// Check if config file exists, create default config if not
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return false, fmt.Sprintf("go2rtc config file not found: %s", configPath), nil
+		// Create default config file so go2rtc can start
+		defaultConfig := "api:\n  listen: \":1984\"\n"
+		if err := os.WriteFile(configPath, []byte(defaultConfig), 0644); err != nil {
+			return false, "", fmt.Errorf("failed to create go2rtc config file: %w", err)
+		}
+		logger.InfoC("go2rtc", fmt.Sprintf("Created default config file: %s", configPath))
 	}
 
 	// Check if go2rtc binary exists

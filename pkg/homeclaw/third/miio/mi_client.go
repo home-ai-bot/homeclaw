@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 
 	"github.com/AlexxIT/go2rtc/pkg/xiaomi"
+	"github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	midata "github.com/sipeed/picoclaw/pkg/homeclaw/third/miio/data"
+	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio/util"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third/std"
 )
 
@@ -42,11 +45,9 @@ type MiClient struct {
 	cloud       *xiaomi.Cloud
 	specFetcher *SpecFetcher
 	deviceStore midata.MiDeviceStore
+	homeStore   midata.MiHomeStore
 	baseURL     string
 	country     string // region code (cn, de, ru, sg, i2, us, etc.)
-
-	// in-memory cache for quick access
-	deviceCache map[string]*midata.DeviceInfo // deviceID -> DeviceInfo
 }
 
 // NewMiClient creates a new MiClient instance.
@@ -56,17 +57,18 @@ type MiClient struct {
 //   - country: region code (cn, de, ru, sg, i2, us, etc.)
 //   - workspace: data root directory for caching
 //   - deviceStore: optional MiDeviceStore for persisting device info (can be nil)
-func NewMiClient(cloud *xiaomi.Cloud, country, workspace string, deviceStore midata.MiDeviceStore) *MiClient {
+//   - homeStore: optional MiHomeStore for persisting home info (can be nil)
+func NewMiClient(cloud *xiaomi.Cloud, country, workspace string, deviceStore midata.MiDeviceStore, homeStore midata.MiHomeStore, fetcher *SpecFetcher) *MiClient {
 	if country == "" {
 		country = "cn"
 	}
 	return &MiClient{
 		cloud:       cloud,
-		specFetcher: NewSpecFetcher(workspace),
+		specFetcher: fetcher,
 		deviceStore: deviceStore,
+		homeStore:   homeStore,
 		baseURL:     getBaseURL(country),
 		country:     country,
-		deviceCache: make(map[string]*midata.DeviceInfo),
 	}
 }
 
@@ -74,6 +76,131 @@ func NewMiClient(cloud *xiaomi.Cloud, country, workspace string, deviceStore mid
 func (c *MiClient) GetUserAndRegion() (userID string, region string) {
 	userID, _ = c.cloud.UserToken()
 	return userID, c.country
+}
+
+// checkLoadToken checks if the current token is empty and attempts to reload it from config.
+// If the token is still empty after reloading, it returns an error with instructions.
+func (c *MiClient) checkLoadToken() error {
+	// Check current token
+	_, token := c.cloud.UserToken()
+	if token != "" {
+		return nil
+	}
+
+	// Token is empty, try to reload from config
+	var xiaomiCfg struct {
+		Cfg map[string]string `yaml:"xiaomi"`
+	}
+	if err := config.LoadGo2RTCConfig(&xiaomiCfg); err != nil {
+		return fmt.Errorf("failed to load xiaomi config: %w", err)
+	}
+
+	// Get first key-value pair: userId=key, token=value
+	var userID, newToken string
+	for k, v := range xiaomiCfg.Cfg {
+		userID = k
+		newToken = v
+		break
+	}
+
+	if newToken == "" {
+		// Get local IP for the error message
+		localIP := getLocalIP()
+		if localIP == "" {
+			localIP = "<device_ip>"
+		}
+		return fmt.Errorf("must ask user to do: xiaomi token is empty, please open http://%s:1984, login with your xiaomi account in the interface, then click 'Config Save & Restart'", localIP)
+	}
+
+	// Update cloud with new token
+	c.cloud.LoginWithToken(userID, newToken)
+	return nil
+}
+
+// getLocalIP returns the local IP address of the machine.
+func getLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, a := range addrs {
+		if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+			return ipnet.IP.String()
+		}
+	}
+	return ""
+}
+
+// isAuthError checks if the error is an authentication error (401 or token related).
+func isAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	// Check for common auth error indicators
+	return contains(errStr, "401") ||
+		contains(errStr, "unauthorized") ||
+		contains(errStr, "unauthenticated") ||
+		contains(errStr, "invalid token") ||
+		contains(errStr, "token expired")
+}
+
+// contains checks if the string contains the substring (case-insensitive).
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr ||
+		len(s) > len(substr) && (containsAt(s, substr, 0) || containsHelper(s, substr, 1)))
+}
+
+func containsHelper(s, substr string, start int) bool {
+	for i := start; i <= len(s)-len(substr); i++ {
+		if containsAt(s, substr, i) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAt(s, substr string, start int) bool {
+	for i := 0; i < len(substr); i++ {
+		if lower(s[start+i]) != lower(substr[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func lower(c byte) byte {
+	if c >= 'A' && c <= 'Z' {
+		return c + ('a' - 'A')
+	}
+	return c
+}
+
+// getAuthErrorMsg returns the standard authentication error message.
+func getAuthErrorMsg() string {
+	localIP := getLocalIP()
+	if localIP == "" {
+		localIP = "<device_ip>"
+	}
+	return fmt.Sprintf("must ask user to do: xiaomi token is empty or invalid, please open http://%s:1984, login with your xiaomi account in the interface, then click 'Config Save & Restart'", localIP)
+}
+
+// request performs an authenticated request to the Xiaomi cloud API.
+// It checks the token, makes the request, and handles authentication errors.
+func (c *MiClient) request(api string, params string) ([]byte, error) {
+	// Check token before request
+	if err := c.checkLoadToken(); err != nil {
+		return nil, err
+	}
+
+	result, err := c.cloud.Request(c.baseURL, api, params, nil)
+	if err != nil {
+		if isAuthError(err) {
+			return nil, errors.New(getAuthErrorMsg())
+		}
+		return nil, err
+	}
+	return result, nil
 }
 
 // Brand returns the brand identifier for Xiaomi platform.
@@ -85,28 +212,16 @@ func (c *MiClient) Brand() string {
 // Query methods
 // ────────────────────────────────────────────────────────────────────────────────
 
-// homeRoomResponse represents the response structure from homeroom API.
-type homeRoomResponse struct {
-	HomeName string   `json:"name"`
-	HomeID   string   `json:"id"`
-	DIDs     []string `json:"dids"`
-	Rooms    []struct {
-		ID   string   `json:"id"`
-		Name string   `json:"name"`
-		DIDs []string `json:"dids"`
-	} `json:"roomlist"`
-}
-
 // GetHomes returns all homes visible to the authenticated user.
 func (c *MiClient) GetHomes() ([]*std.HomeInfo, error) {
 	params := `{"fg":true,"fetch_share":true,"fetch_share_dev":true,"limit":300,"app_ver":7}`
-	result, err := c.cloud.Request(c.baseURL, apiHomeRoomList, params, nil)
+	result, err := c.request(apiHomeRoomList, params)
 	if err != nil {
 		return nil, fmt.Errorf("get homes: %w", err)
 	}
 
 	var resp struct {
-		Homelist []homeRoomResponse `json:"homelist"`
+		Homelist []midata.HomeRoomInfo `json:"homelist"`
 	}
 	if err := json.Unmarshal(result, &resp); err != nil {
 		return nil, fmt.Errorf("parse homes response: %w", err)
@@ -118,20 +233,24 @@ func (c *MiClient) GetHomes() ([]*std.HomeInfo, error) {
 			ID:   h.HomeID,
 			Name: h.HomeName,
 		})
+		if c.homeStore != nil {
+			_ = c.homeStore.Save(&h)
+		}
 	}
+
 	return homes, nil
 }
 
 // GetRooms returns all rooms for the given homeID.
 func (c *MiClient) GetRooms(homeID string) ([]*data.Space, error) {
 	params := `{"fg":true,"fetch_share":true,"fetch_share_dev":true,"limit":300,"app_ver":7}`
-	result, err := c.cloud.Request(c.baseURL, apiHomeRoomList, params, nil)
+	result, err := c.request(apiHomeRoomList, params)
 	if err != nil {
 		return nil, fmt.Errorf("get rooms: %w", err)
 	}
 
 	var resp struct {
-		Homelist []homeRoomResponse `json:"homelist"`
+		Homelist []midata.HomeRoomInfo `json:"homelist"`
 	}
 	if err := json.Unmarshal(result, &resp); err != nil {
 		return nil, fmt.Errorf("parse rooms response: %w", err)
@@ -139,6 +258,9 @@ func (c *MiClient) GetRooms(homeID string) ([]*data.Space, error) {
 
 	var rooms []*data.Space
 	for _, home := range resp.Homelist {
+		if c.homeStore != nil {
+			_ = c.homeStore.Save(&home)
+		}
 		// If homeID is specified, filter by it
 		if homeID != "" && home.HomeID != homeID {
 			continue
@@ -190,7 +312,7 @@ func (c *MiClient) GetDevices(homeID string) ([]*data.Device, error) {
 		if err != nil {
 			return nil, fmt.Errorf("marshal request: %w", err)
 		}
-		result, err := c.cloud.Request(c.baseURL, apiHomeDeviceList, string(reqJSON), nil)
+		result, err := c.request(apiHomeDeviceList, string(reqJSON))
 		if err != nil {
 			return nil, fmt.Errorf("get devices failed: %w", err)
 		}
@@ -211,25 +333,84 @@ func (c *MiClient) GetDevices(homeID string) ([]*data.Device, error) {
 		hasMore = resp.HasMore && startDID != ""
 	}
 
+	// Build DID -> RoomName map from homeStore
+	didRoomMap := make(map[string]string)
+	if c.homeStore != nil {
+		homes, _ := c.homeStore.GetAll()
+		for _, home := range homes {
+			for _, room := range home.Rooms {
+				for _, did := range room.DIDs {
+					didRoomMap[did] = room.Name
+				}
+			}
+		}
+	}
+
 	// Convert to data.Device
 	var result []*data.Device
+	var specErrors []string
 	for _, d := range devices {
-		c.deviceCache[d.DID] = d
+		// Set RoomName from didRoomMap
+		if roomName, ok := didRoomMap[d.DID]; ok {
+			d.RoomName = roomName
+		}
 		if c.deviceStore != nil {
 			_ = c.deviceStore.Save(d)
 		}
 		if !d.IsOnline {
 			continue
 		}
+		if d == nil || d.SpecType == "" {
+			continue
+		}
+		// Get spec for this device
+		spec, err := c.GetSpec(d.DID)
+		if err != nil {
+			specErrors = append(specErrors, fmt.Sprintf("%s: %v", d.Name, err))
+			continue
+		}
+		// Parse and process spec using spec_parser
+		parsedSpec, err := util.ParseSpecJSON(spec.Raw)
+		if err != nil {
+			specErrors = append(specErrors, fmt.Sprintf("%s: parse error - %v", d.Name, err))
+			continue
+		}
+		// Generate device commands (write operations: SetProp and Action)
+		commands := parsedSpec.GenerateDeviceCommands(d.DID)
+
+		// Extract actions (Method="Action")
+		var actions []string
+		for _, cmd := range commands {
+			if cmd.Method == "Action" || cmd.Method == "SetProp" {
+				actions = append(actions, cmd.Desc)
+			}
+		}
+
+		// Generate status commands (GetProp) and extract descriptions (read operations)
+		statusCommands := parsedSpec.GenerateStatusCommands(d.DID)
+		var status []string
+		for _, cmd := range statusCommands {
+			status = append(status, cmd.Desc)
+		}
+
+		// Save processed specs for write and read modes
+		if c.specFetcher != nil && d.SpecType != "" {
+			writeJSON, _ := json.Marshal(commands)
+			_ = c.specFetcher.SaveProcessedSpec(d.SpecType, "write", string(writeJSON))
+
+			readJSON, _ := json.Marshal(statusCommands)
+			_ = c.specFetcher.SaveProcessedSpec(d.SpecType, "read", string(readJSON))
+		}
+
 		result = append(result, &data.Device{
 			FromID:    d.DID,
 			From:      BrandXiaomi,
 			Name:      d.Name,
 			Type:      d.Model,
+			SpaceName: d.RoomName,
 			IP:        d.LocalIP,
 			Token:     d.Token,
 			URN:       d.SpecType,
-			SpaceName: d.RoomName,
 		})
 	}
 
@@ -264,16 +445,10 @@ func (c *MiClient) GetSpec(deviceID string) (*std.SpecInfo, error) {
 // GetDeviceInfo returns the full device info for the given deviceID.
 // This is a helper method for accessing detailed device information.
 func (c *MiClient) GetDeviceInfo(deviceID string) (*midata.DeviceInfo, error) {
-	// Try cache first
-	if info, ok := c.deviceCache[deviceID]; ok {
-		return info, nil
-	}
-
 	// Try store
 	if c.deviceStore != nil {
 		info, err := c.deviceStore.GetByDID(deviceID)
 		if err == nil && info != nil {
-			c.deviceCache[deviceID] = info
 			return info, nil
 		}
 	}
@@ -326,7 +501,7 @@ func (c *MiClient) Execute(params map[string]any) (map[string]any, error) {
 		return nil, fmt.Errorf("execute: marshal request: %w", err)
 	}
 
-	result, err := c.cloud.Request(c.baseURL, apiMiotspecAct, string(reqJSON), nil)
+	result, err := c.request(apiMiotspecAct, string(reqJSON))
 	if err != nil {
 		return nil, fmt.Errorf("execute: %w", err)
 	}
@@ -392,7 +567,7 @@ func (c *MiClient) GetProps(params map[string]any) (any, error) {
 		return nil, fmt.Errorf("get_prop: marshal request: %w", err)
 	}
 
-	result, err := c.cloud.Request(c.baseURL, apiMiotspecProp, string(reqJSON), nil)
+	result, err := c.request(apiMiotspecProp, string(reqJSON))
 	if err != nil {
 		return nil, fmt.Errorf("get_prop: %w", err)
 	}
@@ -467,7 +642,7 @@ func (c *MiClient) SetProps(params map[string]any) (any, error) {
 		return nil, fmt.Errorf("set_prop: marshal request: %w", err)
 	}
 
-	result, err := c.cloud.Request(c.baseURL, apiMiotspecSet, string(reqJSON), nil)
+	result, err := c.request(apiMiotspecSet, string(reqJSON))
 	if err != nil {
 		return nil, fmt.Errorf("set_prop: %w", err)
 	}

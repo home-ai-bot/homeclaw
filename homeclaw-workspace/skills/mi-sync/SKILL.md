@@ -10,9 +10,9 @@ description: Sync Xiaomi Mi Home devices. Use when the user wants to sync/import
 ## Workflow
 
 1. **Get current home** → `hc_get_current_home`
-2. **Sync homes (if needed)** → `mi__interanl_1` (get home)
+2. **Sync homes (if needed)** → `mi_private_sync_homes` (get home)
 3. **User selects home (if multiple)** → `hc_set_current_home`
-4. **Sync devices** → `mi__interanl_2`
+4. **Sync devices** → `mi_private_sync_devices`
 
 ### Step 1 — Get current home
 
@@ -24,7 +24,7 @@ Call `hc_get_current_home` with `from` = "xiaomi" to check if a current home is 
 
 ### Step 2 — Sync homes (if needed)
 
-Call `mi__interanl_1` (no parameters needed).
+Call `mi_private_sync_homes` (no parameters needed).
 
 This fetches all homes from Xiaomi cloud.
 
@@ -40,6 +40,6 @@ This fetches all homes from Xiaomi cloud.
 
 ### Step 4 — Sync devices
 
-Call `mi__interanl_2` with `homeId` = the current home ID.
+Call `mi_private_sync_devices` with `homeId` = the current home ID.
 
 This syncs all devices and rooms for the selected home.

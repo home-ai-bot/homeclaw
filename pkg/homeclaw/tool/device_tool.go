@@ -84,7 +84,6 @@ func (t *ListCamerasTool) Execute(_ context.Context, _ map[string]any) *tools.To
 		From      string `json:"from"`
 		Name      string `json:"name"`
 		Type      string `json:"type"`
-		Online    bool   `json:"online"`
 		SpaceName string `json:"space_name,omitempty"`
 		RtspURL   string `json:"rtsp_url"`
 	}

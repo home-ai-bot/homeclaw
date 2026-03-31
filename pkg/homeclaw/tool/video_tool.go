@@ -43,7 +43,7 @@ func (t *RTSPAnalyzeTool) SetMediaStore(store media.MediaStore) {
 	t.mediaStore = store
 }
 
-func (t *RTSPAnalyzeTool) Name() string { return "hc_internal_3" }
+func (t *RTSPAnalyzeTool) Name() string { return "hc_private_camera_analyze" }
 
 func (t *RTSPAnalyzeTool) Description() string {
 	return "IMPORTANT: The rtsp_url MUST be obtained from hc_list_cameras. Do NOT fabricate or guess any URL."
