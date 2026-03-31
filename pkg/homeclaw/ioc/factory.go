@@ -14,6 +14,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/event"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/intent"
+	"github.com/sipeed/picoclaw/pkg/homeclaw/llm"
 	homeclawtool "github.com/sipeed/picoclaw/pkg/homeclaw/tool"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/video"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/workflow"
@@ -70,7 +71,7 @@ type Factory struct {
 	disableWorkflowTool *homeclawtool.DisableWorkflowTool
 
 	// Video frame grabber singleton - lazy loaded
-	frameGrabber       *video.FrameGrabber
+	ffmpegUtil         *video.FFmpegUtil
 	rtspAnalyzeTool    *homeclawtool.RTSPAnalyzeTool
 	setCurrentHomeTool *homeclawtool.SetCurrentHomeTool
 	getCurrentHomeTool *homeclawtool.GetCurrentHomeTool
@@ -211,8 +212,8 @@ func (f *Factory) GetWorkflowEngine() workflow.Engine {
 	return f.workflowEngine
 }
 
-// GetIntentProvider returns the LLM provider for intent classification (lazy initialized)
-func (f *Factory) GetIntentProvider() (providers.LLMProvider, error) {
+// getIntentProvider returns the LLM provider for intent classification (lazy initialized)
+func (f *Factory) getIntentProvider() (providers.LLMProvider, error) {
 	if f.smallProvider != nil {
 		return f.smallProvider, nil
 	}
@@ -253,13 +254,26 @@ func (f *Factory) GetIntentProvider() (providers.LLMProvider, error) {
 	return f.smallProvider, nil
 }
 
+// GetLocalLLM returns an LLM struct wrapping the intent provider and model.
+// This provides a convenient interface for simple chat operations.
+func (f *Factory) GetLocalLLM() (*llm.LLM, error) {
+	provider, err := f.getIntentProvider()
+	if err != nil {
+		return nil, err
+	}
+	return &llm.LLM{
+		Provider: provider,
+		Model:    f.GetIntentModelName(),
+	}, nil
+}
+
 // GetIntentClassifier returns the singleton IntentClassifier instance (lazy initialized)
 func (f *Factory) GetIntentClassifier() (intent.IntentClassifier, error) {
 	if f.classifier != nil {
 		return f.classifier, nil
 	}
 
-	provider, err := f.GetIntentProvider()
+	provider, err := f.getIntentProvider()
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +292,7 @@ func (f *Factory) GetIntentRouter() (*intent.Router, error) {
 		return nil, fmt.Errorf("intent processing is disabled")
 	}
 
-	provider, err := f.GetIntentProvider()
+	provider, err := f.getIntentProvider()
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +327,7 @@ func (f *Factory) GetIntentRouter() (*intent.Router, error) {
 	return f.router, nil
 }
 
-func (f *Factory) GetBigProvider() (providers.LLMProvider, error) {
+func (f *Factory) getBigProvider() (providers.LLMProvider, error) {
 	if f.bigProvider != nil {
 		return f.bigProvider, nil
 	}
@@ -331,7 +345,19 @@ func (f *Factory) GetBigProvider() (providers.LLMProvider, error) {
 		}
 	}
 	return nil, fmt.Errorf(" %q not found in model_list", defaultModelName)
+}
 
+// GetBigLLM returns an LLM struct wrapping the big provider and model.
+// This provides a convenient interface for simple chat operations.
+func (f *Factory) GetBigLLM() (*llm.LLM, error) {
+	provider, err := f.getBigProvider()
+	if err != nil {
+		return nil, err
+	}
+	return &llm.LLM{
+		Provider: provider,
+		Model:    f.bigModel,
+	}, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -453,7 +479,7 @@ func (f *Factory) GetIntentModelName() string {
 		return f.smallModel
 	}
 	// Trigger provider init to populate f.modelName
-	_, _ = f.GetIntentProvider()
+	_, _ = f.getIntentProvider()
 	return f.smallModel
 }
 
@@ -461,12 +487,12 @@ func (f *Factory) GetIntentModelName() string {
 // Video / RTSP tools
 // ─────────────────────────────────────────────────────────────────────────────
 
-// GetFrameGrabber returns the singleton FrameGrabber instance (lazy initialized).
-func (f *Factory) GetFrameGrabber() *video.FrameGrabber {
-	if f.frameGrabber == nil {
-		f.frameGrabber = video.NewFrameGrabber()
+// GetFFmpegUtil returns the singleton FFmpegUtil instance (lazy initialized).
+func (f *Factory) GetFFmpegUtil() *video.FFmpegUtil {
+	if f.ffmpegUtil == nil {
+		f.ffmpegUtil = video.NewFFmpegUtil()
 	}
-	return f.frameGrabber
+	return f.ffmpegUtil
 }
 
 // GetRTSPAnalyzeTool returns the singleton RTSPAnalyzeTool instance (lazy initialized).
@@ -475,7 +501,7 @@ func (f *Factory) GetRTSPAnalyzeTool() (*homeclawtool.RTSPAnalyzeTool, error) {
 	if f.rtspAnalyzeTool != nil {
 		return f.rtspAnalyzeTool, nil
 	}
-	f.rtspAnalyzeTool = homeclawtool.NewRTSPAnalyzeTool(f.GetFrameGrabber(), f)
+	f.rtspAnalyzeTool = homeclawtool.NewRTSPAnalyzeTool(f.GetFFmpegUtil(), f)
 	// Inject media store if available
 	if f.mediaStore != nil {
 		f.rtspAnalyzeTool.SetMediaStore(f.mediaStore)

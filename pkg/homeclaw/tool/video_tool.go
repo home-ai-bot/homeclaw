@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/sipeed/picoclaw/pkg/homeclaw/llm"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/video"
 	"github.com/sipeed/picoclaw/pkg/media"
 	"github.com/sipeed/picoclaw/pkg/providers"
@@ -13,8 +14,7 @@ import (
 
 // IntentProviderFactory provides access to the LLM provider used for intent/vision analysis.
 type IntentProviderFactory interface {
-	GetIntentProvider() (providers.LLMProvider, error)
-	GetIntentModelName() string
+	GetLocalLLM() (*llm.LLM, error)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -24,16 +24,16 @@ type IntentProviderFactory interface {
 // RTSPAnalyzeTool captures a single frame from an RTSP stream and sends it to
 // the intent LLM provider for visual analysis.
 type RTSPAnalyzeTool struct {
-	grabber         *video.FrameGrabber
+	ffmpegUtil      *video.FFmpegUtil
 	providerFactory IntentProviderFactory
 	mediaStore      media.MediaStore
 }
 
-// NewRTSPAnalyzeTool creates an RTSPAnalyzeTool backed by the given FrameGrabber
+// NewRTSPAnalyzeTool creates an RTSPAnalyzeTool backed by the given FFmpegUtil
 // and intent provider factory.
-func NewRTSPAnalyzeTool(grabber *video.FrameGrabber, factory IntentProviderFactory) *RTSPAnalyzeTool {
+func NewRTSPAnalyzeTool(ffmpegUtil *video.FFmpegUtil, factory IntentProviderFactory) *RTSPAnalyzeTool {
 	return &RTSPAnalyzeTool{
-		grabber:         grabber,
+		ffmpegUtil:      ffmpegUtil,
 		providerFactory: factory,
 	}
 }
@@ -83,7 +83,7 @@ func (t *RTSPAnalyzeTool) Execute(ctx context.Context, params map[string]any) *t
 	}
 
 	// 1. Capture a frame from the RTSP stream (returns both dataURI and file path)
-	dataURI, filePath, err := t.grabber.GrabFrameWithPath(ctx, rtspURL)
+	dataURI, filePath, err := t.ffmpegUtil.GrabFrameWithPath(ctx, rtspURL)
 	if err != nil {
 		return tools.ErrorResult(fmt.Sprintf("failed to capture frame from %q: %v", rtspURL, err))
 	}
@@ -105,12 +105,11 @@ func (t *RTSPAnalyzeTool) Execute(ctx context.Context, params map[string]any) *t
 		}
 	}
 
-	// 2. Get the intent LLM provider
-	provider, err := t.providerFactory.GetIntentProvider()
+	// 2. Get the intent LLM
+	localLLM, err := t.providerFactory.GetLocalLLM()
 	if err != nil {
-		return tools.ErrorResult(fmt.Sprintf("intent provider unavailable: %v", err))
+		return tools.ErrorResult(fmt.Sprintf("intent LLM unavailable: %v", err))
 	}
-	modelName := t.providerFactory.GetIntentModelName()
 
 	// 3. Build a multimodal message: text prompt + captured frame
 	messages := []providers.Message{
@@ -121,8 +120,8 @@ func (t *RTSPAnalyzeTool) Execute(ctx context.Context, params map[string]any) *t
 		},
 	}
 
-	// 4. Call the provider
-	resp, err := provider.Chat(ctx, messages, nil, modelName, nil)
+	// 4. Call the LLM
+	resp, err := localLLM.Provider.Chat(ctx, messages, nil, localLLM.Model, nil)
 	if err != nil {
 		return tools.ErrorResult(fmt.Sprintf("vision analysis failed: %v", err))
 	}
