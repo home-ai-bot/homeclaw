@@ -12,7 +12,10 @@
     "show_more_channels": "更多",
     "show_less_channels": "收起",
     "config": "配置",
-    "logs": "日志"
+    "logs": "日志",
+    "smart_home": "智能家居",
+    "xiaomi": "小米",
+    "tuya": "涂鸦"
   },
   "chat": {
     "welcome": "今天我能为您做些什么？",
@@ -493,6 +496,82 @@
     "logs": {
       "clear": "清空日志",
       "empty": "等待日志中..."
+    }
+  },
+  "tuya": {
+    "description": "连接涂鸦智能家居账号，控制您的智能设备。",
+    "status": {
+      "loggedIn": "已登录",
+      "loggedInDesc": "您的涂鸦账号已连接。"
+    },
+    "login": {
+      "title": "登录涂鸦",
+      "description": "输入您的涂鸦账号凭据进行连接。",
+      "submit": "登录",
+      "loggingIn": "登录中...",
+      "error": "登录失败，请检查您的凭据。"
+    },
+    "action": {
+      "logout": "退出登录",
+      "deleteCredentials": "删除凭据"
+    },
+    "field": {
+      "region": "区域",
+      "selectRegion": "选择区域",
+      "username": "邮箱或手机号",
+      "usernamePlaceholder": "输入您的邮箱或手机号",
+      "password": "密码",
+      "passwordPlaceholder": "输入您的密码"
+    },
+    "validation": {
+      "required": "所有字段均为必填"
+    }
+  },
+  "xiaomi": {
+    "description": "连接小米智能家居账号，控制您的智能设备。",
+    "status": {
+      "loggedIn": "已登录",
+      "loggedInDesc": "您的小米账号已连接。"
+    },
+    "login": {
+      "title": "登录小米",
+      "description": "输入您的小米账号凭据进行连接。",
+      "submit": "登录",
+      "loggingIn": "登录中...",
+      "error": "登录失败，请检查您的凭据。"
+    },
+    "captcha": {
+      "title": "需要验证码",
+      "description": "请输入图片中的验证码。",
+      "submit": "提交",
+      "submitting": "提交中..."
+    },
+    "verify": {
+      "title": "需要验证",
+      "descriptionPhone": "请输入发送到手机 {{target}} 的验证码",
+      "descriptionEmail": "请输入发送到邮箱 {{target}} 的验证码",
+      "submit": "提交",
+      "submitting": "提交中..."
+    },
+    "action": {
+      "logout": "退出登录",
+      "cancel": "取消"
+    },
+    "field": {
+      "userId": "用户ID",
+      "username": "邮箱或手机号",
+      "usernamePlaceholder": "输入您的邮箱或手机号",
+      "password": "密码",
+      "passwordPlaceholder": "输入您的密码",
+      "captcha": "验证码",
+      "captchaPlaceholder": "输入验证码",
+      "verifyCode": "验证码",
+      "verifyCodePlaceholder": "输入验证码"
+    },
+    "validation": {
+      "required": "所有字段均为必填",
+      "captchaRequired": "验证码不能为空",
+      "verifyRequired": "验证码不能为空"
     }
   }
 }

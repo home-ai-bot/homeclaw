@@ -12,7 +12,10 @@
     "show_more_channels": "More",
     "show_less_channels": "Less",
     "config": "Config",
-    "logs": "Logs"
+    "logs": "Logs",
+    "smart_home": "Smart Home",
+    "xiaomi": "Xiaomi",
+    "tuya": "Tuya"
   },
   "chat": {
     "welcome": "How can I help you today?",
@@ -493,6 +496,82 @@
     "logs": {
       "clear": "Clear logs",
       "empty": "Waiting for logs..."
+    }
+  },
+  "tuya": {
+    "description": "Connect to your Tuya smart home account to control devices.",
+    "status": {
+      "loggedIn": "Logged In",
+      "loggedInDesc": "Your Tuya account is connected."
+    },
+    "login": {
+      "title": "Login to Tuya",
+      "description": "Enter your Tuya account credentials to connect.",
+      "submit": "Login",
+      "loggingIn": "Logging in...",
+      "error": "Login failed. Please check your credentials."
+    },
+    "action": {
+      "logout": "Logout",
+      "deleteCredentials": "Delete Credentials"
+    },
+    "field": {
+      "region": "Region",
+      "selectRegion": "Select a region",
+      "username": "Email or Phone",
+      "usernamePlaceholder": "Enter your email or phone number",
+      "password": "Password",
+      "passwordPlaceholder": "Enter your password"
+    },
+    "validation": {
+      "required": "All fields are required"
+    }
+  },
+  "xiaomi": {
+    "description": "Connect to your Xiaomi smart home account to control devices.",
+    "status": {
+      "loggedIn": "Logged In",
+      "loggedInDesc": "Your Xiaomi account is connected."
+    },
+    "login": {
+      "title": "Login to Xiaomi",
+      "description": "Enter your Xiaomi account credentials to connect.",
+      "submit": "Login",
+      "loggingIn": "Logging in...",
+      "error": "Login failed. Please check your credentials."
+    },
+    "captcha": {
+      "title": "Captcha Required",
+      "description": "Please enter the captcha code from the image.",
+      "submit": "Submit",
+      "submitting": "Submitting..."
+    },
+    "verify": {
+      "title": "Verification Required",
+      "descriptionPhone": "Enter the verification code sent to your phone: {{target}}",
+      "descriptionEmail": "Enter the verification code sent to your email: {{target}}",
+      "submit": "Submit",
+      "submitting": "Submitting..."
+    },
+    "action": {
+      "logout": "Logout",
+      "cancel": "Cancel"
+    },
+    "field": {
+      "userId": "User ID",
+      "username": "Email or Phone",
+      "usernamePlaceholder": "Enter your email or phone number",
+      "password": "Password",
+      "passwordPlaceholder": "Enter your password",
+      "captcha": "Captcha",
+      "captchaPlaceholder": "Enter captcha",
+      "verifyCode": "Verification Code",
+      "verifyCodePlaceholder": "Enter code"
+    },
+    "validation": {
+      "required": "All fields are required",
+      "captchaRequired": "Captcha is required",
+      "verifyRequired": "Verification code is required"
     }
   }
 }

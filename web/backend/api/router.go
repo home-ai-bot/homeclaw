@@ -9,6 +9,7 @@ import (
 )
 
 // Handler serves HTTP API requests.
+
 type Handler struct {
 	configPath           string
 	serverPort           int
@@ -19,6 +20,8 @@ type Handler struct {
 	oauthFlows           map[string]*oauthFlow
 	oauthState           map[string]string
 	go2rtcManager        *homeclaw.Go2RTCManager
+	tuyaManager          *homeclaw.TuyaManager
+	xiaomiManager        *homeclaw.XiaomiManager
 }
 
 // NewHandler creates an instance of the API handler.
@@ -29,6 +32,8 @@ func NewHandler(configPath string) *Handler {
 		oauthFlows:    make(map[string]*oauthFlow),
 		oauthState:    make(map[string]string),
 		go2rtcManager: homeclaw.NewGo2RTCManager(),
+		tuyaManager:   homeclaw.NewTuyaManager(),
+		xiaomiManager: homeclaw.NewXiaomiManager(),
 	}
 }
 
@@ -53,6 +58,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	// Go2RTC process lifecycle (homeclaw)
 	h.go2rtcManager.RegisterRoutes(mux)
+
+	// Tuya API endpoints
+	h.tuyaManager.RegisterRoutes(mux)
+
+	// Xiaomi API endpoints
+	h.xiaomiManager.RegisterRoutes(mux)
 
 	// Session history
 	h.registerSessionRoutes(mux)
@@ -81,6 +92,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 func (h *Handler) Shutdown() {
 	h.StopGateway()
 	h.go2rtcManager.Stop()
+	h.tuyaManager.Stop()
+	h.xiaomiManager.Stop()
 }
 
 // TryAutoStartGo2RTC delegates to the Go2RTCManager to auto-start go2rtc.

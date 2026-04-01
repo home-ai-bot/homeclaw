@@ -64,21 +64,18 @@ try {
     # Build 2: picoclaw-launcher.exe (web backend)
     Write-Color "[2/3] Building picoclaw-launcher.exe..." "Yellow"
     
-    # Check if frontend needs to be built
-    $FrontendDist = Join-Path $ProjectRoot "web\backend\dist\index.html"
-    if (!(Test-Path $FrontendDist)) {
-        Write-Color "      Frontend not found, building..." "Magenta"
-        Push-Location (Join-Path $ProjectRoot "web\frontend")
-        try {
-            npm install
-            if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
-            npm run build:backend
-            if ($LASTEXITCODE -ne 0) { throw "npm run build:backend failed" }
-        } finally {
-            Pop-Location
-        }
-        Write-Color "      Frontend built successfully!" "Magenta"
+    # Always rebuild frontend to ensure latest changes are included
+    Write-Color "      Building frontend..." "Magenta"
+    Push-Location (Join-Path $ProjectRoot "web\frontend")
+    try {
+        npm install
+        if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+        npm run build:backend
+        if ($LASTEXITCODE -ne 0) { throw "npm run build:backend failed" }
+    } finally {
+        Pop-Location
     }
+    Write-Color "      Frontend built successfully!" "Green"
     
     go build -v -tags stdjson -ldflags "$LdFlags" -o "$BuildDir\picoclaw-launcher.exe" .\web\backend
     if ($LASTEXITCODE -ne 0) { throw "Failed to build picoclaw-launcher.exe" }

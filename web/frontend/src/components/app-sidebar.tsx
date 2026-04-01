@@ -9,6 +9,7 @@ import {
   IconSettings,
   IconSparkles,
   IconTools,
+  IconHome,
 } from "@tabler/icons-react"
 import { Link, useRouterState } from "@tanstack/react-router"
 import * as React from "react"
@@ -116,6 +117,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           translateTitle: false,
         })),
         isChannelsGroup: true,
+      },
+      {
+        label: "navigation.smart_home",
+        defaultOpen: true,
+        items: [
+          {
+            title: "navigation.xiaomi",
+            url: "/smart-home/xiaomi",
+            icon: IconHome,
+            translateTitle: true,
+          },
+          {
+            title: "navigation.tuya",
+            url: "/smart-home/tuya",
+            icon: IconHome,
+            translateTitle: true,
+          },
+        ],
       },
       {
         ...baseNavGroups[2],
