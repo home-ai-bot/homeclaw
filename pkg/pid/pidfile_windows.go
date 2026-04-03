@@ -28,14 +28,20 @@ func isProcessRunning(pid int) bool {
 		0,
 		uintptr(pid),
 	)
-	if handle == 0 || err != nil {
+	// Note: syscall.LazyProc.Call returns errno as the third value.
+	// When the call succeeds, errno is 0, but syscall.Errno(0) is NOT nil
+	// as an interface value. So we must check errno == 0 explicitly.
+	// handle == 0 means OpenProcess failed.
+	if handle == 0 {
 		return false
 	}
+	_ = err // errno is not reliable for error checking here
 	defer procCloseHandle.Call(handle)
 
 	var exitCode uint32
-	ret, _, err := procGetExitCodeProcess.Call(handle, uintptr(unsafe.Pointer(&exitCode)))
-	if ret == 0 || err != nil {
+	ret, _, _ := procGetExitCodeProcess.Call(handle, uintptr(unsafe.Pointer(&exitCode)))
+	// ret == 0 means GetExitCodeProcess failed.
+	if ret == 0 {
 		return false
 	}
 	return exitCode == stillActive
