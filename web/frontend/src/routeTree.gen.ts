@@ -9,26 +9,20 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SmartHomeRouteImport } from './routes/smart-home'
 import { Route as ModelsRouteImport } from './routes/models'
 import { Route as LogsRouteImport } from './routes/logs'
+import { Route as LauncherLoginRouteImport } from './routes/launcher-login'
 import { Route as CredentialsRouteImport } from './routes/credentials'
 import { Route as ConfigRouteImport } from './routes/config'
 import { Route as AgentRouteImport } from './routes/agent'
 import { Route as ChannelsRouteRouteImport } from './routes/channels/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SmartHomeXiaomiRouteImport } from './routes/smart-home/xiaomi'
-import { Route as SmartHomeTuyaRouteImport } from './routes/smart-home/tuya'
 import { Route as ConfigRawRouteImport } from './routes/config.raw'
 import { Route as ChannelsNameRouteImport } from './routes/channels/$name'
 import { Route as AgentToolsRouteImport } from './routes/agent/tools'
 import { Route as AgentSkillsRouteImport } from './routes/agent/skills'
+import { Route as AgentHubRouteImport } from './routes/agent/hub'
 
-const SmartHomeRoute = SmartHomeRouteImport.update({
-  id: '/smart-home',
-  path: '/smart-home',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ModelsRoute = ModelsRouteImport.update({
   id: '/models',
   path: '/models',
@@ -37,6 +31,11 @@ const ModelsRoute = ModelsRouteImport.update({
 const LogsRoute = LogsRouteImport.update({
   id: '/logs',
   path: '/logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LauncherLoginRoute = LauncherLoginRouteImport.update({
+  id: '/launcher-login',
+  path: '/launcher-login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CredentialsRoute = CredentialsRouteImport.update({
@@ -64,16 +63,6 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SmartHomeXiaomiRoute = SmartHomeXiaomiRouteImport.update({
-  id: '/xiaomi',
-  path: '/xiaomi',
-  getParentRoute: () => SmartHomeRoute,
-} as any)
-const SmartHomeTuyaRoute = SmartHomeTuyaRouteImport.update({
-  id: '/tuya',
-  path: '/tuya',
-  getParentRoute: () => SmartHomeRoute,
-} as any)
 const ConfigRawRoute = ConfigRawRouteImport.update({
   id: '/raw',
   path: '/raw',
@@ -94,6 +83,11 @@ const AgentSkillsRoute = AgentSkillsRouteImport.update({
   path: '/skills',
   getParentRoute: () => AgentRoute,
 } as any)
+const AgentHubRoute = AgentHubRouteImport.update({
+  id: '/hub',
+  path: '/hub',
+  getParentRoute: () => AgentRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -101,15 +95,14 @@ export interface FileRoutesByFullPath {
   '/agent': typeof AgentRouteWithChildren
   '/config': typeof ConfigRouteWithChildren
   '/credentials': typeof CredentialsRoute
+  '/launcher-login': typeof LauncherLoginRoute
   '/logs': typeof LogsRoute
   '/models': typeof ModelsRoute
-  '/smart-home': typeof SmartHomeRouteWithChildren
+  '/agent/hub': typeof AgentHubRoute
   '/agent/skills': typeof AgentSkillsRoute
   '/agent/tools': typeof AgentToolsRoute
   '/channels/$name': typeof ChannelsNameRoute
   '/config/raw': typeof ConfigRawRoute
-  '/smart-home/tuya': typeof SmartHomeTuyaRoute
-  '/smart-home/xiaomi': typeof SmartHomeXiaomiRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -117,15 +110,14 @@ export interface FileRoutesByTo {
   '/agent': typeof AgentRouteWithChildren
   '/config': typeof ConfigRouteWithChildren
   '/credentials': typeof CredentialsRoute
+  '/launcher-login': typeof LauncherLoginRoute
   '/logs': typeof LogsRoute
   '/models': typeof ModelsRoute
-  '/smart-home': typeof SmartHomeRouteWithChildren
+  '/agent/hub': typeof AgentHubRoute
   '/agent/skills': typeof AgentSkillsRoute
   '/agent/tools': typeof AgentToolsRoute
   '/channels/$name': typeof ChannelsNameRoute
   '/config/raw': typeof ConfigRawRoute
-  '/smart-home/tuya': typeof SmartHomeTuyaRoute
-  '/smart-home/xiaomi': typeof SmartHomeXiaomiRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -134,15 +126,14 @@ export interface FileRoutesById {
   '/agent': typeof AgentRouteWithChildren
   '/config': typeof ConfigRouteWithChildren
   '/credentials': typeof CredentialsRoute
+  '/launcher-login': typeof LauncherLoginRoute
   '/logs': typeof LogsRoute
   '/models': typeof ModelsRoute
-  '/smart-home': typeof SmartHomeRouteWithChildren
+  '/agent/hub': typeof AgentHubRoute
   '/agent/skills': typeof AgentSkillsRoute
   '/agent/tools': typeof AgentToolsRoute
   '/channels/$name': typeof ChannelsNameRoute
   '/config/raw': typeof ConfigRawRoute
-  '/smart-home/tuya': typeof SmartHomeTuyaRoute
-  '/smart-home/xiaomi': typeof SmartHomeXiaomiRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -152,15 +143,14 @@ export interface FileRouteTypes {
     | '/agent'
     | '/config'
     | '/credentials'
+    | '/launcher-login'
     | '/logs'
     | '/models'
-    | '/smart-home'
+    | '/agent/hub'
     | '/agent/skills'
     | '/agent/tools'
     | '/channels/$name'
     | '/config/raw'
-    | '/smart-home/tuya'
-    | '/smart-home/xiaomi'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -168,15 +158,14 @@ export interface FileRouteTypes {
     | '/agent'
     | '/config'
     | '/credentials'
+    | '/launcher-login'
     | '/logs'
     | '/models'
-    | '/smart-home'
+    | '/agent/hub'
     | '/agent/skills'
     | '/agent/tools'
     | '/channels/$name'
     | '/config/raw'
-    | '/smart-home/tuya'
-    | '/smart-home/xiaomi'
   id:
     | '__root__'
     | '/'
@@ -184,15 +173,14 @@ export interface FileRouteTypes {
     | '/agent'
     | '/config'
     | '/credentials'
+    | '/launcher-login'
     | '/logs'
     | '/models'
-    | '/smart-home'
+    | '/agent/hub'
     | '/agent/skills'
     | '/agent/tools'
     | '/channels/$name'
     | '/config/raw'
-    | '/smart-home/tuya'
-    | '/smart-home/xiaomi'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -201,20 +189,13 @@ export interface RootRouteChildren {
   AgentRoute: typeof AgentRouteWithChildren
   ConfigRoute: typeof ConfigRouteWithChildren
   CredentialsRoute: typeof CredentialsRoute
+  LauncherLoginRoute: typeof LauncherLoginRoute
   LogsRoute: typeof LogsRoute
   ModelsRoute: typeof ModelsRoute
-  SmartHomeRoute: typeof SmartHomeRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/smart-home': {
-      id: '/smart-home'
-      path: '/smart-home'
-      fullPath: '/smart-home'
-      preLoaderRoute: typeof SmartHomeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/models': {
       id: '/models'
       path: '/models'
@@ -227,6 +208,13 @@ declare module '@tanstack/react-router' {
       path: '/logs'
       fullPath: '/logs'
       preLoaderRoute: typeof LogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/launcher-login': {
+      id: '/launcher-login'
+      path: '/launcher-login'
+      fullPath: '/launcher-login'
+      preLoaderRoute: typeof LauncherLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/credentials': {
@@ -264,20 +252,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/smart-home/xiaomi': {
-      id: '/smart-home/xiaomi'
-      path: '/xiaomi'
-      fullPath: '/smart-home/xiaomi'
-      preLoaderRoute: typeof SmartHomeXiaomiRouteImport
-      parentRoute: typeof SmartHomeRoute
-    }
-    '/smart-home/tuya': {
-      id: '/smart-home/tuya'
-      path: '/tuya'
-      fullPath: '/smart-home/tuya'
-      preLoaderRoute: typeof SmartHomeTuyaRouteImport
-      parentRoute: typeof SmartHomeRoute
-    }
     '/config/raw': {
       id: '/config/raw'
       path: '/raw'
@@ -306,6 +280,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentSkillsRouteImport
       parentRoute: typeof AgentRoute
     }
+    '/agent/hub': {
+      id: '/agent/hub'
+      path: '/hub'
+      fullPath: '/agent/hub'
+      preLoaderRoute: typeof AgentHubRouteImport
+      parentRoute: typeof AgentRoute
+    }
   }
 }
 
@@ -322,11 +303,13 @@ const ChannelsRouteRouteWithChildren = ChannelsRouteRoute._addFileChildren(
 )
 
 interface AgentRouteChildren {
+  AgentHubRoute: typeof AgentHubRoute
   AgentSkillsRoute: typeof AgentSkillsRoute
   AgentToolsRoute: typeof AgentToolsRoute
 }
 
 const AgentRouteChildren: AgentRouteChildren = {
+  AgentHubRoute: AgentHubRoute,
   AgentSkillsRoute: AgentSkillsRoute,
   AgentToolsRoute: AgentToolsRoute,
 }
@@ -344,29 +327,15 @@ const ConfigRouteChildren: ConfigRouteChildren = {
 const ConfigRouteWithChildren =
   ConfigRoute._addFileChildren(ConfigRouteChildren)
 
-interface SmartHomeRouteChildren {
-  SmartHomeTuyaRoute: typeof SmartHomeTuyaRoute
-  SmartHomeXiaomiRoute: typeof SmartHomeXiaomiRoute
-}
-
-const SmartHomeRouteChildren: SmartHomeRouteChildren = {
-  SmartHomeTuyaRoute: SmartHomeTuyaRoute,
-  SmartHomeXiaomiRoute: SmartHomeXiaomiRoute,
-}
-
-const SmartHomeRouteWithChildren = SmartHomeRoute._addFileChildren(
-  SmartHomeRouteChildren,
-)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ChannelsRouteRoute: ChannelsRouteRouteWithChildren,
   AgentRoute: AgentRouteWithChildren,
   ConfigRoute: ConfigRouteWithChildren,
   CredentialsRoute: CredentialsRoute,
+  LauncherLoginRoute: LauncherLoginRoute,
   LogsRoute: LogsRoute,
   ModelsRoute: ModelsRoute,
-  SmartHomeRoute: SmartHomeRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

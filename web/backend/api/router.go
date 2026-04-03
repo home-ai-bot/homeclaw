@@ -16,12 +16,17 @@ type Handler struct {
 	serverPublic         bool
 	serverPublicExplicit bool
 	serverCIDRs          []string
+	debug                bool
 	oauthMu              sync.Mutex
 	oauthFlows           map[string]*oauthFlow
 	oauthState           map[string]string
 	go2rtcManager        *homeclaw.Go2RTCManager
 	tuyaManager          *homeclaw.TuyaManager
 	xiaomiManager        *homeclaw.XiaomiManager
+	weixinMu             sync.Mutex
+	weixinFlows          map[string]*weixinFlow
+	wecomMu              sync.Mutex
+	wecomFlows           map[string]*wecomFlow
 }
 
 // NewHandler creates an instance of the API handler.
@@ -34,6 +39,8 @@ func NewHandler(configPath string) *Handler {
 		go2rtcManager: homeclaw.NewGo2RTCManager(),
 		tuyaManager:   homeclaw.NewTuyaManager(),
 		xiaomiManager: homeclaw.NewXiaomiManager(),
+		weixinFlows:   make(map[string]*weixinFlow),
+		wecomFlows:    make(map[string]*wecomFlow),
 	}
 }
 
@@ -43,6 +50,10 @@ func (h *Handler) SetServerOptions(port int, public bool, publicExplicit bool, a
 	h.serverPublic = public
 	h.serverPublicExplicit = publicExplicit
 	h.serverCIDRs = append([]string(nil), allowedCIDRs...)
+}
+
+func (h *Handler) SetDebug(debug bool) {
+	h.debug = debug
 }
 
 // RegisterRoutes binds all API endpoint handlers to the ServeMux.
@@ -86,6 +97,18 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	// Launcher service parameters (port/public)
 	h.registerLauncherConfigRoutes(mux)
+
+	// Self-update endpoint (requires dashboard auth)
+	h.registerUpdateRoutes(mux)
+
+	// Runtime build/version metadata
+	h.registerVersionRoutes(mux)
+
+	// WeChat QR login flow
+	h.registerWeixinRoutes(mux)
+
+	// WeCom QR login flow
+	h.registerWecomRoutes(mux)
 }
 
 // Shutdown gracefully shuts down the handler, stopping the gateway and go2rtc if they were started by this handler.

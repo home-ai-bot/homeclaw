@@ -25,6 +25,9 @@ build/
 # Secrets & Config (keep templates, ignore actual secrets)
 .env
 config/config.json
+.security.yml
+onboard
+
 
 # Test
 coverage.txt
@@ -40,6 +43,7 @@ tasks/
 
 # Plans
 docs/plans/
+docs/superpowers/
 
 # Editors
 .vscode/
@@ -59,7 +63,10 @@ cmd/telegram/
 !web/backend/dist/
 web/backend/dist/*
 !web/backend/dist/.gitkeep
-pkg/homeclaw/miio/login_client_test.go
+
+.claude/
+
+docker/data
 config/camera.json
 config/xiaovvcamera.json
 pkg/homeclaw/third/miio/mi_client_test.go
