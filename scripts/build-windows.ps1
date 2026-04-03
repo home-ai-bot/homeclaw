@@ -1,5 +1,5 @@
 # PicoClaw Windows Build Script
-# Builds all 3 executables: picoclaw, picoclaw-launcher, picoclaw-launcher-tui
+# Builds all 2 executables: picoclaw, picoclaw-launcher
 # Embeds workspace and config files into the exe
 
 $ErrorActionPreference = "Stop"
@@ -37,7 +37,7 @@ Push-Location $ProjectRoot
 
 try {
     # Step 0: Copy workspace to embed directory (equivalent to go:generate)
-    Write-Color "[0/3] Preparing workspace for embedding..." "Magenta"
+    Write-Color "[0/2] Preparing workspace for embedding..." "Magenta"
     
     # Remove existing workspace in onboard directory
     if (Test-Path $WorkspaceTarget) {
@@ -55,14 +55,14 @@ try {
     }
 
     # Build 1: picoclaw.exe
-    Write-Color "[1/3] Building picoclaw.exe..." "Yellow"
+    Write-Color "[1/2] Building picoclaw.exe..." "Yellow"
     $env:CGO_ENABLED = "0"
     go build -v -tags stdjson -ldflags "$LdFlags" -o "$BuildDir\picoclaw.exe" .\cmd\picoclaw
     if ($LASTEXITCODE -ne 0) { throw "Failed to build picoclaw.exe" }
     Write-Color "      picoclaw.exe built successfully!" "Green"
 
     # Build 2: picoclaw-launcher.exe (web backend)
-    Write-Color "[2/3] Building picoclaw-launcher.exe..." "Yellow"
+    Write-Color "[2/2] Building picoclaw-launcher.exe..." "Yellow"
     
     # Always rebuild frontend to ensure latest changes are included
     Write-Color "      Building frontend..." "Magenta"
@@ -80,12 +80,6 @@ try {
     go build -v -tags stdjson -ldflags "$LdFlags" -o "$BuildDir\picoclaw-launcher.exe" .\web\backend
     if ($LASTEXITCODE -ne 0) { throw "Failed to build picoclaw-launcher.exe" }
     Write-Color "      picoclaw-launcher.exe built successfully!" "Green"
-
-    # Build 3: picoclaw-launcher-tui.exe
-    Write-Color "[3/3] Building picoclaw-launcher-tui.exe..." "Yellow"
-    go build -v -tags stdjson -ldflags "$LdFlags" -o "$BuildDir\picoclaw-launcher-tui.exe" .\cmd\picoclaw-launcher-tui
-    if ($LASTEXITCODE -ne 0) { throw "Failed to build picoclaw-launcher-tui.exe" }
-    Write-Color "      picoclaw-launcher-tui.exe built successfully!" "Green"
 
     # Summary
     Write-Color "`n========================================" "Cyan"
