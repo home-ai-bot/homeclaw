@@ -1,0 +1,106 @@
+{
+  "navigation": {
+    "smart_home": "智能家居",
+    "xiaomi": "小米",
+    "tuya": "涂鸦",
+    "go2rtc": "视频控制"
+  },
+  "tuya": {
+    "description": "登录涂鸦账号，连接您的涂鸦智能家居设备。",
+    "login": {
+      "title": "登录涂鸦账号",
+      "description": "输入您的涂鸦账号信息，连接您的智能家居设备。",
+      "submit": "登录",
+      "loggingIn": "登录中...",
+      "error": "登录失败，请检查您的账号信息。"
+    },
+    "status": {
+      "loggedIn": "已连接涂鸦",
+      "loggedInDesc": "您的涂鸦账号已连接，可以控制您的智能家居设备。"
+    },
+    "field": {
+      "region": "区域",
+      "selectRegion": "选择区域",
+      "username": "邮箱 / 手机号",
+      "usernamePlaceholder": "输入您的涂鸦账号邮箱或手机号",
+      "password": "密码",
+      "passwordPlaceholder": "输入您的密码"
+    },
+    "action": {
+      "logout": "退出登录",
+      "deleteCredentials": "删除凭据"
+    },
+    "validation": {
+      "required": "请填写所有字段。"
+    }
+  },
+  "xiaomi": {
+    "description": "登录小米账号，连接您的小米智能家居设备。",
+    "login": {
+      "title": "登录小米账号",
+      "description": "输入您的小米账号信息，连接您的智能家居设备。",
+      "submit": "登录",
+      "loggingIn": "登录中..."
+    },
+    "captcha": {
+      "title": "验证码验证",
+      "description": "请输入图片中的验证码。",
+      "submit": "提交",
+      "submitting": "提交中..."
+    },
+    "verify": {
+      "title": "安全验证",
+      "descriptionPhone": "验证码已发送至您的手机 {{target}}。",
+      "descriptionEmail": "验证码已发送至您的邮箱 {{target}}。",
+      "submit": "验证",
+      "submitting": "验证中..."
+    },
+    "status": {
+      "loggedIn": "已连接小米账号",
+      "loggedInDesc": "您的小米账号已连接，可以控制您的智能家居设备。"
+    },
+    "field": {
+      "username": "邮箱 / 手机号",
+      "usernamePlaceholder": "输入您的小米账号邮箱或手机号",
+      "password": "密码",
+      "passwordPlaceholder": "输入您的密码",
+      "captcha": "验证码",
+      "captchaPlaceholder": "输入图片验证码",
+      "verifyCode": "短信/邮件验证码",
+      "verifyCodePlaceholder": "输入验证码",
+      "userId": "用户 ID"
+    },
+    "action": {
+      "logout": "退出登录",
+      "cancel": "取消"
+    },
+    "validation": {
+      "required": "请填写所有字段。",
+      "captchaRequired": "请输入验证码。",
+      "verifyRequired": "请输入短信/邮件验证码。"
+    }
+  },
+  "go2rtc": {
+    "title": "视频控制",
+    "description": "管理 go2rtc 视频流服务，可在此启动、停止或重启服务。",
+    "service": {
+      "title": "go2rtc 服务",
+      "desc": "用于摄像头和 RTSP 流的实时视频流服务。"
+    },
+    "status": {
+      "label": "状态",
+      "running": "运行中",
+      "starting": "启动中...",
+      "restarting": "重启中...",
+      "stopping": "停止中...",
+      "stopped": "已停止",
+      "error": "错误",
+      "unknown": "未知"
+    },
+    "action": {
+      "start": "启动",
+      "stop": "停止",
+      "restart": "重启"
+    }
+  }
+}

@@ -26,7 +26,7 @@ import {
 } from "@/homeclaw/store/xiaomi"
 
 export function XiaomiPage() {
-  const { t } = useTranslation()
+  const { t } = useTranslation("homeclaw")
   const store = useStore()
 
   const [state, setState] = useState(store.get(xiaomiAtom))

@@ -32,7 +32,7 @@ import {
 } from "@/homeclaw/store/tuya"
 
 export function TuyaPage() {
-  const { t } = useTranslation()
+  const { t } = useTranslation("homeclaw")
   const store = useStore()
 
   const [state, setState] = useState(store.get(tuyaAtom))

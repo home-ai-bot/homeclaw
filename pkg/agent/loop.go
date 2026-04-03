@@ -25,6 +25,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/commands"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/constants"
+	"github.com/sipeed/picoclaw/pkg/homeclaw"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/media"
 	"github.com/sipeed/picoclaw/pkg/providers"
@@ -69,6 +70,8 @@ type AgentLoop struct {
 	activeRequests sync.WaitGroup
 
 	reloadFunc func() error
+
+	homeclaw *homeclaw.HomeClaw
 }
 
 // processOptions configures how a message is processed
@@ -156,8 +159,25 @@ func NewAgentLoop(
 
 	// Register shared tools to all agents (now that al is created)
 	registerSharedTools(al, cfg, msgBus, registry, provider)
-
+	if defaultAgent != nil {
+		initHomeClaw(al, defaultAgent.Workspace, cfg, msgBus, registry)
+	}
 	return al
+}
+func initHomeClaw(al *AgentLoop, workspace string, cfg *config.Config, msgBus *bus.MessageBus, registry *AgentRegistry) {
+	hc, err := homeclaw.NewHomeClaw(workspace, cfg, msgBus)
+	if err != nil {
+		if errors.Is(err, homeclaw.ErrDisabled) {
+			logger.InfoCF("homeclaw", "HomeClaw disabled or homeclaw.json absent, skipping", nil)
+			return
+		}
+		logger.WarnCF("homeclaw", "HomeClaw initialisation failed, skipping",
+			map[string]any{"error": err.Error()})
+		return
+	}
+	hc.RegisterTools(registry.GetDefaultAgent().Tools)
+	al.homeclaw = hc
+	logger.InfoCF("homeclaw", "HomeClaw initialised", nil)
 }
 
 // registerSharedTools registers tools that are shared across all agents (web, message, spawn).

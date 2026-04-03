@@ -9,6 +9,8 @@ import { initReactI18next } from "react-i18next"
 
 import en from "./locales/en.json"
 import zh from "./locales/zh.json"
+import homeclawEn from "./locales/homeclaw/en.json"
+import homeclawZh from "./locales/homeclaw/zh.json"
 
 dayjs.extend(relativeTime)
 dayjs.extend(localizedFormat)
@@ -25,9 +27,11 @@ i18n
     resources: {
       en: {
         translation: en,
+        homeclaw: homeclawEn,
       },
       zh: {
         translation: zh,
+        homeclaw: homeclawZh,
       },
     },
     fallbackLng: "en",

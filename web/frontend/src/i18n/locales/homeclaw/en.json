@@ -1,0 +1,106 @@
+{
+  "navigation": {
+    "smart_home": "Smart Home",
+    "xiaomi": "Xiaomi",
+    "tuya": "Tuya",
+    "go2rtc": "Video Control"
+  },
+  "tuya": {
+    "description": "Connect your Tuya smart home devices by logging in with your Tuya account.",
+    "login": {
+      "title": "Sign in to Tuya",
+      "description": "Enter your Tuya account credentials to connect your smart home devices.",
+      "submit": "Sign In",
+      "loggingIn": "Signing in...",
+      "error": "Login failed. Please check your credentials."
+    },
+    "status": {
+      "loggedIn": "Connected to Tuya",
+      "loggedInDesc": "Your Tuya account is connected. You can now control your smart home devices."
+    },
+    "field": {
+      "region": "Region",
+      "selectRegion": "Select a region",
+      "username": "Email / Phone",
+      "usernamePlaceholder": "Enter your Tuya account email or phone",
+      "password": "Password",
+      "passwordPlaceholder": "Enter your password"
+    },
+    "action": {
+      "logout": "Logout",
+      "deleteCredentials": "Delete Credentials"
+    },
+    "validation": {
+      "required": "Please fill in all fields."
+    }
+  },
+  "xiaomi": {
+    "description": "Connect your Xiaomi smart home devices by logging in with your Mi account.",
+    "login": {
+      "title": "Sign in to Mi Account",
+      "description": "Enter your Xiaomi account credentials to connect your smart home devices.",
+      "submit": "Sign In",
+      "loggingIn": "Signing in..."
+    },
+    "captcha": {
+      "title": "Captcha Verification",
+      "description": "Please enter the captcha code shown in the image.",
+      "submit": "Submit",
+      "submitting": "Submitting..."
+    },
+    "verify": {
+      "title": "Security Verification",
+      "descriptionPhone": "A verification code has been sent to your phone {{target}}.",
+      "descriptionEmail": "A verification code has been sent to your email {{target}}.",
+      "submit": "Verify",
+      "submitting": "Verifying..."
+    },
+    "status": {
+      "loggedIn": "Connected to Mi Account",
+      "loggedInDesc": "Your Xiaomi account is connected. You can now control your smart home devices."
+    },
+    "field": {
+      "username": "Email / Phone",
+      "usernamePlaceholder": "Enter your Mi account email or phone",
+      "password": "Password",
+      "passwordPlaceholder": "Enter your password",
+      "captcha": "Captcha",
+      "captchaPlaceholder": "Enter captcha code",
+      "verifyCode": "Verification Code",
+      "verifyCodePlaceholder": "Enter the code",
+      "userId": "User ID"
+    },
+    "action": {
+      "logout": "Logout",
+      "cancel": "Cancel"
+    },
+    "validation": {
+      "required": "Please fill in all fields.",
+      "captchaRequired": "Please enter the captcha code.",
+      "verifyRequired": "Please enter the verification code."
+    }
+  },
+  "go2rtc": {
+    "title": "Video Control",
+    "description": "Manage the go2rtc video streaming service. Start, stop, or restart the service below.",
+    "service": {
+      "title": "go2rtc Service",
+      "desc": "Real-time video streaming service for cameras and RTSP streams."
+    },
+    "status": {
+      "label": "Status",
+      "running": "Running",
+      "starting": "Starting...",
+      "restarting": "Restarting...",
+      "stopping": "Stopping...",
+      "stopped": "Stopped",
+      "error": "Error",
+      "unknown": "Unknown"
+    },
+    "action": {
+      "start": "Start",
+      "stop": "Stop",
+      "restart": "Restart"
+    }
+  }
+}

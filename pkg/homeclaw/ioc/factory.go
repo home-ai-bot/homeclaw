@@ -223,7 +223,7 @@ func (f *Factory) getIntentProvider() (providers.LLMProvider, error) {
 	if mc.IsModelName() {
 		for i := range f.Cfg.ModelList {
 			if f.Cfg.ModelList[i].ModelName == mc.ModelName {
-				p, modelID, err := providers.CreateProviderFromConfig(&f.Cfg.ModelList[i])
+				p, modelID, err := providers.CreateProviderFromConfig(f.Cfg.ModelList[i])
 				if err != nil {
 					return nil, fmt.Errorf("intent model_ref %q: %w", mc.ModelName, err)
 				}
@@ -243,7 +243,7 @@ func (f *Factory) getIntentProvider() (providers.LLMProvider, error) {
 		ModelName: mc.ModelName,
 		Model:     mc.Model,
 		APIBase:   mc.APIBase,
-		APIKey:    mc.APIKey,
+		APIKeys:   config.SecureStrings{config.NewSecureString(mc.APIKey)},
 	}
 	p, _, err := providers.CreateProviderFromConfig(modelCfg)
 	if err != nil {
@@ -335,7 +335,7 @@ func (f *Factory) getBigProvider() (providers.LLMProvider, error) {
 
 	for i := range f.Cfg.ModelList {
 		if f.Cfg.ModelList[i].ModelName == defaultModelName {
-			p, modelID, err := providers.CreateProviderFromConfig(&f.Cfg.ModelList[i])
+			p, modelID, err := providers.CreateProviderFromConfig(f.Cfg.ModelList[i])
 			if err != nil {
 				return nil, fmt.Errorf("big model create err %q: %w", defaultModelName, err)
 			}

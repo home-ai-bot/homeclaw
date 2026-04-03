@@ -11,6 +11,7 @@ import {
   IconSparkles,
   IconTools,
   IconHome,
+  IconVideo,
 } from "@tabler/icons-react"
 import { Link, useRouterState } from "@tanstack/react-router"
 import * as React from "react"
@@ -40,6 +41,7 @@ interface NavItem {
   url: string
   icon: React.ComponentType<{ className?: string }>
   translateTitle?: boolean
+  namespace?: string
 }
 
 interface NavGroup {
@@ -47,6 +49,7 @@ interface NavGroup {
   defaultOpen: boolean
   items: NavItem[]
   isChannelsGroup?: boolean
+  labelNamespace?: string
 }
 
 const baseNavGroups: Omit<NavGroup, "items">[] = [
@@ -71,6 +74,7 @@ const baseNavGroups: Omit<NavGroup, "items">[] = [
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const routerState = useRouterState()
   const { i18n, t } = useTranslation()
+  const { t: th } = useTranslation("homeclaw")
   const { isMobile, setOpenMobile } = useSidebar()
   const currentPath = routerState.location.pathname
   const {
@@ -133,18 +137,28 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       {
         label: "navigation.smart_home",
         defaultOpen: true,
+        labelNamespace: "homeclaw",
         items: [
           {
             title: "navigation.xiaomi",
             url: "/smart-home/xiaomi",
             icon: IconHome,
             translateTitle: true,
+            namespace: "homeclaw" as const,
           },
           {
             title: "navigation.tuya",
             url: "/smart-home/tuya",
             icon: IconHome,
             translateTitle: true,
+            namespace: "homeclaw" as const,
+          },
+          {
+            title: "navigation.go2rtc",
+            url: "/smart-home/go2rtc",
+            icon: IconVideo,
+            translateTitle: true,
+            namespace: "homeclaw" as const,
           },
         ],
       },
@@ -206,7 +220,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <SidebarGroup className="px-2 py-0">
               <SidebarGroupLabel asChild>
                 <CollapsibleTrigger className="hover:bg-muted/60 flex w-full cursor-pointer items-center justify-between rounded-md px-2 py-1.5 transition-colors">
-                  <span>{t(group.label)}</span>
+                  <span>{group.labelNamespace === "homeclaw" ? th(group.label) : t(group.label)}</span>
                   <IconChevronRight className="size-3.5 opacity-50 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                 </CollapsibleTrigger>
               </SidebarGroupLabel>
@@ -240,7 +254,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                               >
                                 {item.translateTitle === false
                                   ? item.title
-                                  : t(item.title)}
+                                  : item.namespace === "homeclaw"
+                                    ? th(item.title)
+                                    : t(item.title)}
                               </span>
                             </Link>
                           </SidebarMenuButton>

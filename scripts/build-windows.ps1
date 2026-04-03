@@ -15,7 +15,7 @@ $ProjectRoot = Split-Path -Parent $ScriptDir
 $BuildDir = Join-Path $ProjectRoot "build"
 
 # Build configuration
-$GoFlags = "-v -tags stdjson"
+$BuildTags = "goolm,stdjson"
 $LdFlags = "-s -w"
 
 # Workspace paths
@@ -57,7 +57,7 @@ try {
     # Build 1: picoclaw.exe
     Write-Color "[1/2] Building picoclaw.exe..." "Yellow"
     $env:CGO_ENABLED = "0"
-    go build -v -tags stdjson -ldflags "$LdFlags" -o "$BuildDir\picoclaw.exe" .\cmd\picoclaw
+    go build -v -tags $BuildTags -ldflags "$LdFlags" -o "$BuildDir\picoclaw.exe" .\cmd\picoclaw
     if ($LASTEXITCODE -ne 0) { throw "Failed to build picoclaw.exe" }
     Write-Color "      picoclaw.exe built successfully!" "Green"
 
@@ -68,7 +68,7 @@ try {
     Write-Color "      Building frontend..." "Magenta"
     Push-Location (Join-Path $ProjectRoot "web\frontend")
     try {
-        npm install
+        npm install --legacy-peer-deps
         if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
         npm run build:backend
         if ($LASTEXITCODE -ne 0) { throw "npm run build:backend failed" }
@@ -77,7 +77,7 @@ try {
     }
     Write-Color "      Frontend built successfully!" "Green"
     
-    go build -v -tags stdjson -ldflags "$LdFlags" -o "$BuildDir\picoclaw-launcher.exe" .\web\backend
+    go build -v -tags $BuildTags -ldflags "$LdFlags" -o "$BuildDir\picoclaw-launcher.exe" .\web\backend
     if ($LASTEXITCODE -ne 0) { throw "Failed to build picoclaw-launcher.exe" }
     Write-Color "      picoclaw-launcher.exe built successfully!" "Green"
 
