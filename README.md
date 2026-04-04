@@ -59,9 +59,11 @@
 | 品牌 | 控制方式 | 状态 |
 |:---|:---|:---|
 | 小米 | 云端控制 | ✅ 完成 |
-| 小米 | 本地控制 | ⏳ 未开始 |
+|  | 本地控制 | ⏳ 未开始 |
 | 涂鸦 | 云端控制 | 🚧 开发中 |
-
+| HomeKit | 本地控制 | ⏳ 未开始 |
+| HomeAssitant | 本地控制 | ⏳ 未开始 |
+| HomeAssitant | 本地控制 | ⏳ 未开始 |
 ### 🔐 授权
 
 使用 [go2rtc](https://github.com/AlexxIT/go2rtc) 进行设备授权管理。
@@ -174,15 +176,15 @@ Execute()    // 执行设备动作
 
 ## 💬 社区与反馈
 
-- 📮 **问题反馈**：[GitHub Issues](https://github.com/yourname/homeclaw/issues)
-- 💬 **交流群**：微信搜索 `homeclaw-dev` 或扫描仓库二维码
-- 🌐 **项目主页**：[github.com/yourname/homeclaw](https://github.com/yourname/homeclaw)
+- 📮 **问题反馈**：[GitHub Issues](https://github.com/home-ai-bot/homeclaw/issues)
+- 💬 **交流群**：<img src="./homeclaw-doc/images/group1.jpg" alt="HomeClaw开源1群" width="400">
+- 🌐 **项目主页**：暂无
 
 ---
 
 ## 📜 开源协议
 
-本项目采用 [Apache-2.0 License](../LICENSE) 开源。允许商业使用、修改与分发，需保留版权声明与许可声明。
+本项目采用 [GPL-3.0 License](../LICENSE) 开源。
 
 ---
 
