@@ -1,5 +1,4 @@
-// Package data provides data access layer for HomeClaw.
-package data
+package miio
 
 import (
 	rootdata "github.com/sipeed/picoclaw/pkg/homeclaw/data"

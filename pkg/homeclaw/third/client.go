@@ -1,13 +1,14 @@
-// Package std defines the standard interface that all third-party smart-home
+// Package third defines the standard interface that all third-party smart-home
 // platform clients (e.g. Xiaomi/Mi Home, Tuya) must implement.
 //
 // Every platform adapter must:
 //  1. Implement [Client] and return it from a [Factory] function.
 //  2. Report its brand name via [Client.Brand].
 //  3. Provide the four data-query methods (Home / Room / Device / Spec).
-//  4. Provide two single-device control methods (Execute / GetProp).
+//  4. Provide two single-device control methods (Execute / GetProps / SetProps).
 //  5. Provide two event-subscription lifecycle methods (EnableEvent / DisableEvent).
-package std
+//  6. Provide GetRtspStr for returning the RTSP stream URL for a device.
+package third
 
 import (
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
@@ -55,7 +56,7 @@ type SpecInfo struct {
 //
 //   - Identity  – Brand()
 //   - Query     – GetHomes / GetRooms / GetDevices / GetSpec
-//   - Control   – Execute / GetProp
+//   - Control   – Execute / SetProp
 //   - Events    – EnableEvent / DisableEvent
 type Client interface {
 	// ── 1. Identity ──────────────────────────────────────────────────────────
@@ -94,23 +95,34 @@ type Client interface {
 	// Execute sends an action command to a device.
 	//
 	// Parameters:
-	//   - deviceID: platform-native device identifier.
-	//   - action:   action name or identifier (platform-specific).
-	//   - params:   key-value pairs passed to the action.
+	//   - params: key-value pairs passed to the action. The device identifier must
+	//     be included inside params using the brand-specific key (e.g. "did" for
+	//     Xiaomi, "device_id" for Tuya).
 	//
 	// Returns the platform response as an opaque map, or an error.
 	Execute(params map[string]any) (map[string]any, error)
 
-	// GetProp reads a single property value from a device.
+	// GetProps reads property values from a device.
 	//
 	// Parameters:
-	//   - deviceID: platform-native device identifier.
-	//   - prop:     property name or identifier (platform-specific).
+	//   - params: key-value pairs identifying the device and properties to read.
+	//     The device identifier must be included inside params using the
+	//     brand-specific key.
 	//
-	// Returns the property value (any JSON-compatible type) or an error.
+	// Returns the property value(s) (any JSON-compatible type) or an error.
 	GetProps(params map[string]any) (any, error)
+
+	// SetProps writes property values to a device.
+	//
+	// Parameters:
+	//   - params: key-value pairs identifying the device and properties to write.
+	//     The device identifier must be included inside params using the
+	//     brand-specific key.
+	//
+	// Returns the result (any JSON-compatible type) or an error.
 	SetProps(params map[string]any) (any, error)
-	// ── 4. Event lifecycle ───────────────────────────────────────────────────
+
+	// ── 4. Event lifecycle ────────────────────────────────────────────────────
 
 	// EnableEvent starts the adapter's event subscription for the given
 	// deviceID and registers handler as the callback.  Calls to handler are
@@ -127,4 +139,8 @@ type Client interface {
 	// Implementations must be idempotent: calling DisableEvent on a deviceID
 	// that is not subscribed should return nil without error.
 	DisableEvent(params map[string]any) error
+
+	// GetRtspStr returns the go2rtc-compatible RTSP stream URL for the given deviceID.
+	// Returns an empty string and no error if the device does not support RTSP streaming.
+	GetRtspStr(deviceID string) (string, error)
 }

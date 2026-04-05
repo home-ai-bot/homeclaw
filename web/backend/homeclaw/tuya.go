@@ -3,6 +3,7 @@ package homeclaw
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"sync"
 
 	go2rtcTuya "github.com/AlexxIT/go2rtc/pkg/tuya"
@@ -14,15 +15,16 @@ import (
 
 // TuyaManager handles Tuya API operations
 type TuyaManager struct {
-	mu      sync.Mutex
-	clients map[string]*tuya.Client // keyed by region
-	store   *data.JSONStore
+	mu         sync.Mutex
+	clients    map[string]*tuya.Client // keyed by region
+	store      *data.JSONStore
+	tokenStore tuya.TokenStore
 }
 
 // NewTuyaManager creates a new TuyaManager instance
 func NewTuyaManager() *TuyaManager {
 	// Create data directory for tuya
-	dataDir := config.GetPicoclawHome() + "/tuya"
+	dataDir := filepath.Join(config.GetPicoclawHome(), "tuya")
 	store, err := data.NewJSONStore(dataDir)
 	if err != nil {
 		logger.ErrorC("tuya", "Failed to create Tuya data store: "+err.Error())
@@ -31,9 +33,19 @@ func NewTuyaManager() *TuyaManager {
 		}
 	}
 
+	tokenStore, err := tuya.NewTokenStore(store)
+	if err != nil {
+		logger.ErrorC("tuya", "Failed to create Tuya token store: "+err.Error())
+		return &TuyaManager{
+			clients: make(map[string]*tuya.Client),
+			store:   store,
+		}
+	}
+
 	return &TuyaManager{
-		clients: make(map[string]*tuya.Client),
-		store:   store,
+		clients:    make(map[string]*tuya.Client),
+		store:      store,
+		tokenStore: tokenStore,
 	}
 }
 
@@ -44,6 +56,9 @@ func (m *TuyaManager) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/tuya/login", m.handleLogin)
 	mux.HandleFunc("POST /api/tuya/logout", m.handleLogout)
 	mux.HandleFunc("DELETE /api/tuya/credentials", m.handleDeleteCredentials)
+	// Token-based auth endpoints
+	mux.HandleFunc("POST /api/tuya/token", m.handleSaveToken)
+	mux.HandleFunc("DELETE /api/tuya/token", m.handleDeleteToken)
 }
 
 // handleGetRegions returns available Tuya regions
@@ -59,10 +74,20 @@ func (m *TuyaManager) handleGetStatus(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Check if there are stored credentials
+	w.Header().Set("Content-Type", "application/json")
+
+	// Check token-based auth first
+	if m.tokenStore != nil && m.tokenStore.Exists() {
+		json.NewEncoder(w).Encode(map[string]any{
+			"logged_in": true,
+			"auth_type": "token",
+		})
+		return
+	}
+
+	// Fall back to credential-based auth
 	client, err := tuya.NewClient(m.store)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"logged_in": false,
 			"error":     err.Error(),
@@ -70,19 +95,15 @@ func (m *TuyaManager) handleGetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hasCredentials := client.HasStoredCredentials()
-	if !hasCredentials {
-		w.Header().Set("Content-Type", "application/json")
+	if !client.HasStoredCredentials() {
 		json.NewEncoder(w).Encode(map[string]any{
 			"logged_in": false,
 		})
 		return
 	}
 
-	// Get stored credentials info (without password)
 	secretData, err := client.GetStoredCredentials()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"logged_in": false,
 			"error":     err.Error(),
@@ -90,9 +111,9 @@ func (m *TuyaManager) handleGetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"logged_in": true,
+		"auth_type": "credentials",
 		"region":    secretData.Region,
 		"username":  secretData.UserName,
 	})
@@ -207,6 +228,61 @@ func (m *TuyaManager) handleDeleteCredentials(w http.ResponseWriter, r *http.Req
 	if err := client.DeleteCredentials(); err != nil {
 		// It's OK if there were no credentials
 		logger.ErrorC("tuya", "Failed to delete credentials: "+err.Error())
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"success": true,
+	})
+}
+
+// SaveTokenRequest represents the token save request body
+type SaveTokenRequest struct {
+	Token string `json:"token"`
+}
+
+// handleSaveToken saves a Tuya Open Platform API token
+func (m *TuyaManager) handleSaveToken(w http.ResponseWriter, r *http.Request) {
+	var req SaveTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Token == "" {
+		http.Error(w, "token is required", http.StatusBadRequest)
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.tokenStore == nil {
+		http.Error(w, "token store not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	if err := m.tokenStore.Save(req.Token); err != nil {
+		logger.ErrorC("tuya", "Failed to save token: "+err.Error())
+		http.Error(w, "Failed to save token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"success": true,
+	})
+}
+
+// handleDeleteToken removes the stored API token
+func (m *TuyaManager) handleDeleteToken(w http.ResponseWriter, r *http.Request) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.tokenStore != nil {
+		if err := m.tokenStore.Delete(); err != nil {
+			logger.ErrorC("tuya", "Failed to delete token: "+err.Error())
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -1,5 +1,4 @@
-// Package tool provides Xiaomi MIoT LLM tools for device sync and action execution.
-package tool
+package miio
 
 import (
 	"context"
@@ -9,7 +8,6 @@ import (
 
 	"github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
-	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio"
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
 
@@ -19,12 +17,12 @@ import (
 
 // SyncHomesTool syncs homes from Xiaomi cloud.
 type SyncHomesTool struct {
-	client    *miio.MiClient
+	client    *MiClient
 	homeStore data.HomeStore
 }
 
 // NewSyncHomesTool creates a SyncHomesTool backed by the given MiClient and HomeStore.
-func NewSyncHomesTool(client *miio.MiClient, homeStore data.HomeStore) (*SyncHomesTool, error) {
+func NewSyncHomesTool(client *MiClient, homeStore data.HomeStore) (*SyncHomesTool, error) {
 	return &SyncHomesTool{client: client, homeStore: homeStore}, nil
 }
 
@@ -57,7 +55,7 @@ func (t *SyncHomesTool) Execute(_ context.Context, _ map[string]any) *tools.Tool
 	for _, h := range homes {
 		dataHomes = append(dataHomes, data.Home{
 			FromID:  h.ID,
-			From:    miio.BrandXiaomi,
+			From:    BrandXiaomi,
 			Name:    h.Name,
 			Current: false,
 		})
@@ -91,20 +89,20 @@ func (t *SyncHomesTool) Execute(_ context.Context, _ map[string]any) *tools.Tool
 
 // SyncDevicesTool syncs devices from Xiaomi cloud for a given home.
 type SyncDevicesTool struct {
-	client      *miio.MiClient
+	client      *MiClient
 	homeStore   data.HomeStore
 	spaceStore  data.SpaceStore
 	deviceStore data.DeviceStore
-	specFetcher *miio.SpecFetcher
+	specFetcher *SpecFetcher
 }
 
 // NewSyncDevicesTool creates a SyncDevicesTool backed by the given MiClient.
 func NewSyncDevicesTool(
-	client *miio.MiClient,
+	client *MiClient,
 	homeStore data.HomeStore,
 	spaceStore data.SpaceStore,
 	deviceStore data.DeviceStore,
-	specFetcher *miio.SpecFetcher,
+	specFetcher *SpecFetcher,
 ) *SyncDevicesTool {
 	return &SyncDevicesTool{
 		client:      client,
@@ -140,7 +138,7 @@ func (t *SyncDevicesTool) Execute(ctx context.Context, args map[string]any) *too
 		return &tools.ToolResult{ForLLM: "missing or invalid 'homeId' parameter", IsError: true}
 	}
 
-	err := t.homeStore.SetCurrent(homeID, miio.BrandXiaomi)
+	err := t.homeStore.SetCurrent(homeID, BrandXiaomi)
 	if err != nil {
 		msg := fmt.Sprintf("failed to set current home: %v", err)
 		return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
@@ -227,11 +225,11 @@ func (t *SyncDevicesTool) Execute(ctx context.Context, args map[string]any) *too
 
 // ExecuteActionTool executes MIoT commands (Action/GetProp/SetProp) on a Xiaomi device.
 type ExecuteActionTool struct {
-	client *miio.MiClient
+	client *MiClient
 }
 
 // NewExecuteActionTool creates an ExecuteActionTool backed by the given MiClient.
-func NewExecuteActionTool(client *miio.MiClient) *ExecuteActionTool {
+func NewExecuteActionTool(client *MiClient) *ExecuteActionTool {
 	return &ExecuteActionTool{client: client}
 }
 
@@ -307,11 +305,11 @@ func (t *ExecuteActionTool) Execute(_ context.Context, args map[string]any) *too
 
 // GetSpecCommandsTool reads the processed spec commands from _new.json file by URN.
 type GetSpecCommandsTool struct {
-	specFetcher *miio.SpecFetcher
+	specFetcher *SpecFetcher
 }
 
 // NewGetSpecCommandsTool creates a GetSpecCommandsTool backed by the given SpecFetcher.
-func NewGetSpecCommandsTool(specFetcher *miio.SpecFetcher) *GetSpecCommandsTool {
+func NewGetSpecCommandsTool(specFetcher *SpecFetcher) *GetSpecCommandsTool {
 	return &GetSpecCommandsTool{specFetcher: specFetcher}
 }
 
@@ -366,13 +364,6 @@ func (t *GetSpecCommandsTool) Execute(_ context.Context, args map[string]any) *t
 // ────────────────────────────────────────────────────────────────────────────────
 // Helper functions
 // ────────────────────────────────────────────────────────────────────────────────
-
-// hasCamera checks if the device model indicates a camera device.
-func hasCamera(model string) bool {
-	return strings.Contains(model, ".camera.") ||
-		strings.Contains(model, ".cateye.") ||
-		strings.Contains(model, ".feeder.")
-}
 
 // sanitizeStreamName converts device name to a valid stream name.
 // It replaces spaces with underscores and removes special characters.

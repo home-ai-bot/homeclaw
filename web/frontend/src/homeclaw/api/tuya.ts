@@ -13,6 +13,7 @@ export interface TuyaRegionsResponse {
 
 export interface TuyaStatusResponse {
   logged_in: boolean
+  auth_type?: "token" | "credentials"
   region?: string
   username?: string
   error?: string
@@ -22,6 +23,15 @@ export interface TuyaLoginRequest {
   region: string
   username: string
   password: string
+}
+
+export interface TuyaSaveTokenRequest {
+  token: string
+}
+
+export interface TuyaSaveTokenResponse {
+  success: boolean
+  error?: string
 }
 
 export interface TuyaUser {
@@ -85,6 +95,22 @@ export async function logoutTuya(): Promise<TuyaLogoutResponse> {
 
 export async function deleteTuyaCredentials(): Promise<TuyaLogoutResponse> {
   return request<TuyaLogoutResponse>("/api/tuya/credentials", {
+    method: "DELETE",
+  })
+}
+
+export async function saveTuyaToken(
+  token: string,
+): Promise<TuyaSaveTokenResponse> {
+  return request<TuyaSaveTokenResponse>("/api/tuya/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token } satisfies TuyaSaveTokenRequest),
+  })
+}
+
+export async function deleteTuyaToken(): Promise<TuyaLogoutResponse> {
+  return request<TuyaLogoutResponse>("/api/tuya/token", {
     method: "DELETE",
   })
 }

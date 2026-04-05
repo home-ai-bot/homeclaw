@@ -18,7 +18,6 @@ import (
 const encryptionKey = "tuya-secret-key-v1"
 
 // SecretData represents the stored login credentials
-
 type SecretData struct {
 	Version  string `json:"version"`
 	Region   string `json:"region"`
@@ -33,6 +32,91 @@ type SecretStore interface {
 	GetDecrypted() (region, userName, password string, err error)
 	Delete() error
 	Exists() bool
+}
+
+// TokenData represents a directly stored API token
+type TokenData struct {
+	Version string `json:"version"`
+	Token   string `json:"token"` // encrypted token (base64)
+}
+
+// TokenStore defines the interface for token data operations
+type TokenStore interface {
+	Get() (*TokenData, error)
+	Save(token string) error
+	GetDecrypted() (string, error)
+	Delete() error
+	Exists() bool
+}
+
+// tokenStore implements TokenStore using JSONStore
+type tokenStore struct {
+	store *rootdata.JSONStore
+	data  TokenData
+}
+
+// ErrTokenNotFound is returned when token data is not found
+var ErrTokenNotFound = errors.New("secret: no token stored")
+
+// NewTokenStore creates a new TokenStore
+func NewTokenStore(store *rootdata.JSONStore) (TokenStore, error) {
+	s := &tokenStore{store: store}
+	if err := s.load(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// load reads token data from file
+func (s *tokenStore) load() error {
+	s.data = TokenData{Version: "1"}
+	return s.store.Read("tuya-token", &s.data)
+}
+
+// save writes token data to file
+func (s *tokenStore) save() error {
+	return s.store.Write("tuya-token", s.data)
+}
+
+// Get returns the stored token data (token is encrypted)
+func (s *tokenStore) Get() (*TokenData, error) {
+	if s.data.Token == "" {
+		return nil, ErrTokenNotFound
+	}
+	return &s.data, nil
+}
+
+// Save stores the token (encrypted)
+func (s *tokenStore) Save(token string) error {
+	encryptedToken, err := encrypt(token)
+	if err != nil {
+		return fmt.Errorf("secret: failed to encrypt token: %w", err)
+	}
+	s.data.Token = encryptedToken
+	return s.save()
+}
+
+// GetDecrypted returns the decrypted token
+func (s *tokenStore) GetDecrypted() (string, error) {
+	if s.data.Token == "" {
+		return "", ErrTokenNotFound
+	}
+	decryptedToken, err := decrypt(s.data.Token)
+	if err != nil {
+		return "", fmt.Errorf("secret: failed to decrypt token: %w", err)
+	}
+	return decryptedToken, nil
+}
+
+// Delete removes the stored token
+func (s *tokenStore) Delete() error {
+	s.data = TokenData{Version: "1"}
+	return s.store.Remove("tuya-token")
+}
+
+// Exists checks if a token is stored
+func (s *tokenStore) Exists() bool {
+	return s.data.Token != ""
 }
 
 // secretStore implements SecretStore using JSONStore

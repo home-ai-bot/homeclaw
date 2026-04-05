@@ -10,28 +10,48 @@
     "login": {
       "title": "Sign in to Tuya",
       "description": "Enter your Tuya account credentials to connect your smart home devices.",
+      "descriptionRtsp": "Login with your Tuya account to get RTSP video streams from cameras.",
+      "overseasNote": "Only accounts registered with the overseas Tuya Smart app are supported. Accounts from the Chinese Tuya app cannot be used.",
       "submit": "Sign In",
       "loggingIn": "Signing in...",
       "error": "Login failed. Please check your credentials."
     },
+    "token": {
+      "title": "Connect with Token",
+      "description": "Enter your Tuya access token to connect your smart home devices.",
+      "saving": "Saving...",
+      "save": "Save Token",
+      "saveError": "Failed to save token."
+    },
     "status": {
       "loggedIn": "Connected to Tuya",
-      "loggedInDesc": "Your Tuya account is connected. You can now control your smart home devices."
+      "loggedInDesc": "Your Tuya account is connected. You can now control your smart home devices.",
+      "tokenDesc": "Your Tuya account is connected via token. You can now control your smart home devices."
+    },
+    "authType": {
+      "token": "Token"
     },
     "field": {
       "region": "Region",
       "selectRegion": "Select a region",
+      "email": "Email",
+      "emailPlaceholder": "Enter your Tuya account email",
       "username": "Email / Phone",
       "usernamePlaceholder": "Enter your Tuya account email or phone",
       "password": "Password",
-      "passwordPlaceholder": "Enter your password"
+      "passwordPlaceholder": "Enter your password",
+      "token": "Access Token",
+      "tokenPlaceholder": "Enter your Tuya access token",
+      "authType": "Authentication Type"
     },
     "action": {
       "logout": "Logout",
-      "deleteCredentials": "Delete Credentials"
+      "deleteCredentials": "Delete Credentials",
+      "deleteToken": "Delete Token"
     },
     "validation": {
-      "required": "Please fill in all fields."
+      "required": "Please fill in all fields.",
+      "tokenRequired": "Please enter the access token."
     }
   },
   "xiaomi": {

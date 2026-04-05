@@ -131,6 +131,7 @@ all: build
 generate:
 	@echo "Run generate..."
 	@rm -r ./$(CMD_DIR)/workspace 2>/dev/null || true
+	@rm -r ./$(CMD_DIR)/internal/onboard/workspace 2>/dev/null || true
 	@$(GO) generate ./...
 	@echo "Run generate complete"
 

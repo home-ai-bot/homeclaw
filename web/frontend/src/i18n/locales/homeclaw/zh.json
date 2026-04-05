@@ -10,28 +10,48 @@
     "login": {
       "title": "登录涂鸦账号",
       "description": "输入您的涂鸦账号信息，连接您的智能家居设备。",
+      "descriptionRtsp": "登录涂鸦账号以获取摄像头的 RTSP 视频流。",
+      "overseasNote": "仅支持海外版 Tuya Smart App 注册的账号，国内涂鸦 App 的账号无法使用。",
       "submit": "登录",
       "loggingIn": "登录中...",
       "error": "登录失败，请检查您的账号信息。"
     },
+    "token": {
+      "title": "使用令牌连接",
+      "description": "输入您的涂鸦访问令牌以连接您的智能家居设备。",
+      "saving": "保存中...",
+      "save": "保存令牌",
+      "saveError": "保存令牌失败。"
+    },
     "status": {
       "loggedIn": "已连接涂鸦",
-      "loggedInDesc": "您的涂鸦账号已连接，可以控制您的智能家居设备。"
+      "loggedInDesc": "您的涂鸦账号已连接，可以控制您的智能家居设备。",
+      "tokenDesc": "您的涂鸦账号已通过令牌连接，可以控制您的智能家居设备。"
+    },
+    "authType": {
+      "token": "令牌"
     },
     "field": {
       "region": "区域",
       "selectRegion": "选择区域",
+      "email": "邮箱",
+      "emailPlaceholder": "输入您的涂鸦账号邮箱",
       "username": "邮箱 / 手机号",
       "usernamePlaceholder": "输入您的涂鸦账号邮箱或手机号",
       "password": "密码",
-      "passwordPlaceholder": "输入您的密码"
+      "passwordPlaceholder": "输入您的密码",
+      "token": "访问令牌",
+      "tokenPlaceholder": "输入您的涂鸦访问令牌",
+      "authType": "认证方式"
     },
     "action": {
       "logout": "退出登录",
-      "deleteCredentials": "删除凭据"
+      "deleteCredentials": "删除凭据",
+      "deleteToken": "删除令牌"
     },
     "validation": {
-      "required": "请填写所有字段。"
+      "required": "请填写所有字段。",
+      "tokenRequired": "请输入访问令牌。"
     }
   },
   "xiaomi": {

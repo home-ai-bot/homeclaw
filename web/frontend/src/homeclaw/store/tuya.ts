@@ -8,11 +8,14 @@ import {
   loginTuya,
   logoutTuya,
   deleteTuyaCredentials,
+  saveTuyaToken,
+  deleteTuyaToken,
 } from "@/homeclaw/api/tuya"
 
 export interface TuyaStoreState {
   isLoggedIn: boolean
   isLoading: boolean
+  authType: "token" | "credentials" | null
   regions: TuyaRegion[]
   user: TuyaUser | null
   region: string | null
@@ -22,6 +25,7 @@ export interface TuyaStoreState {
 const DEFAULT_TUYA_STATE: TuyaStoreState = {
   isLoggedIn: false,
   isLoading: true,
+  authType: null,
   regions: [],
   user: null,
   region: null,
@@ -45,6 +49,7 @@ export async function fetchTuyaStatus(): Promise<Partial<TuyaStoreState>> {
     const status = await getTuyaStatus()
     return {
       isLoggedIn: status.logged_in,
+      authType: status.auth_type ?? null,
       region: status.region || null,
       error: status.error || null,
       isLoading: false,
@@ -52,6 +57,7 @@ export async function fetchTuyaStatus(): Promise<Partial<TuyaStoreState>> {
   } catch (error) {
     return {
       isLoggedIn: false,
+      authType: null,
       error: error instanceof Error ? error.message : "Unknown error",
       isLoading: false,
     }
@@ -97,6 +103,33 @@ export async function tuyaLogout(): Promise<{ success: boolean; error?: string }
 export async function tuyaDeleteCredentials(): Promise<{ success: boolean; error?: string }> {
   try {
     await deleteTuyaCredentials()
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}
+
+export async function tuyaSaveToken(
+  token: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await saveTuyaToken(token)
+    if (response.success) return { success: true }
+    return { success: false, error: response.error || "Failed to save token" }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}
+
+export async function tuyaDeleteToken(): Promise<{ success: boolean; error?: string }> {
+  try {
+    await deleteTuyaToken()
     return { success: true }
   } catch (error) {
     return {

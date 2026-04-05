@@ -174,10 +174,11 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	//Third
 	thirdf := hc.thirdf
 
-	registerTool(toolRegistry, thirdf.GetSyncDevicesTool)
-	registerTool(toolRegistry, thirdf.GetExecuteActionTool)
-	registerTool(toolRegistry, thirdf.GetSpecCommandsTool)
-	registerTool(toolRegistry, thirdf.GetSyncHomesTool)
+	// registerTool(toolRegistry, thirdf.GetSyncDevicesTool)
+	// registerTool(toolRegistry, thirdf.GetExecuteActionTool)
+	// registerTool(toolRegistry, thirdf.GetSpecCommandsTool)
+	// registerTool(toolRegistry, thirdf.GetSyncHomesTool)
+	registerTool(toolRegistry, thirdf.GetCLITool)
 }
 
 // SetMediaStore sets the media store for HomeClaw tools that need to send images to channels.

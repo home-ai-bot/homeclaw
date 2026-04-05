@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/AlexxIT/go2rtc/pkg/xiaomi"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
-	midata "github.com/sipeed/picoclaw/pkg/homeclaw/third/miio/data"
+	"github.com/sipeed/picoclaw/pkg/homeclaw/third"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio/util"
-	"github.com/sipeed/picoclaw/pkg/homeclaw/third/std"
 )
 
 const (
@@ -44,8 +44,8 @@ func getBaseURL(country string) string {
 type MiClient struct {
 	cloud       *xiaomi.Cloud
 	specFetcher *SpecFetcher
-	deviceStore midata.MiDeviceStore
-	homeStore   midata.MiHomeStore
+	deviceStore MiDeviceStore
+	homeStore   MiHomeStore
 	baseURL     string
 	country     string // region code (cn, de, ru, sg, i2, us, etc.)
 }
@@ -58,7 +58,7 @@ type MiClient struct {
 //   - workspace: data root directory for caching
 //   - deviceStore: optional MiDeviceStore for persisting device info (can be nil)
 //   - homeStore: optional MiHomeStore for persisting home info (can be nil)
-func NewMiClient(cloud *xiaomi.Cloud, country, workspace string, deviceStore midata.MiDeviceStore, homeStore midata.MiHomeStore, fetcher *SpecFetcher) *MiClient {
+func NewMiClient(cloud *xiaomi.Cloud, country, workspace string, deviceStore MiDeviceStore, homeStore MiHomeStore, fetcher *SpecFetcher) *MiClient {
 	if country == "" {
 		country = "cn"
 	}
@@ -109,7 +109,7 @@ func (c *MiClient) checkLoadToken() error {
 		if localIP == "" {
 			localIP = "<device_ip>"
 		}
-		return fmt.Errorf("must ask user to do: xiaomi token is empty, please open http://%s:1984, login with your xiaomi account in the interface, then click 'Config Save & Restart'", localIP)
+		return fmt.Errorf("Must Confirm!: xiaomi token is empty, please open http://%s:1984, login with your xiaomi account in the interface, then click 'Config Save & Restart'", localIP)
 	}
 
 	// Update cloud with new token
@@ -182,7 +182,7 @@ func getAuthErrorMsg() string {
 	if localIP == "" {
 		localIP = "<device_ip>"
 	}
-	return fmt.Sprintf("must ask user to do: xiaomi token is empty or invalid, please open http://%s:1984, login with your xiaomi account in the interface, then click 'Config Save & Restart'", localIP)
+	return fmt.Sprintf("Must Confirm!: xiaomi token is empty or invalid, please open http://%s:1984, login with your xiaomi account in the interface, then click 'Config Save & Restart'", localIP)
 }
 
 // request performs an authenticated request to the Xiaomi cloud API.
@@ -213,7 +213,7 @@ func (c *MiClient) Brand() string {
 // ────────────────────────────────────────────────────────────────────────────────
 
 // GetHomes returns all homes visible to the authenticated user.
-func (c *MiClient) GetHomes() ([]*std.HomeInfo, error) {
+func (c *MiClient) GetHomes() ([]*third.HomeInfo, error) {
 	params := `{"fg":true,"fetch_share":true,"fetch_share_dev":true,"limit":300,"app_ver":7}`
 	result, err := c.request(apiHomeRoomList, params)
 	if err != nil {
@@ -221,15 +221,15 @@ func (c *MiClient) GetHomes() ([]*std.HomeInfo, error) {
 	}
 
 	var resp struct {
-		Homelist []midata.HomeRoomInfo `json:"homelist"`
+		Homelist []HomeRoomInfo `json:"homelist"`
 	}
 	if err := json.Unmarshal(result, &resp); err != nil {
 		return nil, fmt.Errorf("parse homes response: %w", err)
 	}
 
-	homes := make([]*std.HomeInfo, 0, len(resp.Homelist))
+	homes := make([]*third.HomeInfo, 0, len(resp.Homelist))
 	for _, h := range resp.Homelist {
-		homes = append(homes, &std.HomeInfo{
+		homes = append(homes, &third.HomeInfo{
 			ID:   h.HomeID,
 			Name: h.HomeName,
 		})
@@ -250,7 +250,7 @@ func (c *MiClient) GetRooms(homeID string) ([]*data.Space, error) {
 	}
 
 	var resp struct {
-		Homelist []midata.HomeRoomInfo `json:"homelist"`
+		Homelist []HomeRoomInfo `json:"homelist"`
 	}
 	if err := json.Unmarshal(result, &resp); err != nil {
 		return nil, fmt.Errorf("parse rooms response: %w", err)
@@ -279,9 +279,9 @@ func (c *MiClient) GetRooms(homeID string) ([]*data.Space, error) {
 
 // homeDeviceListResponse represents the response from device_list_page API.
 type homeDeviceListResponse struct {
-	List    []midata.DeviceInfo `json:"list"`
-	MaxDID  string              `json:"max_did"`
-	HasMore bool                `json:"has_more"`
+	List    []DeviceInfo `json:"list"`
+	MaxDID  string       `json:"max_did"`
+	HasMore bool         `json:"has_more"`
 }
 
 // GetDevices returns all devices for the given homeID.
@@ -292,7 +292,7 @@ func (c *MiClient) GetDevices(homeID string) ([]*data.Device, error) {
 	}
 
 	// Fetch devices with pagination
-	devices := make(map[string]*midata.DeviceInfo)
+	devices := make(map[string]*DeviceInfo)
 	startDID := ""
 	hasMore := true
 
@@ -418,7 +418,7 @@ func (c *MiClient) GetDevices(homeID string) ([]*data.Device, error) {
 }
 
 // GetSpec fetches the capability specification for deviceID.
-func (c *MiClient) GetSpec(deviceID string) (*std.SpecInfo, error) {
+func (c *MiClient) GetSpec(deviceID string) (*third.SpecInfo, error) {
 	info, err := c.GetDeviceInfo(deviceID)
 	if err != nil {
 		return nil, fmt.Errorf("get spec: %w", err)
@@ -432,7 +432,7 @@ func (c *MiClient) GetSpec(deviceID string) (*std.SpecInfo, error) {
 		return nil, fmt.Errorf("get spec: %w", err)
 	}
 
-	return &std.SpecInfo{
+	return &third.SpecInfo{
 		DeviceID: deviceID,
 		Model:    info.Model,
 		Raw:      specJSON,
@@ -442,9 +442,32 @@ func (c *MiClient) GetSpec(deviceID string) (*std.SpecInfo, error) {
 	}, nil
 }
 
+// GetRtspStr returns the go2rtc-compatible RTSP stream URL for the given deviceID.
+// Returns an empty string and no error if the device is not a camera or lacks IP/token info.
+func (c *MiClient) GetRtspStr(deviceID string) (string, error) {
+	info, err := c.GetDeviceInfo(deviceID)
+	if err != nil {
+		return "", fmt.Errorf("get rtsp: %w", err)
+	}
+	// Only cameras support RTSP streaming
+	if !hasCamera(info.Model) {
+		return "", nil
+	}
+	if info.LocalIP == "" {
+		return "", nil
+	}
+	user, region := c.GetUserAndRegion()
+	if user == "" {
+		return "", nil
+	}
+	// go2rtc xiaomi RTSP format: xiaomi://{user}:{region}@{ip}?did={did}&model={model}#video=copy#audio=pcmu
+	return fmt.Sprintf("xiaomi://%s:%s@%s?did=%s&model=%s#video=copy#audio=pcmu",
+		user, region, info.LocalIP, info.DID, info.Model), nil
+}
+
 // GetDeviceInfo returns the full device info for the given deviceID.
 // This is a helper method for accessing detailed device information.
-func (c *MiClient) GetDeviceInfo(deviceID string) (*midata.DeviceInfo, error) {
+func (c *MiClient) GetDeviceInfo(deviceID string) (*DeviceInfo, error) {
 	// Try store
 	if c.deviceStore != nil {
 		info, err := c.deviceStore.GetByDID(deviceID)
@@ -694,4 +717,11 @@ func getIntParam(params map[string]any, key string) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// hasCamera checks if the device model indicates a camera device.
+func hasCamera(model string) bool {
+	return strings.Contains(model, ".camera.") ||
+		strings.Contains(model, ".cateye.") ||
+		strings.Contains(model, ".feeder.")
 }

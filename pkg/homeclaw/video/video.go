@@ -229,7 +229,7 @@ func CheckFFmpeg() error {
 			// ffmpeg found in current directory - this is acceptable
 			return nil
 		}
-		return fmt.Errorf("must ask user to verify:ffmpeg binary not found on PATH: %w\nInstall ffmpeg and ensure it is accessible (e.g. add its directory to the system PATH)", err)
+		return fmt.Errorf("Must Confirm!ffmpeg binary not found on PATH: %w\nInstall ffmpeg and ensure it is accessible (e.g. add its directory to the system PATH)", err)
 	}
 	return nil
 }
