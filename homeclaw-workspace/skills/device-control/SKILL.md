@@ -141,38 +141,34 @@ hc_cli
 Returns camera list with `from_id`, `from`, `name`, `type`, `space_name`, `rtsp_url`.
 
 - If user provides `rtsp_url` directly, skip this step
-- Only proceed if camera is online
 
 ### Step 2 — Capture & analyze frame
 
+if user want to analyze，use capAnalyze first，more efficient！
 ```
 hc_video
-- commandJson: {"method":"capAnalyze","params":{"rtsp_url":"<rtsp_url from step 1>","prompt":"Is there anyone at the door?"}}
+- commandJson: {"method":"capAnalyze","params":{"rtsp_url":"<rtsp_url from step 1>","prompt":"Is there anyone at the door?","return_image":<true/false>}} 
 ```
 
 Or capture frame only:
 ```
 hc_video
-- commandJson: {"method":"capImage","params":{"rtsp_url":"<rtsp_url from step 1>"}}
+- commandJson: {"method":"capImage","params":{"rtsp_url":"<rtsp_url from step 1>","return_image":<true/false>}}
 ```
 
-Optional parameters:
-- `rtsp_transport`: "tcp" (default) or "udp"
-- `return_image`: true/false (if true, also returns the image via MediaResult)
+if user want to recieve image，`return_image` is true ; image content will send in MediaResult（QQ、钉钉 can display directly, no need to do more）
 
-```
-hc_video
-- commandJson: {"method":"capAnalyze","params":{"rtsp_url":"<rtsp_url>","prompt":"Describe the scene","return_image":true}}
 ```
 
 Returns (capAnalyze):
 ```json
 {"analysis": "Description of what's visible...","file_path": "/tmp/homeclaw_frame_123.jpg"}
+and image content  in MediaResult（QQ、钉钉 can display directly）
 ```
 
 Returns (capImage):
 ```json
-{"file_path": "/tmp/homeclaw_frame_123.jpg"}
+{"file_path": "/tmp/homeclaw_frame_123.jpg"} and image content in MediaResult（QQ、钉钉 can display directly）
 ```
 
 Report the analysis result to the user in natural language.

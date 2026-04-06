@@ -48,15 +48,12 @@ hc_cli
 
 Replace `<brand>` with `"xiaomi"` or `"tuya"`.
 
-- 1 home returned → auto-set as current, proceed to **Step 4**
-- !IMPORTANT Multiple homes returned → must proceed to **Step 3**
-
 ---
 
-### Step 3 — User selects home (if multiple)
+### Step 3 —  selects home
 
-1. Present the home list to the user
-2. User picks a home
+1. 1 home returned , goto 3
+2. !IMPORTANT more than 2 home ,MUST Present the home list to the user，let user picks a home
 3. Call `hc_cli` setCurrentHome with `from_id` = chosen `home_id` and `from` = the brand
 
 ```

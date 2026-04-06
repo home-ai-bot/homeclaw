@@ -67,6 +67,9 @@ type Factory struct {
 	enableWorkflowTool  *homeclawtool.EnableWorkflowTool
 	disableWorkflowTool *homeclawtool.DisableWorkflowTool
 
+	// LLM tool singleton - lazy loaded
+	llmTool *homeclawtool.LLMTool
+
 	// Video tool singleton - lazy loaded
 	videoTool *homeclawtool.VideoTool
 
@@ -484,4 +487,25 @@ func (f *Factory) SetMediaStore(store media.MediaStore) {
 	if f.videoTool != nil {
 		f.videoTool.SetMediaStore(store)
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LLM tools
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GetLLMTool returns the singleton LLMTool instance (lazy initialized).
+// It provides unified LLM operations: image analysis, text processing.
+func (f *Factory) GetLLMTool() (*homeclawtool.LLMTool, error) {
+	if f.llmTool != nil {
+		return f.llmTool, nil
+	}
+
+	// Get the local LLM instance
+	localLLM, err := f.GetLocalLLM()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get local LLM for LLMTool: %w", err)
+	}
+
+	f.llmTool = homeclawtool.NewLLMTool(localLLM)
+	return f.llmTool, nil
 }

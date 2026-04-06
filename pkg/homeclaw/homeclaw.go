@@ -164,6 +164,9 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	// Video / RTSP tools
 	registerTool(toolRegistry, f.GetVideoTool)
 
+	// LLM tools
+	registerTool(toolRegistry, f.GetLLMTool)
+
 	//Third
 	thirdf := hc.thirdf
 

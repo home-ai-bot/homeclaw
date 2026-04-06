@@ -68,7 +68,7 @@ func (t *CLITool) Name() string { return "hc_cli" }
 
 func (t *CLITool) Description() string {
 	return "Unified CLI tool for all smart-home brands. " +
-		"Use commandJson to specify brand, method and params. " +
+		"Use commandJson to specify brand, method and params. Do NOT fabricate or guess any json,must follow skill " +
 		"Supported methods: syncHomes, syncDevices, getProps, setProps, execute, getSpec, listDevices, listCameras, setCurrentHome, getCurrentHome."
 }
 
@@ -77,23 +77,8 @@ func (t *CLITool) Parameters() map[string]any {
 		"type": "object",
 		"properties": map[string]any{
 			"commandJson": map[string]any{
-				"type": "string",
-				"description": `JSON string with "brand", "method", and optional "params". Examples:
-` +
-					`syncHomes:      {"brand":"tuya","method":"syncHomes"}` + "\n" +
-					`syncHomes:      {"brand":"xiaomi","method":"syncHomes"}` + "\n" +
-					`syncDevices:    {"brand":"tuya","method":"syncDevices","params":{"homeId":"xxx"}}` + "\n" +
-					`getProps:       {"brand":"tuya","method":"getProps","params":{"device_id":"xxx"}}` + "\n" +
-					`getProps:       {"brand":"xiaomi","method":"getProps","params":{"did":"xxx","siid":2,"piid":1}}` + "\n" +
-					`setProps:       {"brand":"tuya","method":"setProps","params":{"device_id":"xxx","switch_led":true}}` + "\n" +
-					`setProps:       {"brand":"xiaomi","method":"setProps","params":{"did":"xxx","siid":2,"piid":1,"value":true}}` + "\n" +
-					`execute:        {"brand":"xiaomi","method":"execute","params":{"did":"xxx","siid":2,"aiid":1}}` + "\n" +
-					`getSpec:        {"brand":"xiaomi","method":"getSpec","params":{"deviceId":"xxx"}}` + "\n" +
-					`getSpec:        {"brand":"tuya","method":"getSpec","params":{"deviceId":"xxx"}}` + "\n" +
-					`listDevices:    {"brand":"xiaomi","method":"listDevices"}` + "\n" +
-					`listCameras:    {"brand":"xiaomi","method":"listCameras"}` + "\n" +
-					`setCurrentHome: {"brand":"xiaomi","method":"setCurrentHome","params":{"from_id":"xxx","from":"xiaomi"}}` + "\n" +
-					`getCurrentHome: {"brand":"xiaomi","method":"getCurrentHome","params":{"from":"xiaomi"}}`,
+				"type":        "string",
+				"description": `JSON string with "brand", "method", and optional "params". Do NOT fabricate or guess any json,must follow skill `,
 			},
 		},
 		"required": []string{"commandJson"},

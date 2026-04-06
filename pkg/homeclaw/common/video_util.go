@@ -64,17 +64,21 @@ func buildInputArgs(streamURL string, rtspTransport string) []string {
 	return args
 }
 
-// GrabFrameWithParams captures a single JPEG frame from streamURL and returns a data URI and temp file path.
+// CapImgBase64 captures a single JPEG frame from streamURL and returns a data URI and temp file path.
 // Parameters:
 //   - seek: seconds to seek into the stream before capturing (0 to disable)
 //   - end: max duration in seconds for ffmpeg to run (passed via -t)
 //   - timeout: max duration in seconds for the entire operation (context timeout)
 //   - rtspTransport: RTSP transport protocol ("tcp", "udp", or "" for default)
-func GrabFrameWithParams(ctx context.Context, streamURL string, seek int, end int, timeout int, rtspTransport string) (dataURI string, filePath string, err error) {
+//
+// Note: The caller is responsible for cleaning up the temp file after use.
+// If the file is stored in MediaStore, it will be cleaned up when the scope is released.
+// If not stored, the caller should delete it after reading.
+func CapImgBase64(ctx context.Context, streamURL string, seek int, end int, timeout int, rtspTransport string) (dataURI string, filePath string, err error) {
 	tmpDir := os.TempDir()
-	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("homeclaw_frame_%d.jpg", GenerateUUID()))
+	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("homeclaw_frame_%s.jpg", GenerateUUID()))
 
-	if err := captureImg2File(ctx, streamURL, seek, end, timeout, tmpFile, rtspTransport); err != nil {
+	if err := capImg2File(ctx, streamURL, seek, end, timeout, tmpFile, rtspTransport); err != nil {
 		return "", "", err
 	}
 
@@ -88,20 +92,20 @@ func GrabFrameWithParams(ctx context.Context, streamURL string, seek int, end in
 	return "data:image/jpeg;base64," + encoded, tmpFile, nil
 }
 
-// captureImg captures a single JPEG frame from streamURL and returns the raw bytes.
+// capImg captures a single JPEG frame from streamURL and returns the raw bytes.
 // Parameters:
 //   - seek: seconds to seek into the stream before capturing (0 to disable)
 //   - end: max duration in seconds for ffmpeg to run (passed via -t)
 //   - timeout: max duration in seconds for the entire operation (context timeout)
 //   - fileName: output file name (used for temp file naming)
 //   - rtspTransport: RTSP transport protocol ("tcp", "udp", or "")
-func captureImg(ctx context.Context, streamURL string, seek int, end int, timeout int, fileName string, rtspTransport string) ([]byte, string, error) {
+func capImg(ctx context.Context, streamURL string, seek int, end int, timeout int, fileName string, rtspTransport string) ([]byte, string, error) {
 	tmpDir := os.TempDir()
 	tmpFile := filepath.Join(tmpDir, fileName)
 
 	defer os.Remove(tmpFile) //nolint:errcheck
 
-	if err := captureImg2File(ctx, streamURL, seek, end, timeout, tmpFile, rtspTransport); err != nil {
+	if err := capImg2File(ctx, streamURL, seek, end, timeout, tmpFile, rtspTransport); err != nil {
 		return nil, "", err
 	}
 
@@ -112,14 +116,14 @@ func captureImg(ctx context.Context, streamURL string, seek int, end int, timeou
 	return data, tmpFile, nil
 }
 
-// captureImg2File captures a single JPEG frame from streamURL and saves it to the specified file.
+// capImg2File captures a single JPEG frame from streamURL and saves it to the specified file.
 // Parameters:
 //   - seek: seconds to seek into the stream before capturing (0 to disable)
 //   - end: max duration in seconds for ffmpeg to run (passed via -t)
 //   - timeout: max duration in seconds for the entire operation (context timeout)
 //   - fileName: output file path where the frame will be saved
 //   - rtspTransport: RTSP transport protocol ("tcp", "udp", or "")
-func captureImg2File(ctx context.Context, streamURL string, seek int, end int, timeout int, fileName string, rtspTransport string) error {
+func capImg2File(ctx context.Context, streamURL string, seek int, end int, timeout int, fileName string, rtspTransport string) error {
 	inputArgs := buildInputArgs(streamURL, rtspTransport)
 
 	// Build output args

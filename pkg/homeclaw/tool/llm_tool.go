@@ -48,7 +48,7 @@ func (t *LLMTool) Name() string { return "hc_llm" }
 
 func (t *LLMTool) Description() string {
 	return "Unified LLM tool for image analysis and text processing. " +
-		"Use commandJson to specify method and params. " +
+		"Use commandJson to specify method and params. Do NOT fabricate or guess any json,must follow skill " +
 		"Supported methods: image, text."
 }
 
@@ -57,10 +57,8 @@ func (t *LLMTool) Parameters() map[string]any {
 		"type": "object",
 		"properties": map[string]any{
 			"commandJson": map[string]any{
-				"type": "string",
-				"description": `JSON string with "method" and "params". Examples:
-image: {"method":"image","params":{"filePath":"/path/to/image.jpg","prompt":"What is in this image?"}}
-text:  {"method":"text","params":{"content":"Some text to process","prompt":"Summarize this text"}}`,
+				"type":        "string",
+				"description": `JSON string with "method" and "params" Do NOT fabricate or guess any json,must follow skill`,
 			},
 		},
 		"required": []string{"commandJson"},

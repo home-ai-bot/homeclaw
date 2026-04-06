@@ -7,6 +7,7 @@ import (
 
 	"github.com/sipeed/picoclaw/pkg/homeclaw/common"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/llm"
+	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/media"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/tools"
@@ -68,12 +69,8 @@ func (t *VideoTool) Parameters() map[string]any {
 		"type": "object",
 		"properties": map[string]any{
 			"commandJson": map[string]any{
-				"type": "string",
-				"description": `JSON string with "method" and "params". Examples:
-capImage:    {"method":"capImage","params":{"rtsp_url":"rtsp://..."}}
-capImage:    {"method":"capImage","params":{"rtsp_url":"rtsp://...","return_image":true}}
-capAnalyze:  {"method":"capAnalyze","params":{"rtsp_url":"rtsp://...","prompt":"Is there a person?"}}
-capAnalyze:  {"method":"capAnalyze","params":{"rtsp_url":"rtsp://...","prompt":"Describe the scene","return_image":true}}`,
+				"type":        "string",
+				"description": `JSON string with "method" and "params". Do NOT fabricate or guess any json,must follow skill `,
 			},
 		},
 		"required": []string{"commandJson"},
@@ -137,7 +134,7 @@ func (t *VideoTool) execCapImage(ctx context.Context, rtspURL string, params map
 	}
 
 	// 1. Capture a frame from the RTSP stream (returns both dataURI and file path)
-	_, filePath, err := common.GrabFrameWithParams(ctx, rtspURL, 3, 4, 6, rtspTransport)
+	_, filePath, err := common.CapImgBase64(ctx, rtspURL, 3, 4, 6, rtspTransport)
 	if err != nil {
 		return tools.ErrorResult(fmt.Sprintf("failed to capture frame from %q: %v", rtspURL, err))
 	}
@@ -159,6 +156,7 @@ func (t *VideoTool) execCapImage(ctx context.Context, rtspURL string, params map
 			}, scope)
 			if err == nil {
 				mediaRefs = append(mediaRefs, ref)
+				// Temp file is now tracked by MediaStore for cleanup on scope release/TTL
 			}
 		}
 	}
@@ -170,7 +168,13 @@ func (t *VideoTool) execCapImage(ctx context.Context, rtspURL string, params map
 	b, _ := json.Marshal(result)
 
 	if len(mediaRefs) > 0 {
-		return tools.MediaResult(string(b), mediaRefs)
+		logger.Info("return with media ------------------------------------")
+		// Return image with ResponseHandled so it's sent immediately
+		return &tools.ToolResult{
+			ForLLM:          string(b),
+			Media:           mediaRefs,
+			ResponseHandled: true,
+		}
 	}
 	return tools.NewToolResult(string(b))
 }
@@ -184,7 +188,7 @@ func (t *VideoTool) execCapAnalyze(ctx context.Context, rtspURL string, params m
 	}
 
 	// 1. Capture a frame from the RTSP stream (returns both dataURI and file path)
-	dataURI, filePath, err := common.GrabFrameWithParams(ctx, rtspURL, 3, 4, 6, rtspTransport)
+	dataURI, filePath, err := common.CapImgBase64(ctx, rtspURL, 3, 4, 6, rtspTransport)
 	if err != nil {
 		return tools.ErrorResult(fmt.Sprintf("failed to capture frame from %q: %v", rtspURL, err))
 	}
@@ -206,6 +210,7 @@ func (t *VideoTool) execCapAnalyze(ctx context.Context, rtspURL string, params m
 			}, scope)
 			if err == nil {
 				mediaRefs = append(mediaRefs, ref)
+				// Temp file is now tracked by MediaStore for cleanup on scope release/TTL
 			}
 		}
 	}
@@ -244,7 +249,14 @@ func (t *VideoTool) execCapAnalyze(ctx context.Context, rtspURL string, params m
 	b, _ := json.Marshal(result)
 
 	if len(mediaRefs) > 0 {
-		return tools.MediaResult(string(b), mediaRefs)
+		logger.Info("return with media ------------------------------------")
+		// Return both analysis text (ForUser) and image (Media)
+		return &tools.ToolResult{
+			ForLLM:          string(b),
+			ForUser:         resp.Content,
+			Media:           mediaRefs,
+			ResponseHandled: true,
+		}
 	}
 	return tools.NewToolResult(string(b))
 }
