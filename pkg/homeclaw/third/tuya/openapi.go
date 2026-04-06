@@ -8,8 +8,6 @@ import (
 	"io"
 	"net/http"
 	"time"
-
-	"github.com/sipeed/picoclaw/pkg/logger"
 )
 
 // API key prefix to Open Platform base URL mapping
@@ -102,7 +100,6 @@ func (api *TuyaOpenAPI) doRequest(method, path string, body any) (map[string]any
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
-	logger.Info(string(respBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
