@@ -31,12 +31,12 @@ import (
 //	    "rtsp_url": "rtsp://...",           // required
 //	    "rtsp_transport": "tcp" | "udp",    // optional, defaults to "tcp"
 //	    "prompt": "...",                    // optional, for capAnalyze
-//	    "include_image": true|false         // optional, whether to return image in MediaResult
+//	    "return_image": true|false         // optional, whether to return image in MediaResult
 //	  }
 //	}
 //
-// capImage    – capture a frame and return the file path. If include_image is true, also returns the image via MediaResult.
-// capAnalyze  – capture a frame, analyze with vision model, and return the analysis. If include_image is true, also returns the image via MediaResult.
+// capImage    – capture a frame and return the file path. If return_image is true, also returns the image via MediaResult.
+// capAnalyze  – capture a frame, analyze with vision model, and return the analysis. If return_image is true, also returns the image via MediaResult.
 type VideoTool struct {
 	localLLM   *llm.LLM
 	mediaStore media.MediaStore
@@ -71,9 +71,9 @@ func (t *VideoTool) Parameters() map[string]any {
 				"type": "string",
 				"description": `JSON string with "method" and "params". Examples:
 capImage:    {"method":"capImage","params":{"rtsp_url":"rtsp://..."}}
-capImage:    {"method":"capImage","params":{"rtsp_url":"rtsp://...","include_image":true}}
+capImage:    {"method":"capImage","params":{"rtsp_url":"rtsp://...","return_image":true}}
 capAnalyze:  {"method":"capAnalyze","params":{"rtsp_url":"rtsp://...","prompt":"Is there a person?"}}
-capAnalyze:  {"method":"capAnalyze","params":{"rtsp_url":"rtsp://...","prompt":"Describe the scene","include_image":true}}`,
+capAnalyze:  {"method":"capAnalyze","params":{"rtsp_url":"rtsp://...","prompt":"Describe the scene","return_image":true}}`,
 			},
 		},
 		"required": []string{"commandJson"},
@@ -143,7 +143,7 @@ func (t *VideoTool) execCapImage(ctx context.Context, rtspURL string, params map
 	}
 
 	// 2. Check if we should include the image in MediaResult
-	includeImage := params["include_image"] == true
+	includeImage := params["return_image"] == true
 	var mediaRefs []string
 
 	if includeImage && t.mediaStore != nil {
@@ -190,7 +190,7 @@ func (t *VideoTool) execCapAnalyze(ctx context.Context, rtspURL string, params m
 	}
 
 	// 2. Check if we should include the image in MediaResult
-	includeImage := params["include_image"] == true
+	includeImage := params["return_image"] == true
 	var mediaRefs []string
 
 	if includeImage && t.mediaStore != nil {

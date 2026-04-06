@@ -153,13 +153,6 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 
 	f := hc.f
 
-	// Home tools
-	registerTool(toolRegistry, f.GetSetCurrentHomeTool)
-	registerTool(toolRegistry, f.GetGetCurrentHomeTool)
-	// Device tools
-	registerTool(toolRegistry, f.GetListDevicesTool)
-	registerTool(toolRegistry, f.GetListCamerasTool)
-
 	// Workflow tools
 	registerTool(toolRegistry, f.GetListWorkflowsTool)
 	registerTool(toolRegistry, f.GetGetWorkflowTool)

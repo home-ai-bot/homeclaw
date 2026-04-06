@@ -69,7 +69,7 @@ func (t *CLITool) Name() string { return "hc_cli" }
 func (t *CLITool) Description() string {
 	return "Unified CLI tool for all smart-home brands. " +
 		"Use commandJson to specify brand, method and params. " +
-		"Supported methods: syncHomes, syncDevices, getProps, setProps, execute, getSpec,capImage,."
+		"Supported methods: syncHomes, syncDevices, getProps, setProps, execute, getSpec, listDevices, listCameras, setCurrentHome, getCurrentHome."
 }
 
 func (t *CLITool) Parameters() map[string]any {
@@ -80,16 +80,20 @@ func (t *CLITool) Parameters() map[string]any {
 				"type": "string",
 				"description": `JSON string with "brand", "method", and optional "params". Examples:
 ` +
-					`syncHomes:   {"brand":"tuya","method":"syncHomes"}` + "\n" +
-					`syncHomes:   {"brand":"xiaomi","method":"syncHomes"}` + "\n" +
-					`syncDevices: {"brand":"tuya","method":"syncDevices","params":{"homeId":"xxx"}}` + "\n" +
-					`getProps:    {"brand":"tuya","method":"getProps","params":{"device_id":"xxx"}}` + "\n" +
-					`getProps:    {"brand":"xiaomi","method":"getProps","params":{"did":"xxx","siid":2,"piid":1}}` + "\n" +
-					`setProps:    {"brand":"tuya","method":"setProps","params":{"device_id":"xxx","switch_led":true}}` + "\n" +
-					`setProps:    {"brand":"xiaomi","method":"setProps","params":{"did":"xxx","siid":2,"piid":1,"value":true}}` + "\n" +
-					`execute:     {"brand":"xiaomi","method":"execute","params":{"did":"xxx","siid":2,"aiid":1}}` + "\n" +
-					`getSpec:     {"brand":"xiaomi","method":"getSpec","params":{"deviceId":"xxx"}}` + "\n" +
-					`getSpec:     {"brand":"tuya","method":"getSpec","params":{"deviceId":"xxx"}}`,
+					`syncHomes:      {"brand":"tuya","method":"syncHomes"}` + "\n" +
+					`syncHomes:      {"brand":"xiaomi","method":"syncHomes"}` + "\n" +
+					`syncDevices:    {"brand":"tuya","method":"syncDevices","params":{"homeId":"xxx"}}` + "\n" +
+					`getProps:       {"brand":"tuya","method":"getProps","params":{"device_id":"xxx"}}` + "\n" +
+					`getProps:       {"brand":"xiaomi","method":"getProps","params":{"did":"xxx","siid":2,"piid":1}}` + "\n" +
+					`setProps:       {"brand":"tuya","method":"setProps","params":{"device_id":"xxx","switch_led":true}}` + "\n" +
+					`setProps:       {"brand":"xiaomi","method":"setProps","params":{"did":"xxx","siid":2,"piid":1,"value":true}}` + "\n" +
+					`execute:        {"brand":"xiaomi","method":"execute","params":{"did":"xxx","siid":2,"aiid":1}}` + "\n" +
+					`getSpec:        {"brand":"xiaomi","method":"getSpec","params":{"deviceId":"xxx"}}` + "\n" +
+					`getSpec:        {"brand":"tuya","method":"getSpec","params":{"deviceId":"xxx"}}` + "\n" +
+					`listDevices:    {"brand":"xiaomi","method":"listDevices"}` + "\n" +
+					`listCameras:    {"brand":"xiaomi","method":"listCameras"}` + "\n" +
+					`setCurrentHome: {"brand":"xiaomi","method":"setCurrentHome","params":{"from_id":"xxx","from":"xiaomi"}}` + "\n" +
+					`getCurrentHome: {"brand":"xiaomi","method":"getCurrentHome","params":{"from":"xiaomi"}}`,
 			},
 		},
 		"required": []string{"commandJson"},
@@ -146,9 +150,17 @@ func (t *CLITool) Execute(_ context.Context, args map[string]any) *tools.ToolRes
 		return t.execExecute(client, req.Params)
 	case "getSpec":
 		return t.execGetSpec(client, req.Params)
+	case "listDevices":
+		return t.execListDevices()
+	case "listCameras":
+		return t.execListCameras()
+	case "setCurrentHome":
+		return t.execSetCurrentHome(req.Params)
+	case "getCurrentHome":
+		return t.execGetCurrentHome(req.Params)
 	default:
 		return &tools.ToolResult{
-			ForLLM:  fmt.Sprintf("unknown method '%s'; supported: syncHomes, syncDevices, getProps, setProps, execute, getSpec", req.Method),
+			ForLLM:  fmt.Sprintf("unknown method '%s'; supported: syncHomes, syncDevices, getProps, setProps, execute, getSpec, listDevices, listCameras, setCurrentHome, getCurrentHome", req.Method),
 			IsError: true,
 		}
 	}
@@ -334,4 +346,132 @@ func (t *CLITool) execGetSpec(client third.Client, params map[string]any) *tools
 	}
 	b, _ := json.Marshal(spec)
 	return tools.NewToolResult(fmt.Sprintf("getSpec result: %s", string(b)))
+}
+
+// execListDevices lists all registered smart devices with full details.
+func (t *CLITool) execListDevices() *tools.ToolResult {
+	devices, err := t.deviceStore.GetAll()
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to list devices: %v", err), IsError: true}
+	}
+	b, _ := json.Marshal(devices)
+	return tools.NewToolResult(string(b))
+}
+
+// execListCameras lists all camera devices with RTSP stream URLs.
+func (t *CLITool) execListCameras() *tools.ToolResult {
+	devices, err := t.deviceStore.GetAll()
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to list devices: %v", err), IsError: true}
+	}
+
+	// Filter camera devices and build response with RTSP URLs
+	type cameraInfo struct {
+		FromID    string `json:"from_id"`
+		From      string `json:"from"`
+		Name      string `json:"name"`
+		Type      string `json:"type"`
+		SpaceName string `json:"space_name,omitempty"`
+		RtspURL   string `json:"rtsp_url"`
+	}
+
+	var cameras []cameraInfo
+	for _, d := range devices {
+		if isCamera(d.Type) {
+			cameras = append(cameras, cameraInfo{
+				FromID:    d.FromID,
+				From:      d.From,
+				Name:      d.Name,
+				Type:      d.Type,
+				SpaceName: d.SpaceName,
+				RtspURL:   fmt.Sprintf("rtsp://127.0.0.1:8554/%s_%s", d.From, d.FromID),
+			})
+		}
+	}
+
+	if len(cameras) == 0 {
+		return tools.NewToolResult(`{"cameras":[],"message":"No camera devices found"}`)
+	}
+
+	b, _ := json.Marshal(map[string]any{"cameras": cameras})
+	return tools.NewToolResult(string(b))
+}
+
+// isCamera checks if the device model indicates a camera device.
+func isCamera(model string) bool {
+	return containsAny(model, ".camera.", ".cateye.", ".feeder.")
+}
+
+// containsAny returns true if s contains any of the substrings.
+func containsAny(s string, substrs ...string) bool {
+	for _, sub := range substrs {
+		if len(s) >= len(sub) {
+			for i := 0; i <= len(s)-len(sub); i++ {
+				if s[i:i+len(sub)] == sub {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// execSetCurrentHome sets the current home for a specific brand and ID.
+func (t *CLITool) execSetCurrentHome(params map[string]any) *tools.ToolResult {
+	if params == nil {
+		return &tools.ToolResult{ForLLM: "missing 'params' for setCurrentHome", IsError: true}
+	}
+
+	fromID, ok := params["from_id"].(string)
+	if !ok || fromID == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: from_id", IsError: true}
+	}
+
+	from, ok := params["from"].(string)
+	if !ok || from == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: from", IsError: true}
+	}
+
+	if err := t.homeStore.SetCurrent(fromID, from); err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to set current home: %v", err), IsError: true}
+	}
+
+	return tools.NewToolResult(fmt.Sprintf("successfully set home %s from %s as current", fromID, from))
+}
+
+// execGetCurrentHome retrieves the current home for a specific brand.
+func (t *CLITool) execGetCurrentHome(params map[string]any) *tools.ToolResult {
+	if params == nil {
+		return &tools.ToolResult{ForLLM: "missing 'params' for getCurrentHome", IsError: true}
+	}
+
+	from, ok := params["from"].(string)
+	if !ok || from == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: from", IsError: true}
+	}
+
+	home, err := t.homeStore.GetCurrent(from)
+	if err != nil {
+		// Check if there are any homes for this brand
+		allHomes, _ := t.homeStore.GetAll()
+		var brandHomes []string
+		for _, h := range allHomes {
+			if h.From == from {
+				brandHomes = append(brandHomes, fmt.Sprintf("%s (id: %s)", h.Name, h.FromID))
+			}
+		}
+		if len(brandHomes) == 0 {
+			return &tools.ToolResult{ForLLM: fmt.Sprintf("no homes found for brand '%s', please sync homes first", from), IsError: true}
+		}
+		msg := fmt.Sprintf("no current home set for brand '%s', available homes: %v. Must Confirm!", from, brandHomes)
+		// Homes exist but none is set as current
+		return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
+	}
+
+	result, _ := json.Marshal(map[string]any{
+		"home_id": home.FromID,
+		"name":    home.Name,
+		"from":    home.From,
+	})
+	return tools.NewToolResult(string(result))
 }

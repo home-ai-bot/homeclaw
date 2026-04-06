@@ -5,24 +5,33 @@ description: Sync smart home devices from any brand (Xiaomi, Tuya, etc.). Use wh
 
 # Device Sync
 
-Sync smart home devices from any brand into the local store using `hc_cli`.
+Sync smart home devices from any brand into the local store using the unified `hc_cli` tool.
 
-- **`hc_cli`** — Unified brand client: `syncHomes`, `syncDevices`
-- **`hc_get_current_home`** — Check if a current home is already set
-- **`hc_set_current_home`** — Set the active home for a brand
+**Available Methods:**
+- **`syncHomes`** — Fetch all homes from brand cloud and persist them
+- **`syncDevices`** — Fetch rooms + devices for a home; requires `homeId`
+- **`getCurrentHome`** — Check if a current home is already set
+- **`setCurrentHome`** — Set the active home for a brand
 
 ## Workflow
 
-1. **Get current home** → `hc_get_current_home`
+1. **Get current home** → `hc_cli` getCurrentHome
 2. **Sync homes (if needed)** → `hc_cli` syncHomes
-3. **User selects home (if multiple)** → `hc_set_current_home`
+3. **User selects home (if multiple)** → `hc_cli` setCurrentHome
 4. **Sync devices** → `hc_cli` syncDevices
 
 ---
 
 ### Step 1 — Get current home
 
-Call `hc_get_current_home` with `from` = the target brand (e.g. `"xiaomi"` or `"tuya"`).
+Call `hc_cli` getCurrentHome with `from` = the target brand (e.g. `"xiaomi"` or `"tuya"`).
+
+```
+hc_cli
+- commandJson: {"brand":"<brand>","method":"getCurrentHome","params":{"from":"<brand>"}}
+```
+
+Replace `<brand>` with `"xiaomi"` or `"tuya"`.
 
 - Returns a home → proceed to **Step 4** with the `home_id`
 - Error "no homes found" → proceed to **Step 2**
@@ -48,7 +57,13 @@ Replace `<brand>` with `"xiaomi"` or `"tuya"`.
 
 1. Present the home list to the user
 2. User picks a home
-3. Call `hc_set_current_home` with `from_id` = chosen `home_id` and `from` = the brand
+3. Call `hc_cli` setCurrentHome with `from_id` = chosen `home_id` and `from` = the brand
+
+```
+hc_cli
+- commandJson: {"brand":"<brand>","method":"setCurrentHome","params":{"from_id":"<home_id>","from":"<brand>"}}
+```
+
 4. Proceed to **Step 4**
 
 ---
@@ -69,11 +84,11 @@ This syncs all rooms and devices for the selected home into the local store.
 ### Example 1: Sync Xiaomi devices
 
 ```
-1. hc_get_current_home {"from":"xiaomi"}
+1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"getCurrentHome\",\"params\":{\"from\":\"xiaomi\"}}"}
    → error: "no homes found"
 
 2. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"syncHomes\"}"}
-   → [{"home_id":"123","name":"My Home"}]
+   → synced 1 homes for brand 'xiaomi': [{"home_id":"123","name":"My Home"}]
    → 1 home, auto-set as current
 
 3. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"syncDevices\",\"params\":{\"homeId\":\"123\"}}"}
@@ -83,12 +98,13 @@ This syncs all rooms and devices for the selected home into the local store.
 ### Example 2: Sync Tuya devices (multiple homes)
 
 ```
-1. hc_get_current_home {"from":"tuya"}
-   → error: "no current home set", homes: [{"home_id":"a1","name":"Home"},{"home_id":"b2","name":"Office"}]
+1. hc_cli {"commandJson":"{\"brand\":\"tuya\",\"method\":\"getCurrentHome\",\"params\":{\"from\":\"tuya\"}}"}
+   → error: "no current home set", homes: ["Home (id: a1)", "Office (id: b2)"]
 
 2. Ask user which home to use → user picks "Office" (b2)
 
-3. hc_set_current_home {"from_id":"b2","from":"tuya"}
+3. hc_cli {"commandJson":"{\"brand\":\"tuya\",\"method\":\"setCurrentHome\",\"params\":{\"from_id\":\"b2\",\"from\":\"tuya\"}}"}
+   → successfully set home b2 from tuya as current
 
 4. hc_cli {"commandJson":"{\"brand\":\"tuya\",\"method\":\"syncDevices\",\"params\":{\"homeId\":\"b2\"}}"}
    → synced 2 rooms and 8 devices
@@ -97,8 +113,8 @@ This syncs all rooms and devices for the selected home into the local store.
 ### Example 3: Re-sync when devices are already set up
 
 ```
-1. hc_get_current_home {"from":"xiaomi"}
-   → home_id="123", name="My Home"
+1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"getCurrentHome\",\"params\":{\"from\":\"xiaomi\"}}"}
+   → {"home_id":"123","name":"My Home","from":"xiaomi"}
 
 2. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"syncDevices\",\"params\":{\"homeId\":\"123\"}}"}
    → synced 3 rooms and 12 devices

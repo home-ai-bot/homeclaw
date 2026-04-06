@@ -60,8 +60,6 @@ type Factory struct {
 	storeErr  error
 
 	// Tool singleton instances - lazy loaded
-	listDevicesTool     *homeclawtool.ListDevicesTool
-	listCamerasTool     *homeclawtool.ListCamerasTool
 	listWorkflowsTool   *homeclawtool.ListWorkflowsTool
 	getWorkflowTool     *homeclawtool.GetWorkflowTool
 	saveWorkflowTool    *homeclawtool.SaveWorkflowTool
@@ -70,9 +68,7 @@ type Factory struct {
 	disableWorkflowTool *homeclawtool.DisableWorkflowTool
 
 	// Video tool singleton - lazy loaded
-	videoTool          *homeclawtool.VideoTool
-	setCurrentHomeTool *homeclawtool.SetCurrentHomeTool
-	getCurrentHomeTool *homeclawtool.GetCurrentHomeTool
+	videoTool *homeclawtool.VideoTool
 
 	// Media store for sending images to channels
 	mediaStore media.MediaStore
@@ -362,32 +358,6 @@ func (f *Factory) GetBigLLM() (*llm.LLM, error) {
 // Tool factory methods
 // ─────────────────────────────────────────────────────────────────────────────
 
-// GetListDevicesTool returns the singleton ListDevicesTool instance (lazy initialized)
-func (f *Factory) GetListDevicesTool() (*homeclawtool.ListDevicesTool, error) {
-	if f.listDevicesTool != nil {
-		return f.listDevicesTool, nil
-	}
-	store, err := f.GetDeviceStore()
-	if err != nil {
-		return nil, err
-	}
-	f.listDevicesTool = homeclawtool.NewListDevicesTool(store)
-	return f.listDevicesTool, nil
-}
-
-// GetListCamerasTool returns the singleton ListCamerasTool instance (lazy initialized)
-func (f *Factory) GetListCamerasTool() (*homeclawtool.ListCamerasTool, error) {
-	if f.listCamerasTool != nil {
-		return f.listCamerasTool, nil
-	}
-	store, err := f.GetDeviceStore()
-	if err != nil {
-		return nil, err
-	}
-	f.listCamerasTool = homeclawtool.NewListCamerasTool(store)
-	return f.listCamerasTool, nil
-}
-
 // GetListWorkflowsTool returns the singleton ListWorkflowsTool instance (lazy initialized)
 func (f *Factory) GetListWorkflowsTool() (*homeclawtool.ListWorkflowsTool, error) {
 	if f.listWorkflowsTool != nil {
@@ -514,30 +484,4 @@ func (f *Factory) SetMediaStore(store media.MediaStore) {
 	if f.videoTool != nil {
 		f.videoTool.SetMediaStore(store)
 	}
-}
-
-// GetSetCurrentHomeTool returns the singleton SetCurrentHomeTool instance (lazy initialized).
-func (f *Factory) GetSetCurrentHomeTool() (*homeclawtool.SetCurrentHomeTool, error) {
-	if f.setCurrentHomeTool != nil {
-		return f.setCurrentHomeTool, nil
-	}
-	store, err := f.GetHomeStore()
-	if err != nil {
-		return nil, err
-	}
-	f.setCurrentHomeTool = homeclawtool.NewSetCurrentHomeTool(store)
-	return f.setCurrentHomeTool, nil
-}
-
-// GetGetCurrentHomeTool returns the singleton GetCurrentHomeTool instance (lazy initialized).
-func (f *Factory) GetGetCurrentHomeTool() (*homeclawtool.GetCurrentHomeTool, error) {
-	if f.getCurrentHomeTool != nil {
-		return f.getCurrentHomeTool, nil
-	}
-	store, err := f.GetHomeStore()
-	if err != nil {
-		return nil, err
-	}
-	f.getCurrentHomeTool = homeclawtool.NewGetCurrentHomeTool(store)
-	return f.getCurrentHomeTool, nil
 }

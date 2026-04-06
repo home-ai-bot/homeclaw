@@ -21,6 +21,14 @@ type Device struct {
 	SpaceName string `json:"space_name,omitempty"`
 }
 
+// DeviceOp represents an operation that a device can perform
+type DeviceOp struct {
+	FromID  string `json:"from_id"`
+	From    string `json:"from"`
+	Ops     string `json:"ops"`     // Operation name, e.g. "getProps", "setProps", "execute", "getSpec"
+	Command string `json:"command"` // CLI tool command parameters
+}
+
 // Home represents a home information
 type Home struct {
 	FromID  string `json:"from_id"`
@@ -39,6 +47,12 @@ type SpacesData struct {
 type DevicesData struct {
 	Version string   `json:"version"`
 	Devices []Device `json:"devices"`
+}
+
+// DeviceOpsData is the root structure for device_ops.json
+type DeviceOpsData struct {
+	Version   string     `json:"version"`
+	DeviceOps []DeviceOp `json:"device_ops"`
 }
 
 // HomesData is the root structure for homes.json

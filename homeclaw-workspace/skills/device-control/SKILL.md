@@ -5,11 +5,17 @@ description: Control smart home devices from any brand (Xiaomi, Tuya, etc.). Use
 
 # Device Control
 
-Control smart home devices from any brand through the unified CLI using `hc_cli`.
+Control smart home devices from any brand through the unified `hc_cli` tool.
 
-- **`hc_list_devices`** — List all synced devices
-- **`hc_list_cameras`** — List camera devices with RTSP URLs
-- **`hc_cli`** — Unified brand client: `getSpec`, `getProps`, `setProps`, `execute`
+**Available Methods:**
+- **`listDevices`** — List all synced devices
+- **`listCameras`** — List camera devices with RTSP URLs
+- **`getSpec`** — Get device capability specification (available commands/properties)
+- **`getProps`** — Read device property values
+- **`setProps`** — Write device property values
+- **`execute`** — Trigger device actions
+
+**Related Tools:**
 - **`hc_video`** — Unified video tool: `capImage` (capture frame), `capAnalyze` (capture and analyze)
 
 ## Workflows
@@ -27,7 +33,8 @@ When user says "turn on the living room light", "set AC to 26°C", "start vacuum
 ### Step 1 — Find device
 
 ```
-hc_list_devices
+hc_cli
+- commandJson: {"brand":"<brand>","method":"listDevices"}
 ```
 
 Returns device list with `from_id`, `from`, `name`, `type`, `urn`, `space_name`.
@@ -127,13 +134,14 @@ When user asks "what does the camera see?", "is anyone at the door?", "check the
 ### Step 1 — Find camera
 
 ```
-hc_list_cameras
+hc_cli
+- commandJson: {"brand":"<brand>","method":"listCameras"}
 ```
 
-Returns camera list with `from_id`, `from`, `name`, `type`, `online`, `space_name`, `rtsp_url`.
+Returns camera list with `from_id`, `from`, `name`, `type`, `space_name`, `rtsp_url`.
 
 - If user provides `rtsp_url` directly, skip this step
-- Only proceed if `online: true`
+- Only proceed if camera is online
 
 ### Step 2 — Capture & analyze frame
 
@@ -150,11 +158,11 @@ hc_video
 
 Optional parameters:
 - `rtsp_transport`: "tcp" (default) or "udp"
-- `include_image`: true/false (if true, also returns the image via MediaResult)
+- `return_image`: true/false (if true, also returns the image via MediaResult)
 
 ```
 hc_video
-- commandJson: {"method":"capAnalyze","params":{"rtsp_url":"<rtsp_url>","prompt":"Describe the scene","include_image":true}}
+- commandJson: {"method":"capAnalyze","params":{"rtsp_url":"<rtsp_url>","prompt":"Describe the scene","return_image":true}}
 ```
 
 Returns (capAnalyze):
@@ -176,7 +184,7 @@ Report the analysis result to the user in natural language.
 ### Example 1: Turn On a Xiaomi Light
 
 ```
-1. hc_list_devices
+1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"listDevices\"}"}
    → from_id="12345", from="xiaomi", name="Living Room Light", urn="urn:miot-spec-v2:device:light:..."
 
 2. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"getSpec\",\"params\":{\"deviceId\":\"12345\"}}"}
@@ -189,7 +197,7 @@ Report the analysis result to the user in natural language.
 ### Example 2: Check Xiaomi AC Status
 
 ```
-1. hc_list_devices
+1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"listDevices\"}"}
    → from_id="ac001", from="xiaomi", name="Bedroom AC"
 
 2. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"getSpec\",\"params\":{\"deviceId\":\"ac001\"}}"}
@@ -203,7 +211,7 @@ Report the analysis result to the user in natural language.
 ### Example 3: Start Xiaomi Robot Vacuum
 
 ```
-1. hc_list_devices
+1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"listDevices\"}"}
    → from_id="vacuum123", from="xiaomi", name="Robot Vacuum"
 
 2. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"getSpec\",\"params\":{\"deviceId\":\"vacuum123\"}}"}
@@ -216,7 +224,7 @@ Report the analysis result to the user in natural language.
 ### Example 4: Check if Tuya AC is On
 
 ```
-1. hc_list_devices
+1. hc_cli {"commandJson":"{\"brand\":\"tuya\",\"method\":\"listDevices\"}"}
    → from_id="ac456", from="tuya", name="Bedroom AC"
 
 2. hc_cli {"commandJson":"{\"brand\":\"tuya\",\"method\":\"getProps\",\"params\":{\"device_id\":\"ac456\"}}"}
@@ -227,7 +235,7 @@ Report the analysis result to the user in natural language.
 ### Example 5: Turn On a Tuya Light
 
 ```
-1. hc_list_devices
+1. hc_cli {"commandJson":"{\"brand\":\"tuya\",\"method\":\"listDevices\"}"}
    → from_id="abc123", from="tuya", name="Bedroom Light"
 
 2. hc_cli {"commandJson":"{\"brand\":\"tuya\",\"method\":\"getSpec\",\"params\":{\"deviceId\":\"abc123\"}}"}
@@ -240,8 +248,8 @@ Report the analysis result to the user in natural language.
 ### Example 6: What does the living room camera see?
 
 ```
-1. hc_list_cameras
-   → {"cameras": [{"from_id": "cam001", "name": "Living Room Camera", "online": true, "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam001"}]}
+1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"listCameras\"}"}
+   → {"cameras": [{"from_id": "cam001", "from": "xiaomi", "name": "Living Room Camera", "type": "...", "space_name": "Living Room", "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam001"}]}
 
 2. hc_video {"commandJson":"{\"method\":\"capAnalyze\",\"params\":{\"rtsp_url\":\"rtsp://127.0.0.1:8554/xiaomi_cam001\",\"prompt\":\"Describe what you see in the living room\"}}"}
    → {"analysis": "The living room is empty. A sofa and TV are visible. No people present."}
@@ -250,8 +258,8 @@ Report the analysis result to the user in natural language.
 ### Example 6b: Capture camera frame only
 
 ```
-1. hc_list_cameras
-   → {"cameras": [{"from_id": "cam001", "name": "Living Room Camera", "online": true, "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam001"}]}
+1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"listCameras\"}"}
+   → {"cameras": [{"from_id": "cam001", "from": "xiaomi", "name": "Living Room Camera", "type": "...", "space_name": "Living Room", "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam001"}]}
 
 2. hc_video {"commandJson":"{\"method\":\"capImage\",\"params\":{\"rtsp_url\":\"rtsp://127.0.0.1:8554/xiaomi_cam001\"}}"}
    → {"file_path": "/tmp/homeclaw_frame_123.jpg"}
@@ -260,7 +268,7 @@ Report the analysis result to the user in natural language.
 ### Example 7: Set Xiaomi Fan Speed
 
 ```
-1. hc_list_devices
+1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"listDevices\"}"}
    → from_id="67890", from="xiaomi", name="Bedroom Fan"
 
 2. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"getSpec\",\"params\":{\"deviceId\":\"67890\"}}"}
@@ -282,11 +290,11 @@ Report the analysis result to the user in natural language.
 - **Property not supported**: Use getProps to inspect available properties first
 - **Camera RTSP failed**: Camera may be offline or go2rtc not running; check prerequisites
 - **FFmpeg not available**: FFmpeg must be installed for camera frame capture
-- **Invalid method**: Use `capImage` or `capAnalyze` for hc_video tool
+- **Invalid method**: Use valid methods: `listDevices`, `listCameras`, `getSpec`, `getProps`, `setProps`, `execute`
 
 ## Prerequisites for Camera Capture
 
-- Xiaomi devices must be synced (`device-sync`)
+- Devices must be synced first (use `device-sync` skill)
 - go2rtc must be running to serve RTSP streams
 - FFmpeg must be installed
 - Vision-capable LLM must be configured (for `capAnalyze` method)
