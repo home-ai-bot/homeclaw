@@ -70,3 +70,4 @@ docker/data
 config/camera.json
 config/xiaovvcamera.json
 pkg/homeclaw/third/miio/mi_client_test.go
+pkg/homeclaw/third/tuya/tuya_client_test.go

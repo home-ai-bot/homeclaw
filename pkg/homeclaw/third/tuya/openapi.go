@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/sipeed/picoclaw/pkg/logger"
 )
 
 // API key prefix to Open Platform base URL mapping
@@ -100,6 +102,7 @@ func (api *TuyaOpenAPI) doRequest(method, path string, body any) (map[string]any
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
+	logger.Info(string(respBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -447,19 +450,15 @@ func (api *TuyaOpenAPI) IPCCaptureResolve(deviceID, captureType, bucket string, 
 
 // HomeInfo represents a home information.
 type HomeInfo struct {
-	HomeID    string    `json:"home_id"`
-	Name      string    `json:"name"`
-	Admin     bool      `json:"admin"`
-	Latitude  *GeoValue `json:"latitude,omitempty"`
-	Longitude *GeoValue `json:"longitude,omitempty"`
-	GeoName   string    `json:"geo_name,omitempty"`
-	Role      int       `json:"role"`
-	Status    bool      `json:"status"`
-}
-
-// GeoValue represents a geographic coordinate value.
-type GeoValue struct {
-	Value string `json:"Value"`
+	HomeID     string   `json:"home_id"`
+	Name       string   `json:"name"`
+	CreateTime int64    `json:"create_time,omitempty"`
+	Admin      bool     `json:"admin"`
+	Latitude   *float64 `json:"latitude,omitempty"`
+	Longitude  *float64 `json:"longitude,omitempty"`
+	GeoName    string   `json:"geo_name,omitempty"`
+	Role       string   `json:"role"`
+	Status     bool     `json:"status"`
 }
 
 // HomeListResult represents the result of GetHomes API.
