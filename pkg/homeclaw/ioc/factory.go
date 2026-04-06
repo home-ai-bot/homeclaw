@@ -16,7 +16,6 @@ import (
 	"github.com/sipeed/picoclaw/pkg/homeclaw/intent"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/llm"
 	homeclawtool "github.com/sipeed/picoclaw/pkg/homeclaw/tool"
-	"github.com/sipeed/picoclaw/pkg/homeclaw/video"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/workflow"
 	"github.com/sipeed/picoclaw/pkg/media"
 	"github.com/sipeed/picoclaw/pkg/providers"
@@ -70,9 +69,8 @@ type Factory struct {
 	enableWorkflowTool  *homeclawtool.EnableWorkflowTool
 	disableWorkflowTool *homeclawtool.DisableWorkflowTool
 
-	// Video frame grabber singleton - lazy loaded
-	ffmpegUtil         *video.FFmpegUtil
-	rtspAnalyzeTool    *homeclawtool.RTSPAnalyzeTool
+	// Video tool singleton - lazy loaded
+	videoTool          *homeclawtool.VideoTool
 	setCurrentHomeTool *homeclawtool.SetCurrentHomeTool
 	getCurrentHomeTool *homeclawtool.GetCurrentHomeTool
 
@@ -487,34 +485,34 @@ func (f *Factory) GetIntentModelName() string {
 // Video / RTSP tools
 // ─────────────────────────────────────────────────────────────────────────────
 
-// GetFFmpegUtil returns the singleton FFmpegUtil instance (lazy initialized).
-func (f *Factory) GetFFmpegUtil() *video.FFmpegUtil {
-	if f.ffmpegUtil == nil {
-		f.ffmpegUtil = video.NewFFmpegUtil()
+// GetVideoTool returns the singleton VideoTool instance (lazy initialized).
+// It provides unified video operations: capImage, capAnalyze.
+func (f *Factory) GetVideoTool() (*homeclawtool.VideoTool, error) {
+	if f.videoTool != nil {
+		return f.videoTool, nil
 	}
-	return f.ffmpegUtil
-}
 
-// GetRTSPAnalyzeTool returns the singleton RTSPAnalyzeTool instance (lazy initialized).
-// It captures a frame from an RTSP stream and sends it to the intent vision model.
-func (f *Factory) GetRTSPAnalyzeTool() (*homeclawtool.RTSPAnalyzeTool, error) {
-	if f.rtspAnalyzeTool != nil {
-		return f.rtspAnalyzeTool, nil
+	// Get the local LLM instance
+	localLLM, err := f.GetLocalLLM()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get local LLM for VideoTool: %w", err)
 	}
-	f.rtspAnalyzeTool = homeclawtool.NewRTSPAnalyzeTool(f.GetFFmpegUtil(), f)
+
+	f.videoTool = homeclawtool.NewVideoTool(localLLM)
 	// Inject media store if available
 	if f.mediaStore != nil {
-		f.rtspAnalyzeTool.SetMediaStore(f.mediaStore)
+		f.videoTool.SetMediaStore(f.mediaStore)
 	}
-	return f.rtspAnalyzeTool, nil
+	return f.videoTool, nil
 }
 
 // SetMediaStore sets the media store for tools that need to send images to channels.
+// If the VideoTool has already been created, the store is injected immediately.
 func (f *Factory) SetMediaStore(store media.MediaStore) {
 	f.mediaStore = store
-	// Propagate to already-created RTSPAnalyzeTool if exists
-	if f.rtspAnalyzeTool != nil {
-		f.rtspAnalyzeTool.SetMediaStore(store)
+	// Propagate to already-created VideoTool if exists
+	if f.videoTool != nil {
+		f.videoTool.SetMediaStore(store)
 	}
 }
 

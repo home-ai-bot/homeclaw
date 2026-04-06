@@ -5,113 +5,223 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/sipeed/picoclaw/pkg/homeclaw/common"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/llm"
-	"github.com/sipeed/picoclaw/pkg/homeclaw/video"
 	"github.com/sipeed/picoclaw/pkg/media"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/tools"
 )
 
-// IntentProviderFactory provides access to the LLM provider used for intent/vision analysis.
-type IntentProviderFactory interface {
-	GetLocalLLM() (*llm.LLM, error)
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// hc_analyze_rtsp_frame
+// hc_video
 // ─────────────────────────────────────────────────────────────────────────────
 
-// RTSPAnalyzeTool captures a single frame from an RTSP stream and sends it to
-// the intent LLM provider for visual analysis.
-type RTSPAnalyzeTool struct {
-	ffmpegUtil      *video.FFmpegUtil
-	providerFactory IntentProviderFactory
-	mediaStore      media.MediaStore
+// VideoTool is a unified video tool that dispatches to the correct method
+// based on the "method" field in the commandJson argument.
+//
+// Supported methods:
+//   - capImage: Capture a single frame from an RTSP stream
+//   - capAnalyze: Capture a frame and analyze it with a vision model
+//
+// commandJson schema:
+//
+//	{
+//	  "method": "capImage" | "capAnalyze",
+//	  "params": {
+//	    "rtsp_url": "rtsp://...",           // required
+//	    "rtsp_transport": "tcp" | "udp",    // optional, defaults to "tcp"
+//	    "prompt": "...",                    // optional, for capAnalyze
+//	    "include_image": true|false         // optional, whether to return image in MediaResult
+//	  }
+//	}
+//
+// capImage    – capture a frame and return the file path. If include_image is true, also returns the image via MediaResult.
+// capAnalyze  – capture a frame, analyze with vision model, and return the analysis. If include_image is true, also returns the image via MediaResult.
+type VideoTool struct {
+	localLLM   *llm.LLM
+	mediaStore media.MediaStore
 }
 
-// NewRTSPAnalyzeTool creates an RTSPAnalyzeTool backed by the given FFmpegUtil
-// and intent provider factory.
-func NewRTSPAnalyzeTool(ffmpegUtil *video.FFmpegUtil, factory IntentProviderFactory) *RTSPAnalyzeTool {
-	return &RTSPAnalyzeTool{
-		ffmpegUtil:      ffmpegUtil,
-		providerFactory: factory,
+// NewVideoTool creates a VideoTool backed by the given LLM instance.
+func NewVideoTool(localLLM *llm.LLM) *VideoTool {
+	return &VideoTool{
+		localLLM: localLLM,
 	}
 }
 
 // SetMediaStore sets the media store for sending images to channels.
-func (t *RTSPAnalyzeTool) SetMediaStore(store media.MediaStore) {
+func (t *VideoTool) SetMediaStore(store media.MediaStore) {
 	t.mediaStore = store
 }
 
-func (t *RTSPAnalyzeTool) Name() string { return "hc_private_camera_analyze" }
+func (t *VideoTool) Name() string { return "hc_video" }
 
-func (t *RTSPAnalyzeTool) Description() string {
-	return "IMPORTANT: The rtsp_url MUST be obtained from hc_list_cameras. Do NOT fabricate or guess any URL."
+func (t *VideoTool) Description() string {
+	return "Unified video tool for camera operations. " +
+		"Use commandJson to specify method and params. " +
+		"Supported methods: capImage, capAnalyze. " +
+		"IMPORTANT: The rtsp_url MUST be obtained from hc_list_cameras. Do NOT fabricate or guess any URL."
 }
 
-func (t *RTSPAnalyzeTool) Parameters() map[string]any {
+func (t *VideoTool) Parameters() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"rtsp_url": map[string]any{
-				"type":        "string",
-				"description": "Full RTSP URL of the camera stream. MUST be obtained from hc_list_cameras. Do NOT fabricate or guess any URL.",
-			},
-			"prompt": map[string]any{
-				"type":        "string",
-				"description": "Optional instruction for the vision model, e.g. 'Is there a person in the frame?'. Defaults to a general scene description request.",
+			"commandJson": map[string]any{
+				"type": "string",
+				"description": `JSON string with "method" and "params". Examples:
+capImage:    {"method":"capImage","params":{"rtsp_url":"rtsp://..."}}
+capImage:    {"method":"capImage","params":{"rtsp_url":"rtsp://...","include_image":true}}
+capAnalyze:  {"method":"capAnalyze","params":{"rtsp_url":"rtsp://...","prompt":"Is there a person?"}}
+capAnalyze:  {"method":"capAnalyze","params":{"rtsp_url":"rtsp://...","prompt":"Describe the scene","include_image":true}}`,
 			},
 		},
-		"required": []string{"rtsp_url"},
+		"required": []string{"commandJson"},
 	}
 }
 
-func (t *RTSPAnalyzeTool) Execute(ctx context.Context, params map[string]any) *tools.ToolResult {
+// videoCommandRequest is the parsed form of the commandJson argument.
+type videoCommandRequest struct {
+	Method string         `json:"method"`
+	Params map[string]any `json:"params"`
+}
+
+func (t *VideoTool) Execute(ctx context.Context, args map[string]any) *tools.ToolResult {
 	// 0. Verify ffmpeg is available (cross-platform check)
-	if err := video.CheckFFmpeg(); err != nil {
+	if err := common.CheckFFmpeg(); err != nil {
 		return tools.ErrorResult(fmt.Sprintf("ffmpeg prerequisite check failed: %v", err))
 	}
 
-	rtspURL, ok := params["rtsp_url"].(string)
-	if !ok || rtspURL == "" {
-		return tools.ErrorResult("rtsp_url parameter is required")
+	commandJson, ok := args["commandJson"].(string)
+	if !ok || commandJson == "" {
+		return &tools.ToolResult{ForLLM: "missing or invalid 'commandJson' parameter", IsError: true}
 	}
 
+	var req videoCommandRequest
+	if err := json.Unmarshal([]byte(commandJson), &req); err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to parse commandJson: %v", err), IsError: true}
+	}
+
+	if req.Method == "" {
+		return &tools.ToolResult{ForLLM: "missing 'method' in commandJson", IsError: true}
+	}
+
+	if req.Params == nil {
+		return &tools.ToolResult{ForLLM: "missing 'params' in commandJson", IsError: true}
+	}
+
+	rtspURL, ok := req.Params["rtsp_url"].(string)
+	if !ok || rtspURL == "" {
+		return &tools.ToolResult{ForLLM: "missing or invalid 'rtsp_url' in params", IsError: true}
+	}
+
+	switch req.Method {
+	case "capImage":
+		return t.execCapImage(ctx, rtspURL, req.Params)
+	case "capAnalyze":
+		return t.execCapAnalyze(ctx, rtspURL, req.Params)
+	default:
+		return &tools.ToolResult{
+			ForLLM:  fmt.Sprintf("unknown method '%s'; supported: capImage, capAnalyze", req.Method),
+			IsError: true,
+		}
+	}
+}
+
+// execCapImage captures a single frame from the RTSP stream.
+func (t *VideoTool) execCapImage(ctx context.Context, rtspURL string, params map[string]any) *tools.ToolResult {
+	// Get RTSP transport from params (default to "tcp")
+	rtspTransport := "tcp"
+	if transport, ok := params["rtsp_transport"].(string); ok && transport != "" {
+		rtspTransport = transport
+	}
+
+	// 1. Capture a frame from the RTSP stream (returns both dataURI and file path)
+	_, filePath, err := common.GrabFrameWithParams(ctx, rtspURL, 3, 4, 6, rtspTransport)
+	if err != nil {
+		return tools.ErrorResult(fmt.Sprintf("failed to capture frame from %q: %v", rtspURL, err))
+	}
+
+	// 2. Check if we should include the image in MediaResult
+	includeImage := params["include_image"] == true
+	var mediaRefs []string
+
+	if includeImage && t.mediaStore != nil {
+		channel := tools.ToolChannel(ctx)
+		chatID := tools.ToolChatID(ctx)
+
+		if channel != "" && chatID != "" && filePath != "" {
+			scope := fmt.Sprintf("tool:video:%s:%s", channel, chatID)
+			ref, err := t.mediaStore.Store(filePath, media.MediaMeta{
+				Filename:    "camera_frame.jpg",
+				ContentType: "image/jpeg",
+				Source:      "tool:hc_video",
+			}, scope)
+			if err == nil {
+				mediaRefs = append(mediaRefs, ref)
+			}
+		}
+	}
+
+	// 3. Return the result
+	result := map[string]any{
+		"file_path": filePath,
+	}
+	b, _ := json.Marshal(result)
+
+	if len(mediaRefs) > 0 {
+		return tools.MediaResult(string(b), mediaRefs)
+	}
+	return tools.NewToolResult(string(b))
+}
+
+// execCapAnalyze captures a frame and analyzes it with the vision model.
+func (t *VideoTool) execCapAnalyze(ctx context.Context, rtspURL string, params map[string]any) *tools.ToolResult {
+	// Get RTSP transport from params (default to "tcp")
+	rtspTransport := "tcp"
+	if transport, ok := params["rtsp_transport"].(string); ok && transport != "" {
+		rtspTransport = transport
+	}
+
+	// 1. Capture a frame from the RTSP stream (returns both dataURI and file path)
+	dataURI, filePath, err := common.GrabFrameWithParams(ctx, rtspURL, 3, 4, 6, rtspTransport)
+	if err != nil {
+		return tools.ErrorResult(fmt.Sprintf("failed to capture frame from %q: %v", rtspURL, err))
+	}
+
+	// 2. Check if we should include the image in MediaResult
+	includeImage := params["include_image"] == true
+	var mediaRefs []string
+
+	if includeImage && t.mediaStore != nil {
+		channel := tools.ToolChannel(ctx)
+		chatID := tools.ToolChatID(ctx)
+
+		if channel != "" && chatID != "" && filePath != "" {
+			scope := fmt.Sprintf("tool:video:%s:%s", channel, chatID)
+			ref, err := t.mediaStore.Store(filePath, media.MediaMeta{
+				Filename:    "camera_frame.jpg",
+				ContentType: "image/jpeg",
+				Source:      "tool:hc_video",
+			}, scope)
+			if err == nil {
+				mediaRefs = append(mediaRefs, ref)
+			}
+		}
+	}
+
+	// 3. Get the intent LLM
+	if t.localLLM == nil {
+		return tools.ErrorResult("intent LLM not available")
+	}
+
+	// 4. Build the prompt
 	prompt := "Describe what you see in this camera frame in detail."
 	if p, ok := params["prompt"].(string); ok && p != "" {
 		prompt = p
 	}
 
-	// 1. Capture a frame from the RTSP stream (returns both dataURI and file path)
-	dataURI, filePath, err := t.ffmpegUtil.GrabFrameWithPath(ctx, rtspURL)
-	if err != nil {
-		return tools.ErrorResult(fmt.Sprintf("failed to capture frame from %q: %v", rtspURL, err))
-	}
-
-	// 1.5. Send the captured frame as media to the current channel
-	channel := tools.ToolChannel(ctx)
-	chatID := tools.ToolChatID(ctx)
-	var mediaRefs []string
-
-	if t.mediaStore != nil && channel != "" && chatID != "" && filePath != "" {
-		scope := fmt.Sprintf("tool:camera:%s:%s", channel, chatID)
-		ref, err := t.mediaStore.Store(filePath, media.MediaMeta{
-			Filename:    "camera_frame.jpg",
-			ContentType: "image/jpeg",
-			Source:      "tool:hc_internal_3",
-		}, scope)
-		if err == nil {
-			mediaRefs = append(mediaRefs, ref)
-		}
-	}
-
-	// 2. Get the intent LLM
-	localLLM, err := t.providerFactory.GetLocalLLM()
-	if err != nil {
-		return tools.ErrorResult(fmt.Sprintf("intent LLM unavailable: %v", err))
-	}
-
-	// 3. Build a multimodal message: text prompt + captured frame
+	// 5. Build a multimodal message: text prompt + captured frame
 	messages := []providers.Message{
 		{
 			Role:    "user",
@@ -120,16 +230,16 @@ func (t *RTSPAnalyzeTool) Execute(ctx context.Context, params map[string]any) *t
 		},
 	}
 
-	// 4. Call the LLM
-	resp, err := localLLM.Provider.Chat(ctx, messages, nil, localLLM.Model, nil)
+	// 6. Call the LLM
+	resp, err := t.localLLM.Provider.Chat(ctx, messages, nil, t.localLLM.Model, nil)
 	if err != nil {
 		return tools.ErrorResult(fmt.Sprintf("vision analysis failed: %v", err))
 	}
 
-	// 5. Return the analysis result as JSON (with media if available)
+	// 7. Return the analysis result
 	result := map[string]any{
-		"analysis": resp.Content,
-		"rtsp_url": rtspURL,
+		"analysis":  resp.Content,
+		"file_path": filePath,
 	}
 	b, _ := json.Marshal(result)
 

@@ -10,7 +10,7 @@ Control smart home devices from any brand through the unified CLI using `hc_cli`
 - **`hc_list_devices`** — List all synced devices
 - **`hc_list_cameras`** — List camera devices with RTSP URLs
 - **`hc_cli`** — Unified brand client: `getSpec`, `getProps`, `setProps`, `execute`
-- **`hc_private_camera_analyze`** — Capture and analyze camera frame via RTSP
+- **`hc_video`** — Unified video tool: `capImage` (capture frame), `capAnalyze` (capture and analyze)
 
 ## Workflows
 
@@ -138,14 +138,33 @@ Returns camera list with `from_id`, `from`, `name`, `type`, `online`, `space_nam
 ### Step 2 — Capture & analyze frame
 
 ```
-hc_private_camera_analyze
-- rtsp_url: <rtsp_url from step 1>
-- prompt: (optional) specific question, e.g. "Is there anyone at the door?"
+hc_video
+- commandJson: {"method":"capAnalyze","params":{"rtsp_url":"<rtsp_url from step 1>","prompt":"Is there anyone at the door?"}}
 ```
 
-Returns:
+Or capture frame only:
+```
+hc_video
+- commandJson: {"method":"capImage","params":{"rtsp_url":"<rtsp_url from step 1>"}}
+```
+
+Optional parameters:
+- `rtsp_transport`: "tcp" (default) or "udp"
+- `include_image`: true/false (if true, also returns the image via MediaResult)
+
+```
+hc_video
+- commandJson: {"method":"capAnalyze","params":{"rtsp_url":"<rtsp_url>","prompt":"Describe the scene","include_image":true}}
+```
+
+Returns (capAnalyze):
 ```json
-{"analysis": "Description of what's visible...", "rtsp_url": "..."}
+{"analysis": "Description of what's visible...","file_path": "/tmp/homeclaw_frame_123.jpg"}
+```
+
+Returns (capImage):
+```json
+{"file_path": "/tmp/homeclaw_frame_123.jpg"}
 ```
 
 Report the analysis result to the user in natural language.
@@ -224,11 +243,18 @@ Report the analysis result to the user in natural language.
 1. hc_list_cameras
    → {"cameras": [{"from_id": "cam001", "name": "Living Room Camera", "online": true, "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam001"}]}
 
-2. hc_private_camera_analyze {
-     "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam001",
-     "prompt": "Describe what you see in the living room"
-   }
+2. hc_video {"commandJson":"{\"method\":\"capAnalyze\",\"params\":{\"rtsp_url\":\"rtsp://127.0.0.1:8554/xiaomi_cam001\",\"prompt\":\"Describe what you see in the living room\"}}"}
    → {"analysis": "The living room is empty. A sofa and TV are visible. No people present."}
+```
+
+### Example 6b: Capture camera frame only
+
+```
+1. hc_list_cameras
+   → {"cameras": [{"from_id": "cam001", "name": "Living Room Camera", "online": true, "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam001"}]}
+
+2. hc_video {"commandJson":"{\"method\":\"capImage\",\"params\":{\"rtsp_url\":\"rtsp://127.0.0.1:8554/xiaomi_cam001\"}}"}
+   → {"file_path": "/tmp/homeclaw_frame_123.jpg"}
 ```
 
 ### Example 7: Set Xiaomi Fan Speed
@@ -256,10 +282,11 @@ Report the analysis result to the user in natural language.
 - **Property not supported**: Use getProps to inspect available properties first
 - **Camera RTSP failed**: Camera may be offline or go2rtc not running; check prerequisites
 - **FFmpeg not available**: FFmpeg must be installed for camera frame capture
+- **Invalid method**: Use `capImage` or `capAnalyze` for hc_video tool
 
 ## Prerequisites for Camera Capture
 
 - Xiaomi devices must be synced (`device-sync`)
 - go2rtc must be running to serve RTSP streams
 - FFmpeg must be installed
-- Vision-capable LLM must be configured as intent provider
+- Vision-capable LLM must be configured (for `capAnalyze` method)

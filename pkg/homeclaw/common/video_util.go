@@ -1,5 +1,5 @@
-// Package video provides utilities for capturing frames from video streams.
-package video
+// Package common provides common utility functions.
+package common
 
 import (
 	"bytes"
@@ -12,50 +12,44 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
-// FFmpegUtil provides utilities for capturing frames from video streams using FFmpeg.
-type FFmpegUtil struct {
-	// RTSPTransport forces a specific RTSP transport protocol ("tcp", "udp", "").
-	// Leave empty to use FFmpeg's default.
-	RTSPTransport string
-}
+// cachedFFmpegPath stores the resolved ffmpeg binary path.
+var (
+	cachedFFmpegPath string
+	ffmpegPathOnce   sync.Once
+)
 
-// NewFFmpegUtil creates a new FFmpegUtil with sensible defaults.
-func NewFFmpegUtil() *FFmpegUtil {
-	return &FFmpegUtil{
-		RTSPTransport: "tcp",
-	}
-}
-
-// findFFmpegBinary locates the ffmpeg executable.
+// findFFmpegBinary locates the ffmpeg executable (cached after first call).
 // Search order:
 //  1. Same directory as the current executable
 //  2. Falls back to "ffmpeg" and relies on $PATH
 func findFFmpegBinary() string {
-	binaryName := "ffmpeg"
-	if runtime.GOOS == "windows" {
-		binaryName = "ffmpeg.exe"
-	}
-
-	// Check same directory as current executable
-	if exe, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(exe), binaryName)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			return candidate
+	ffmpegPathOnce.Do(func() {
+		binaryName := "ffmpeg"
+		if runtime.GOOS == "windows" {
+			binaryName = "ffmpeg.exe"
 		}
-	}
 
-	return binaryName
+		// Check same directory as current executable
+		if exe, err := os.Executable(); err == nil {
+			candidate := filepath.Join(filepath.Dir(exe), binaryName)
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				cachedFFmpegPath = candidate
+				return
+			}
+		}
+
+		cachedFFmpegPath = binaryName
+	})
+	return cachedFFmpegPath
 }
 
-// buildInputArgs returns ffmpeg input arguments populated from the util settings.
-// NOTE: -ss is intentionally NOT placed here (input side) because many RTSP
-// servers (e.g. Xiaomi cameras) do not support seeking and will return an error.
-// Instead, -ss is placed on the output side so ffmpeg decodes and discards
-// frames before capturing, which works universally.
-func (u *FFmpegUtil) buildInputArgs(streamURL string) []string {
+// buildInputArgs returns ffmpeg input arguments with RTSP transport settings.
+// RTSPTransport can be "tcp", "udp", or "" (empty for FFmpeg's default).
+func buildInputArgs(streamURL string, rtspTransport string) []string {
 	args := []string{
 		// Ignore decoding errors (e.g., HEVC "Could not find ref with POC 0")
 		// that occur when starting mid-stream without reference frames.
@@ -63,30 +57,24 @@ func (u *FFmpegUtil) buildInputArgs(streamURL string) []string {
 		// Discard corrupt packets and generate missing PTS values
 		"-fflags", "+discardcorrupt+genpts",
 	}
-	if u.RTSPTransport != "" {
-		args = append(args, "-rtsp_transport", u.RTSPTransport)
+	if rtspTransport != "" {
+		args = append(args, "-rtsp_transport", rtspTransport)
 	}
 	args = append(args, "-i", streamURL)
 	return args
 }
 
-// GrabFrameWithPath captures a single JPEG frame and returns both the raw bytes
-// and the path to the temp file. The temp file is NOT deleted, so the caller
-// can use it for sending to channels. The caller is responsible for cleanup.
-func (u *FFmpegUtil) GrabFrameWithPath(ctx context.Context, streamURL string) (dataURI string, filePath string, err error) {
-	return u.captureImg2Base64(ctx, streamURL, 3, 4, 6*time.Second)
-}
-
-// captureImg2Base64 captures a single JPEG frame from streamURL and returns a data URI and temp file path.
+// GrabFrameWithParams captures a single JPEG frame from streamURL and returns a data URI and temp file path.
 // Parameters:
-//   - seek: number of seconds to seek into the stream before capturing (0 to disable)
+//   - seek: seconds to seek into the stream before capturing (0 to disable)
 //   - end: max duration in seconds for ffmpeg to run (passed via -t)
-//   - timeout: max duration for the entire operation (context timeout)
-func (u *FFmpegUtil) captureImg2Base64(ctx context.Context, streamURL string, seek float64, end int, timeout time.Duration) (dataURI string, filePath string, err error) {
+//   - timeout: max duration in seconds for the entire operation (context timeout)
+//   - rtspTransport: RTSP transport protocol ("tcp", "udp", or "" for default)
+func GrabFrameWithParams(ctx context.Context, streamURL string, seek int, end int, timeout int, rtspTransport string) (dataURI string, filePath string, err error) {
 	tmpDir := os.TempDir()
-	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("homeclaw_frame_%d.jpg", uniqueID()))
+	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("homeclaw_frame_%d.jpg", GenerateUUID()))
 
-	if err := u.captureImg2File(ctx, streamURL, seek, end, timeout, tmpFile); err != nil {
+	if err := captureImg2File(ctx, streamURL, seek, end, timeout, tmpFile, rtspTransport); err != nil {
 		return "", "", err
 	}
 
@@ -102,17 +90,18 @@ func (u *FFmpegUtil) captureImg2Base64(ctx context.Context, streamURL string, se
 
 // captureImg captures a single JPEG frame from streamURL and returns the raw bytes.
 // Parameters:
-//   - seek: number of seconds to seek into the stream before capturing (0 to disable)
+//   - seek: seconds to seek into the stream before capturing (0 to disable)
 //   - end: max duration in seconds for ffmpeg to run (passed via -t)
-//   - timeout: max duration for the entire operation (context timeout)
+//   - timeout: max duration in seconds for the entire operation (context timeout)
 //   - fileName: output file name (used for temp file naming)
-func (u *FFmpegUtil) captureImg(ctx context.Context, streamURL string, seek float64, end int, timeout time.Duration, fileName string) ([]byte, string, error) {
+//   - rtspTransport: RTSP transport protocol ("tcp", "udp", or "")
+func captureImg(ctx context.Context, streamURL string, seek int, end int, timeout int, fileName string, rtspTransport string) ([]byte, string, error) {
 	tmpDir := os.TempDir()
 	tmpFile := filepath.Join(tmpDir, fileName)
 
 	defer os.Remove(tmpFile) //nolint:errcheck
 
-	if err := u.captureImg2File(ctx, streamURL, seek, end, timeout, tmpFile); err != nil {
+	if err := captureImg2File(ctx, streamURL, seek, end, timeout, tmpFile, rtspTransport); err != nil {
 		return nil, "", err
 	}
 
@@ -125,19 +114,20 @@ func (u *FFmpegUtil) captureImg(ctx context.Context, streamURL string, seek floa
 
 // captureImg2File captures a single JPEG frame from streamURL and saves it to the specified file.
 // Parameters:
-//   - seek: number of seconds to seek into the stream before capturing (0 to disable)
+//   - seek: seconds to seek into the stream before capturing (0 to disable)
 //   - end: max duration in seconds for ffmpeg to run (passed via -t)
-//   - timeout: max duration for the entire operation (context timeout)
+//   - timeout: max duration in seconds for the entire operation (context timeout)
 //   - fileName: output file path where the frame will be saved
-func (u *FFmpegUtil) captureImg2File(ctx context.Context, streamURL string, seek float64, end int, timeout time.Duration, fileName string) error {
-	inputArgs := u.buildInputArgs(streamURL)
+//   - rtspTransport: RTSP transport protocol ("tcp", "udp", or "")
+func captureImg2File(ctx context.Context, streamURL string, seek int, end int, timeout int, fileName string, rtspTransport string) error {
+	inputArgs := buildInputArgs(streamURL, rtspTransport)
 
 	// Build output args
 	outputArgs := []string{
 		"-t", fmt.Sprintf("%d", end),
 	}
 	if seek > 0 {
-		outputArgs = append(outputArgs, "-ss", fmt.Sprintf("%.1f", seek))
+		outputArgs = append(outputArgs, "-ss", fmt.Sprintf("%d", seek))
 	}
 	outputArgs = append(outputArgs,
 		"-frames:v", "1",
@@ -147,7 +137,7 @@ func (u *FFmpegUtil) captureImg2File(ctx context.Context, streamURL string, seek
 
 	args := append(inputArgs, outputArgs...)
 
-	if err := u.runFFmpegWithTimeout(ctx, args, timeout); err != nil {
+	if err := runFFmpegWithTimeout(ctx, args, timeout); err != nil {
 		if ctx.Err() != nil {
 			return fmt.Errorf("frame capture cancelled: %w", ctx.Err())
 		}
@@ -170,10 +160,11 @@ func (u *FFmpegUtil) captureImg2File(ctx context.Context, streamURL string, seek
 // ffmpeg process is killed immediately.
 // A timeout is enforced to prevent indefinite hangs.
 // stderr is captured and included in the returned error to aid diagnosis.
-func (u *FFmpegUtil) runFFmpegWithTimeout(ctx context.Context, args []string, timeout time.Duration) error {
+// timeout: timeout in seconds
+func runFFmpegWithTimeout(ctx context.Context, args []string, timeout int) error {
 	// Enforce a timeout to prevent hangs when ffmpeg gets stuck
 	// (e.g., TCP connection waiting for unreachable RTSP server).
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 
 	ffmpegPath := findFFmpegBinary()
@@ -205,14 +196,6 @@ func (u *FFmpegUtil) runFFmpegWithTimeout(ctx context.Context, args []string, ti
 		<-done // drain so the goroutine exits cleanly
 		return ctx.Err()
 	}
-}
-
-// uniqueID returns a monotonically increasing integer used for temp file names.
-var _idCounter uint64
-
-func uniqueID() uint64 {
-	_idCounter++
-	return _idCounter
 }
 
 // CheckFFmpeg verifies that the ffmpeg binary is available on PATH.
