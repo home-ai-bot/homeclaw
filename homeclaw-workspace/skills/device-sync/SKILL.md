@@ -3,16 +3,6 @@ name: device-sync
 description: Sync smart home devices from any brand (Xiaomi, Tuya, etc.). Use when the user wants to sync/import devices, refresh the device list, or set up a smart home brand for the first time.
 ---
 
-# Device Sync
-
-Sync smart home devices from any brand into the local store using the unified `hc_cli` tool.
-
-**Available Methods:**
-- **`syncHomes`** — Fetch all homes from brand cloud and persist them
-- **`syncDevices`** — Fetch rooms + devices for a home; requires `homeId`
-- **`getCurrentHome`** — Check if a current home is already set
-- **`setCurrentHome`** — Set the active home for a brand
-
 ## Workflow
 
 1. **Get current home** → `hc_cli` getCurrentHome

@@ -67,9 +67,7 @@ func (t *CLITool) RegisterClient(client third.Client) {
 func (t *CLITool) Name() string { return "hc_cli" }
 
 func (t *CLITool) Description() string {
-	return "Unified CLI tool for all smart-home brands. " +
-		"Use commandJson to specify brand, method and params. Do NOT fabricate or guess any json,must follow skill " +
-		"Supported methods: syncHomes, syncDevices, getProps, setProps, execute, getSpec, listDevices, listCameras, setCurrentHome, getCurrentHome."
+	return "!IMPORTANT: Do NOT call by llm directly, must invoke by skills"
 }
 
 func (t *CLITool) Parameters() map[string]any {
@@ -145,7 +143,7 @@ func (t *CLITool) Execute(_ context.Context, args map[string]any) *tools.ToolRes
 		return t.execGetCurrentHome(req.Params)
 	default:
 		return &tools.ToolResult{
-			ForLLM:  fmt.Sprintf("unknown method '%s'; supported: syncHomes, syncDevices, getProps, setProps, execute, getSpec, listDevices, listCameras, setCurrentHome, getCurrentHome", req.Method),
+			ForLLM:  fmt.Sprintf("unknown method '%s'; Must Confirm! tool must invoke by skills,please use the right skill!", req.Method),
 			IsError: true,
 		}
 	}

@@ -47,9 +47,7 @@ func NewLLMTool(llm *llm.LLM) *LLMTool {
 func (t *LLMTool) Name() string { return "hc_llm" }
 
 func (t *LLMTool) Description() string {
-	return "Unified LLM tool for image analysis and text processing. " +
-		"Use commandJson to specify method and params. Do NOT fabricate or guess any json,must follow skill " +
-		"Supported methods: image, text."
+	return "!IMPORTANT: Do NOT call by llm directly, must invoke by skills"
 }
 
 func (t *LLMTool) Parameters() map[string]any {
@@ -98,7 +96,7 @@ func (t *LLMTool) Execute(ctx context.Context, args map[string]any) *tools.ToolR
 		return t.execText(ctx, t.llm, req.Params)
 	default:
 		return &tools.ToolResult{
-			ForLLM:  fmt.Sprintf("unknown method '%s'; supported: image, text", req.Method),
+			ForLLM:  fmt.Sprintf("unknown method '%s'; Must Confirm! tool must invoke by skills,please use the right skill!", req.Method),
 			IsError: true,
 		}
 	}

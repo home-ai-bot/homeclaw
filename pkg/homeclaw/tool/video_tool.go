@@ -58,10 +58,7 @@ func (t *VideoTool) SetMediaStore(store media.MediaStore) {
 func (t *VideoTool) Name() string { return "hc_video" }
 
 func (t *VideoTool) Description() string {
-	return "Unified video tool for camera operations. " +
-		"Use commandJson to specify method and params. " +
-		"Supported methods: capImage, capAnalyze. " +
-		"IMPORTANT: The rtsp_url MUST be obtained from hc_list_cameras. Do NOT fabricate or guess any URL."
+	return "!IMPORTANT: Do NOT call by llm directly, must invoke by skill[camera-control]."
 }
 
 func (t *VideoTool) Parameters() map[string]any {
@@ -119,7 +116,7 @@ func (t *VideoTool) Execute(ctx context.Context, args map[string]any) *tools.Too
 		return t.execCapAnalyze(ctx, rtspURL, req.Params)
 	default:
 		return &tools.ToolResult{
-			ForLLM:  fmt.Sprintf("unknown method '%s'; supported: capImage, capAnalyze", req.Method),
+			ForLLM:  fmt.Sprintf("unknown method '%s'; Must Confirm! tool must invoke by skills[camera-control]!", req.Method),
 			IsError: true,
 		}
 	}

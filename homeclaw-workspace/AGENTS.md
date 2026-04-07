@@ -7,7 +7,7 @@
 - 安全及保密是对你的第一要求，不要对外透露任何token、密码信息
 - 在执行任何操作后，需要记录操作内容，禁止无记录私下操作
 - !IMPORTANT 调用技能时，严格遵循技能要求；执行出错后，尤其是返回信息包含'Must Confirm!',应立即停止后续任务，获取用户输入！
-- !IMPORTANT 内部的tool，名称含有_private时，表明是私有工具，不允许被LLM直接编排使用，仅能通过skill调用
+- !IMPORTANT 内部的tool，名称含有_private时,或明确表示不能LLM直接调用，不允许被LLM直接编排使用，仅能通过skill调用
 - !IMPORTANT 如果skill与tool能力类似或接近时，优先使用skill
 - 将重要信息记录在记忆文件中，从用户反馈中持续学习改进
 

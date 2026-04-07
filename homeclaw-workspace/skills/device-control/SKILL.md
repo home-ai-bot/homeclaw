@@ -1,28 +1,13 @@
 ---
 name: device-control
-description: Control smart home devices from any brand (Xiaomi, Tuya, etc.). Use when the user wants to control, operate, query status, or interact with smart devices (lights, fans, AC, switches, plugs, vacuum, etc.). Triggers on commands like "turn on the living room light", "set AC temperature to 26", "start vacuum cleaning", "is the bedroom light on", or any request to operate or query smart home devices. 
+description: Control smart home devices from any brand (Xiaomi, Tuya, etc.). Use when the user wants to control, operate, or query status of smart devices (lights, fans, AC, switches, plugs, vacuum, etc.). Triggers on commands like "turn on the living room light", "set AC temperature to 26", "start vacuum cleaning", "is the bedroom light on", or any request to operate or query smart home devices. For camera control and visual analysis, use the camera-control skill.
 ---
 
-# Device Control
-
-Control smart home devices from any brand through the unified `hc_cli` tool.
-
-**Available Methods:**
-- **`listDevices`** — List all synced devices
-- **`listCameras`** — List camera devices with RTSP URLs
-- **`getSpec`** — Get device capability specification (available commands/properties)
-- **`getProps`** — Read device property values
-- **`setProps`** — Write device property values
-- **`execute`** — Trigger device actions
-
-**Related Tools:**
-- **`hc_video`** — Unified video tool: `capImage` (capture frame), `capAnalyze` (capture and analyze)
 
 ## Workflows
 
 - **Workflow 1: Control Device** — change device state (turn on/off, set value)
 - **Workflow 2: Query Device Status** — read current property values
-- **Workflow 3: Camera Capture & Visual Analysis** — capture camera frame and analyze
 
 ---
 
@@ -126,55 +111,6 @@ Translate the returned values to natural language and report to user.
 
 ---
 
-## Workflow 3: Camera Capture & Visual Analysis
-
-When user asks "what does the camera see?", "is anyone at the door?", "check the baby monitor", etc.
-
-
-### Step 1 — Find camera
-
-```
-hc_cli
-- commandJson: {"brand":"<brand>","method":"listCameras"}
-```
-
-Returns camera list with `from_id`, `from`, `name`, `type`, `space_name`, `rtsp_url`.
-
-- If user provides `rtsp_url` directly, skip this step
-
-### Step 2 — Capture & analyze frame
-
-if user want to analyze，use capAnalyze first，more efficient！
-```
-hc_video
-- commandJson: {"method":"capAnalyze","params":{"rtsp_url":"<rtsp_url from step 1>","prompt":"Is there anyone at the door?","return_image":<true/false>}} 
-```
-
-Or capture frame only:
-```
-hc_video
-- commandJson: {"method":"capImage","params":{"rtsp_url":"<rtsp_url from step 1>","return_image":<true/false>}}
-```
-
-if user want to recieve image，`return_image` is true ; image content will send in MediaResult（QQ、钉钉 can display directly, no need to do more）
-
-```
-
-Returns (capAnalyze):
-```json
-{"analysis": "Description of what's visible...","file_path": "/tmp/homeclaw_frame_123.jpg"}
-and image content  in MediaResult（QQ、钉钉 can display directly）
-```
-
-Returns (capImage):
-```json
-{"file_path": "/tmp/homeclaw_frame_123.jpg"} and image content in MediaResult（QQ、钉钉 can display directly）
-```
-
-Report the analysis result to the user in natural language.
-
----
-
 ## Examples
 
 ### Example 1: Turn On a Xiaomi Light
@@ -241,27 +177,7 @@ Report the analysis result to the user in natural language.
    → {"success": true}
 ```
 
-### Example 6: What does the living room camera see?
-
-```
-1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"listCameras\"}"}
-   → {"cameras": [{"from_id": "cam001", "from": "xiaomi", "name": "Living Room Camera", "type": "...", "space_name": "Living Room", "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam001"}]}
-
-2. hc_video {"commandJson":"{\"method\":\"capAnalyze\",\"params\":{\"rtsp_url\":\"rtsp://127.0.0.1:8554/xiaomi_cam001\",\"prompt\":\"Describe what you see in the living room\"}}"}
-   → {"analysis": "The living room is empty. A sofa and TV are visible. No people present."}
-```
-
-### Example 6b: Capture camera frame only
-
-```
-1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"listCameras\"}"}
-   → {"cameras": [{"from_id": "cam001", "from": "xiaomi", "name": "Living Room Camera", "type": "...", "space_name": "Living Room", "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam001"}]}
-
-2. hc_video {"commandJson":"{\"method\":\"capImage\",\"params\":{\"rtsp_url\":\"rtsp://127.0.0.1:8554/xiaomi_cam001\"}}"}
-   → {"file_path": "/tmp/homeclaw_frame_123.jpg"}
-```
-
-### Example 7: Set Xiaomi Fan Speed
+### Example 5: Set Xiaomi Fan Speed
 
 ```
 1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"listDevices\"}"}
@@ -284,13 +200,10 @@ Report the analysis result to the user in natural language.
 - **Auth error / token invalid**: For Xiaomi, ask user to re-login via web UI; for Tuya, reconfigure API key
 - **Spec not available**: Device may not support cloud control
 - **Property not supported**: Use getProps to inspect available properties first
-- **Camera RTSP failed**: Camera may be offline or go2rtc not running; check prerequisites
-- **FFmpeg not available**: FFmpeg must be installed for camera frame capture
-- **Invalid method**: Use valid methods: `listDevices`, `listCameras`, `getSpec`, `getProps`, `setProps`, `execute`
+- **Invalid method**: Use valid methods: `listDevices`, `getSpec`, `getProps`, `setProps`, `execute`
 
-## Prerequisites for Camera Capture
+---
+
+## Prerequisites
 
 - Devices must be synced first (use `device-sync` skill)
-- go2rtc must be running to serve RTSP streams
-- FFmpeg must be installed
-- Vision-capable LLM must be configured (for `capAnalyze` method)
