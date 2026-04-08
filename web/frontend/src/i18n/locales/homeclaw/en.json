@@ -3,6 +3,7 @@
     "smart_home": "Smart Home",
     "xiaomi": "Xiaomi",
     "tuya": "Tuya",
+    "apple": "Apple",
     "go2rtc": "Video Control"
   },
   "tuya": {
@@ -121,6 +122,34 @@
       "start": "Start",
       "stop": "Stop",
       "restart": "Restart"
+    }
+  },
+  "apple": {
+    "description": "Discover and pair Apple HomeKit devices on your network. All HomeKit-enabled devices will be automatically detected.",
+    "unpaired": {
+      "title": "Available Devices",
+      "empty": "No unpaired devices found. Make sure your HomeKit devices are in pairing mode."
+    },
+    "paired": {
+      "title": "Paired Devices",
+      "empty": "No paired devices yet. Select a device from the available devices to pair."
+    },
+    "pair": {
+      "title": "Pair HomeKit Device",
+      "description": "Enter the HomeKit setup code for {{name}}. This is usually an 8-digit code found on the device.",
+      "pairing": "Pairing..."
+    },
+    "field": {
+      "pin": "HomeKit Setup Code",
+      "pinPlaceholder": "Enter 8-digit PIN"
+    },
+    "action": {
+      "pair": "Pair",
+      "unpair": "Unpair",
+      "cancel": "Cancel"
+    },
+    "validation": {
+      "pinRequired": "Please enter the HomeKit setup code."
     }
   }
 }

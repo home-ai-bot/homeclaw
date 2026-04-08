@@ -21,6 +21,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SmartHomeXiaomiRouteImport } from './routes/smart-home/xiaomi'
 import { Route as SmartHomeTuyaRouteImport } from './routes/smart-home/tuya'
 import { Route as SmartHomeGo2rtcRouteImport } from './routes/smart-home/go2rtc'
+import { Route as SmartHomeAppleRouteImport } from './routes/smart-home/apple'
 import { Route as ConfigRawRouteImport } from './routes/config.raw'
 import { Route as ChannelsNameRouteImport } from './routes/channels/$name'
 import { Route as AgentToolsRouteImport } from './routes/agent/tools'
@@ -87,6 +88,11 @@ const SmartHomeGo2rtcRoute = SmartHomeGo2rtcRouteImport.update({
   path: '/go2rtc',
   getParentRoute: () => SmartHomeRoute,
 } as any)
+const SmartHomeAppleRoute = SmartHomeAppleRouteImport.update({
+  id: '/apple',
+  path: '/apple',
+  getParentRoute: () => SmartHomeRoute,
+} as any)
 const ConfigRawRoute = ConfigRawRouteImport.update({
   id: '/raw',
   path: '/raw',
@@ -128,6 +134,7 @@ export interface FileRoutesByFullPath {
   '/agent/tools': typeof AgentToolsRoute
   '/channels/$name': typeof ChannelsNameRoute
   '/config/raw': typeof ConfigRawRoute
+  '/smart-home/apple': typeof SmartHomeAppleRoute
   '/smart-home/go2rtc': typeof SmartHomeGo2rtcRoute
   '/smart-home/tuya': typeof SmartHomeTuyaRoute
   '/smart-home/xiaomi': typeof SmartHomeXiaomiRoute
@@ -147,6 +154,7 @@ export interface FileRoutesByTo {
   '/agent/tools': typeof AgentToolsRoute
   '/channels/$name': typeof ChannelsNameRoute
   '/config/raw': typeof ConfigRawRoute
+  '/smart-home/apple': typeof SmartHomeAppleRoute
   '/smart-home/go2rtc': typeof SmartHomeGo2rtcRoute
   '/smart-home/tuya': typeof SmartHomeTuyaRoute
   '/smart-home/xiaomi': typeof SmartHomeXiaomiRoute
@@ -167,6 +175,7 @@ export interface FileRoutesById {
   '/agent/tools': typeof AgentToolsRoute
   '/channels/$name': typeof ChannelsNameRoute
   '/config/raw': typeof ConfigRawRoute
+  '/smart-home/apple': typeof SmartHomeAppleRoute
   '/smart-home/go2rtc': typeof SmartHomeGo2rtcRoute
   '/smart-home/tuya': typeof SmartHomeTuyaRoute
   '/smart-home/xiaomi': typeof SmartHomeXiaomiRoute
@@ -188,6 +197,7 @@ export interface FileRouteTypes {
     | '/agent/tools'
     | '/channels/$name'
     | '/config/raw'
+    | '/smart-home/apple'
     | '/smart-home/go2rtc'
     | '/smart-home/tuya'
     | '/smart-home/xiaomi'
@@ -207,6 +217,7 @@ export interface FileRouteTypes {
     | '/agent/tools'
     | '/channels/$name'
     | '/config/raw'
+    | '/smart-home/apple'
     | '/smart-home/go2rtc'
     | '/smart-home/tuya'
     | '/smart-home/xiaomi'
@@ -226,6 +237,7 @@ export interface FileRouteTypes {
     | '/agent/tools'
     | '/channels/$name'
     | '/config/raw'
+    | '/smart-home/apple'
     | '/smart-home/go2rtc'
     | '/smart-home/tuya'
     | '/smart-home/xiaomi'
@@ -329,6 +341,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SmartHomeGo2rtcRouteImport
       parentRoute: typeof SmartHomeRoute
     }
+    '/smart-home/apple': {
+      id: '/smart-home/apple'
+      path: '/apple'
+      fullPath: '/smart-home/apple'
+      preLoaderRoute: typeof SmartHomeAppleRouteImport
+      parentRoute: typeof SmartHomeRoute
+    }
     '/config/raw': {
       id: '/config/raw'
       path: '/raw'
@@ -405,12 +424,14 @@ const ConfigRouteWithChildren =
   ConfigRoute._addFileChildren(ConfigRouteChildren)
 
 interface SmartHomeRouteChildren {
+  SmartHomeAppleRoute: typeof SmartHomeAppleRoute
   SmartHomeGo2rtcRoute: typeof SmartHomeGo2rtcRoute
   SmartHomeTuyaRoute: typeof SmartHomeTuyaRoute
   SmartHomeXiaomiRoute: typeof SmartHomeXiaomiRoute
 }
 
 const SmartHomeRouteChildren: SmartHomeRouteChildren = {
+  SmartHomeAppleRoute: SmartHomeAppleRoute,
   SmartHomeGo2rtcRoute: SmartHomeGo2rtcRoute,
   SmartHomeTuyaRoute: SmartHomeTuyaRoute,
   SmartHomeXiaomiRoute: SmartHomeXiaomiRoute,

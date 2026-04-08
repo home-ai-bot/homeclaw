@@ -12,6 +12,7 @@ import {
   IconTools,
   IconHome,
   IconVideo,
+  IconBrandApple,
 } from "@tabler/icons-react"
 import { Link, useRouterState } from "@tanstack/react-router"
 import * as React from "react"
@@ -150,6 +151,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             title: "navigation.tuya",
             url: "/smart-home/tuya",
             icon: IconHome,
+            translateTitle: true,
+            namespace: "homeclaw" as const,
+          },
+          {
+            title: "navigation.apple",
+            url: "/smart-home/apple",
+            icon: IconBrandApple,
             translateTitle: true,
             namespace: "homeclaw" as const,
           },

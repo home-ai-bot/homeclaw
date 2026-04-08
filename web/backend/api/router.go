@@ -1,9 +1,12 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"path/filepath"
 	"sync"
 
+	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/web/backend/homeclaw"
 	"github.com/sipeed/picoclaw/web/backend/launcherconfig"
 )
@@ -12,6 +15,7 @@ import (
 
 type Handler struct {
 	configPath           string
+	workspacePath        string
 	serverPort           int
 	serverPublic         bool
 	serverPublicExplicit bool
@@ -23,15 +27,19 @@ type Handler struct {
 	go2rtcManager        *homeclaw.Go2RTCManager
 	tuyaManager          *homeclaw.TuyaManager
 	xiaomiManager        *homeclaw.XiaomiManager
+	homekitManager       *homeclaw.HomeKitManager
 	weixinMu             sync.Mutex
 	weixinFlows          map[string]*weixinFlow
 	wecomMu              sync.Mutex
 	wecomFlows           map[string]*wecomFlow
+	deviceStoreInitOnce  sync.Once
+	deviceStore          data.DeviceStore
+	deviceStoreErr       error
 }
 
 // NewHandler creates an instance of the API handler.
 func NewHandler(configPath string) *Handler {
-	return &Handler{
+	h := &Handler{
 		configPath:    configPath,
 		serverPort:    launcherconfig.DefaultPort,
 		oauthFlows:    make(map[string]*oauthFlow),
@@ -42,6 +50,13 @@ func NewHandler(configPath string) *Handler {
 		weixinFlows:   make(map[string]*weixinFlow),
 		wecomFlows:    make(map[string]*wecomFlow),
 	}
+
+	// Derive workspace path from config path
+	if configPath != "" {
+		h.workspacePath = filepath.Dir(configPath)
+	}
+
+	return h
 }
 
 // SetServerOptions stores current backend listen options for fallback behavior.
@@ -54,6 +69,33 @@ func (h *Handler) SetServerOptions(port int, public bool, publicExplicit bool, a
 
 func (h *Handler) SetDebug(debug bool) {
 	h.debug = debug
+}
+
+// initHomeKitManager lazily initializes the HomeKit manager with DeviceStore
+func (h *Handler) initHomeKitManager() {
+	h.deviceStoreInitOnce.Do(func() {
+		if h.workspacePath == "" {
+			return
+		}
+
+		// Initialize JSONStore
+		dataDir := filepath.Join(h.workspacePath, "data")
+		jsonStore, err := data.NewJSONStore(dataDir)
+		if err != nil {
+			h.deviceStoreErr = fmt.Errorf("json store init failed: %w", err)
+			return
+		}
+
+		// Initialize DeviceStore
+		h.deviceStore, h.deviceStoreErr = data.NewDeviceStore(jsonStore)
+		if h.deviceStoreErr != nil {
+			h.deviceStoreErr = fmt.Errorf("device store init failed: %w", h.deviceStoreErr)
+			return
+		}
+
+		// Initialize HomeKitManager with DeviceStore
+		h.homekitManager = homeclaw.NewHomeKitManager(h.deviceStore)
+	})
 }
 
 // RegisterRoutes binds all API endpoint handlers to the ServeMux.
@@ -75,6 +117,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	// Xiaomi API endpoints
 	h.xiaomiManager.RegisterRoutes(mux)
+
+	// HomeKit API endpoints (lazy init)
+	h.initHomeKitManager()
+	if h.homekitManager != nil {
+		h.homekitManager.RegisterRoutes(mux)
+	}
 
 	// Session history
 	h.registerSessionRoutes(mux)

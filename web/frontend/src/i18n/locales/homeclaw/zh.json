@@ -3,6 +3,7 @@
     "smart_home": "智能家居",
     "xiaomi": "小米",
     "tuya": "涂鸦",
+    "apple": "苹果",
     "go2rtc": "视频控制"
   },
   "tuya": {
@@ -121,6 +122,34 @@
       "start": "启动",
       "stop": "停止",
       "restart": "重启"
+    }
+  },
+  "apple": {
+    "description": "发现并配对网络上的 Apple HomeKit 设备。所有支持 HomeKit 的设备将被自动检测。",
+    "unpaired": {
+      "title": "可用设备",
+      "empty": "未找到未配对的设备。请确保您的 HomeKit 设备处于配对模式。"
+    },
+    "paired": {
+      "title": "已配对设备",
+      "empty": "暂无已配对设备。从可用设备中选择一个设备进行配对。"
+    },
+    "pair": {
+      "title": "配对 HomeKit 设备",
+      "description": "输入 {{name}} 的 HomeKit 设置代码。这通常是设备上的 8 位数字代码。",
+      "pairing": "配对中..."
+    },
+    "field": {
+      "pin": "HomeKit 设置代码",
+      "pinPlaceholder": "输入 8 位 PIN 码"
+    },
+    "action": {
+      "pair": "配对",
+      "unpair": "取消配对",
+      "cancel": "取消"
+    },
+    "validation": {
+      "pinRequired": "请输入 HomeKit 设置代码。"
     }
   }
 }
