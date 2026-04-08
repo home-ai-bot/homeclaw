@@ -133,8 +133,6 @@ func (t *CLITool) Execute(_ context.Context, args map[string]any) *tools.ToolRes
 		return t.execExecute(client, req.Params)
 	case "getSpec":
 		return t.execGetSpec(client, req.Params)
-	case "listDevices":
-		return t.execListDevices()
 	case "listCameras":
 		return t.execListCameras()
 	case "setCurrentHome":
@@ -329,16 +327,6 @@ func (t *CLITool) execGetSpec(client third.Client, params map[string]any) *tools
 	}
 	b, _ := json.Marshal(spec)
 	return tools.NewToolResult(fmt.Sprintf("getSpec result: %s", string(b)))
-}
-
-// execListDevices lists all registered smart devices with full details.
-func (t *CLITool) execListDevices() *tools.ToolResult {
-	devices, err := t.deviceStore.GetAll()
-	if err != nil {
-		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to list devices: %v", err), IsError: true}
-	}
-	b, _ := json.Marshal(devices)
-	return tools.NewToolResult(string(b))
 }
 
 // execListCameras lists all camera devices with RTSP stream URLs.
