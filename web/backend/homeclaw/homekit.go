@@ -9,17 +9,18 @@ import (
 
 	"github.com/AlexxIT/go2rtc/pkg/mdns"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
+	"github.com/sipeed/picoclaw/pkg/homeclaw/third/homekit"
 )
 
 // HomeKitManager handles HomeKit device discovery and pairing
 type HomeKitManager struct {
-	deviceStore data.DeviceStore
+	client *homekit.HomeKitClient
 }
 
 // NewHomeKitManager creates a new HomeKitManager instance
 func NewHomeKitManager(deviceStore data.DeviceStore) *HomeKitManager {
 	return &HomeKitManager{
-		deviceStore: deviceStore,
+		client: homekit.NewHomeKitClient(deviceStore),
 	}
 }
 
@@ -76,23 +77,20 @@ func (m *HomeKitManager) handlePair(w http.ResponseWriter, r *http.Request) {
 	port := uint16(0)
 	if idx := strings.LastIndex(src, ":"); idx != -1 {
 		ip = src[:idx]
-		if p, err := fmt.Sscanf(src[idx+1:], "%d", &port); err != nil || p != 1 {
+		if _, err := fmt.Sscanf(src[idx+1:], "%d", &port); err != nil || port == 0 {
 			port = 0
 		}
 	}
 
-	// Save device to DeviceStore
-	device := data.Device{
-		FromID: id,
-		From:   "homekit",
-		Name:   id,
-		Type:   "homekit",
-		Token:  pin,
-		IP:     ip,
+	if port == 0 {
+		http.Error(w, "invalid port in source URL", http.StatusBadRequest)
+		return
 	}
 
-	if err := m.deviceStore.Save(device); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to save device: %v", err), http.StatusInternalServerError)
+	// Perform HomeKit pairing using HAP protocol (includes saving to DeviceStore)
+	_, err := m.client.PairDevice(ip, port, id, pin)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Pairing failed: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -109,12 +107,13 @@ func (m *HomeKitManager) handleUnpair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete device from DeviceStore
-	if err := m.deviceStore.Delete(id, "homekit"); err != nil {
-		if err == data.ErrRecordNotFound {
-			http.Error(w, "device not found", http.StatusNotFound)
+	// Perform HomeKit unpairing using HAP protocol (includes lookup and deletion)
+	if err := m.client.UnpairDevice(id); err != nil {
+		// Check if it's a "not in store" error
+		if strings.Contains(err.Error(), "device_not_in_store") {
+			http.Error(w, err.Error(), http.StatusNotFound)
 		} else {
-			http.Error(w, fmt.Sprintf("Failed to delete device: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Unpairing failed: %v", err), http.StatusInternalServerError)
 		}
 		return
 	}
@@ -125,8 +124,8 @@ func (m *HomeKitManager) handleUnpair(w http.ResponseWriter, r *http.Request) {
 
 // discoverDevices performs mDNS discovery for HomeKit devices
 func (m *HomeKitManager) discoverDevices() ([]HomeKitDeviceSource, error) {
-	// Get all paired devices from DeviceStore
-	pairedDevices, err := m.deviceStore.GetAll()
+	// Get all paired devices from client's DeviceStore
+	pairedDevices, err := m.client.GetDeviceStore().GetAll()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get paired devices: %w", err)
 	}

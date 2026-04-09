@@ -80,24 +80,18 @@
 
 ### 📊 接入进度
 
-| 品牌 | 控制方式 | 状态 |
-|:---|:---|:---|
-| 小米 | 云端控制 | ✅ 完成 |
-|  | 本地控制 | ⏳ 未开始 |
-| 涂鸦 | 云端控制 | 🚧 开发中 |
-| HomeKit | 本地控制 | ⏳ 未开始 |
-| Matter协议 | 本地控制 | ⏳ 未开始 |
-| HomeAssitant | 本地控制 | ⏳ 未开始 |
-| 海尔 | 云端控制 | ⏳ 未开始 |
-|  | 本地控制 | ⏳ 未开始 |
-| 美的 | 云端控制 | ⏳ 未开始 |
-|  | 本地控制 | ⏳ 未开始 |
-| 格力 | 云端控制 | ⏳ 未开始 |
-|  | 本地控制 | ⏳ 未开始 |
-| Wyze | 云端控制 | ⏳ 未开始 |
-|  | 本地控制 | ⏳ 未开始 |
-|Roborock | 云端控制 | ⏳ 未开始 |
-| | 本地控制 | ⏳ 未开始 |
+| 品牌 | 设备添加 | 云端控制 | 本地控制 | 本地视频 |
+|:---|:---|:---|:---|:---|
+| 小米 | ✅ 测试完成 | ✅ 测试完成 | ⏳ 未开始 |  ✅ 测试完成  |
+| 涂鸦 | 开发完成  |   开发完成  | ⏳ 未开始 | ⏳ 未开始 |
+| HomeKit | 开发完成 | 无 |  ⏳ 未开始 | ⏳ 未开始 |
+| Matter协议 | ⏳ 未开始 | ⏳ 未开始 | ⏳ 未开始 | ⏳ 未开始 |
+| HomeAssistant | ⏳ 未开始 | ⏳ 未开始 | ⏳ 未开始 | ⏳ 未开始 |
+| 海尔 | ⏳ 未开始 | ⏳ 未开始 | ⏳ 未开始 | ⏳ 未开始 |
+| 美的 | ⏳ 未开始 | ⏳ 未开始 | ⏳ 未开始 | ⏳ 未开始 |
+| 格力 | ⏳ 未开始 | ⏳ 未开始 | ⏳ 未开始 | ⏳ 未开始 |
+| Wyze | ⏳ 未开始 | ⏳ 未开始 | ⏳ 未开始 | ⏳ 未开始 |
+| Roborock | ⏳ 未开始 | ⏳ 未开始 | ⏳ 未开始 | ⏳ 未开始 |
 
 
 ### 🔐 授权
@@ -108,49 +102,36 @@
 
 #### 🔌 Client 接口实现
 
+为保证实现跨平台，尽量使用实现client接口的方式来实现接入，参考 pkg\homeclaw\third\tuya\tuya_client.go、pkg\homeclaw\third\miio\mi_client.go
+
 ```go
-// 获取家庭列表
-GetHomes()
+// 身份识别
+Brand() string  // 返回品牌名称
 
-// 获取房间列表
-GetRooms()
+// 查询方法
+GetHomes() ([]*HomeInfo, error)              // 获取家庭列表
+GetRooms(homeID string) ([]*data.Space, error)   // 获取房间列表
+GetDevices(homeID string) ([]*data.Device, error) // 获取设备列表
+GetSpec(deviceID string) (*SpecInfo, error)   // 获取设备规格
 
-// 获取设备列表
-GetDevices()
-
-// 单个设备操作
-GetSpec()    // 获取设备规格
-GetProps()   // 获取设备属性
-SetProps()   // 设置设备属性
-Execute()    // 执行设备动作
+// 设备控制
+Execute(params map[string]any) (map[string]any, error)  // 执行设备动作
+GetProps(params map[string]any) (any, error)            // 获取设备属性
+SetProps(params map[string]any) (any, error)            // 设置设备属性
 
 // 事件管理
-event.Enable()   // 启用事件订阅
-event.Disable()  // 禁用事件订阅
+EnableEvent(params map[string]any) error   // 启用事件订阅
+DisableEvent(params map[string]any) error  // 禁用事件订阅
+
+// 视频流
+GetRtspStr(deviceID string) (string, error)  // 获取RTSP视频流URL
 ```
 
 **本地控制特性**：支持本地控制，可接受设备事件推送。
 
 #### 🛠️ Skill 方式
 
-```go
-// 获取家庭列表
-GetHomes()
-
-// 获取房间列表
-GetRooms()
-
-// 获取设备列表
-GetDevices()
-
-// 单个设备操作
-GetSpec()    // 获取设备规格
-GetProps()   // 获取设备属性
-SetProps()   // 设置设备属性
-Execute()    // 执行设备动作
-```
-
-
+为保证多平台，目前暂时不支持skill方式加入，待讨论确定
 ---
 
 
