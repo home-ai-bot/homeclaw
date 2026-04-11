@@ -94,7 +94,7 @@ func (h *Handler) initHomeKitManager() {
 		}
 
 		// Initialize HomeKitManager with DeviceStore
-		h.homekitManager = homeclaw.NewHomeKitManager(h.deviceStore)
+		h.homekitManager = homeclaw.NewHomeKitManager(h.deviceStore, h.workspacePath)
 	})
 }
 

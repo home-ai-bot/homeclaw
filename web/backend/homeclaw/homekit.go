@@ -18,9 +18,9 @@ type HomeKitManager struct {
 }
 
 // NewHomeKitManager creates a new HomeKitManager instance
-func NewHomeKitManager(deviceStore data.DeviceStore) *HomeKitManager {
+func NewHomeKitManager(deviceStore data.DeviceStore, workspace string) *HomeKitManager {
 	return &HomeKitManager{
-		client: homekit.NewHomeKitClient(deviceStore),
+		client: homekit.NewHomeKitClient(deviceStore, workspace),
 	}
 }
 
