@@ -150,12 +150,16 @@ func (f *ThirdFactory) GetCloud(sid string) *xiaomi.Cloud {
 }
 
 // GetSpecFetcher returns the singleton SpecFetcher instance (lazy initialized).
-func (f *ThirdFactory) GetSpecFetcher() *miio.SpecFetcher {
+func (f *ThirdFactory) GetSpecFetcher() (*miio.SpecFetcher, error) {
 	if f.specFetcher != nil {
-		return f.specFetcher
+		return f.specFetcher, nil
 	}
-	f.specFetcher = miio.NewSpecFetcher(filepath.Join(f.Workspace, "third"))
-	return f.specFetcher
+	fetcher, err := miio.NewSpecFetcher(filepath.Join(f.Workspace, "third"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create spec fetcher: %w", err)
+	}
+	f.specFetcher = fetcher
+	return f.specFetcher, nil
 }
 
 // GetMiClient returns the singleton MiClient instance (lazy initialized).
@@ -179,7 +183,12 @@ func (f *ThirdFactory) GetMiClient(country string) (*miio.MiClient, error) {
 		return nil, fmt.Errorf("get mi home store: %w", err)
 	}
 
-	f.miClient = miio.NewMiClient(cloud, country, f.Workspace, deviceStore, homeStore, f.GetSpecFetcher())
+	specFetcher, err := f.GetSpecFetcher()
+	if err != nil {
+		return nil, fmt.Errorf("get spec fetcher: %w", err)
+	}
+
+	f.miClient = miio.NewMiClient(cloud, country, f.Workspace, deviceStore, homeStore, specFetcher)
 	return f.miClient, nil
 }
 
@@ -232,7 +241,12 @@ func (f *ThirdFactory) GetSyncDevicesTool() (*miio.SyncDevicesTool, error) {
 		return nil, fmt.Errorf("get device store: %w", err)
 	}
 
-	f.syncDevicesTool = miio.NewSyncDevicesTool(client, homeStore, spaceStore, deviceStore, f.GetSpecFetcher())
+	specFetcher, err := f.GetSpecFetcher()
+	if err != nil {
+		return nil, fmt.Errorf("get spec fetcher: %w", err)
+	}
+
+	f.syncDevicesTool = miio.NewSyncDevicesTool(client, homeStore, spaceStore, deviceStore, specFetcher)
 	return f.syncDevicesTool, nil
 }
 
@@ -256,7 +270,11 @@ func (f *ThirdFactory) GetSpecCommandsTool() (*miio.GetSpecCommandsTool, error) 
 	if f.getSpecCommandsTool != nil {
 		return f.getSpecCommandsTool, nil
 	}
-	f.getSpecCommandsTool = miio.NewGetSpecCommandsTool(f.GetSpecFetcher())
+	specFetcher, err := f.GetSpecFetcher()
+	if err != nil {
+		return nil, fmt.Errorf("get spec fetcher: %w", err)
+	}
+	f.getSpecCommandsTool = miio.NewGetSpecCommandsTool(specFetcher)
 	return f.getSpecCommandsTool, nil
 }
 
