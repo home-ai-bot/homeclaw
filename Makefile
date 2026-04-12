@@ -350,6 +350,47 @@ build-macos-app:build-launcher
 	@./scripts/build-macos-app.sh $(PLATFORM)-$(ARCH)
 	@echo "macOS .app bundle created: $(BUILD_DIR)/PicoClaw.app"
 
+## build-android: Build for Android (arm64-v8a - gateway)
+build-android:
+	@echo "Building libhomeclaw.so for Android arm64-v8a..."
+	@mkdir -p build/android/arm64-v8a
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o build/android/arm64-v8a/libhomeclaw.so ./$(CMD_DIR)
+	@echo "Build complete: build/android/arm64-v8a/libhomeclaw.so"
+
+## build-android-web: Build for Android (arm64-v8a - web console)
+build-android-web:
+	@echo "Building libhomeclaw-web.so for Android arm64-v8a..."
+	@mkdir -p build/android/arm64-v8a
+	cd web/backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w" -o ../../build/android/arm64-v8a/libhomeclaw-web.so .
+	@echo "Build complete: build/android/arm64-v8a/libhomeclaw-web.so"
+
+## build-android-full: Build both gateway and web for Android arm64-v8a
+build-android-full: build-android build-android-web
+	@echo "Android build complete:"
+	@ls -lh build/android/arm64-v8a/ 2>/dev/null || dir build\android\arm64-v8a 2>nul
+
+## build-android-all: Build for all Android architectures
+build-android-all: build-android-arm64 build-android-arm build-android-amd64
+	@echo "All Android builds complete"
+
+build-android-arm64:
+	@echo "Building for Android arm64-v8a..."
+	@mkdir -p build/android/arm64-v8a
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o build/android/arm64-v8a/libhomeclaw.so ./$(CMD_DIR)
+	cd web/backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w" -o ../../build/android/arm64-v8a/libhomeclaw-web.so .
+
+build-android-arm:
+	@echo "Building for Android armeabi-v7a..."
+	@mkdir -p build/android/armeabi-v7a
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o build/android/armeabi-v7a/libhomeclaw.so ./$(CMD_DIR)
+	cd web/backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags "-s -w" -o ../../build/android/armeabi-v7a/libhomeclaw-web.so .
+
+build-android-amd64:
+	@echo "Building for Android x86_64..."
+	@mkdir -p build/android/x86_64
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o build/android/x86_64/libhomeclaw.so ./$(CMD_DIR)
+	cd web/backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o ../../build/android/x86_64/libhomeclaw-web.so .
+
 ## help: Show this help message
 help:
 	@echo "picoclaw Makefile"
