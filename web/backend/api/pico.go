@@ -56,7 +56,6 @@ func (h *Handler) createWsProxy(origProtocol string, token string) *httputil.Rev
 // It validates the client token before forwarding; rejects immediately on failure.
 func (h *Handler) handleWebSocketProxy() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-
 		gateway.mu.Lock()
 		ensurePicoTokenCachedLocked(h.configPath)
 		cachedPID := gateway.pidData

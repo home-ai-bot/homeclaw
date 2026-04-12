@@ -188,12 +188,6 @@ func isPublicLauncherDashboardStatic(method, p string) bool {
 	if p == "/launcher-login" || p == "/launcher-setup" {
 		return true
 	}
-	// WebSocket endpoints carry their own token auth via Sec-WebSocket-Protocol;
-	// exempting them avoids breaking upgrades from clients that cannot send cookies
-	// (e.g. native WS clients, LAN access without a session cookie).
-	if p == "/pico/ws" {
-		return true
-	}
 	if strings.HasPrefix(p, "/assets/") {
 		return true
 	}
