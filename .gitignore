@@ -64,6 +64,9 @@ cmd/telegram/
 web/backend/dist/*
 !web/backend/dist/.gitkeep
 
+
+.omc/
+>>>>>>> upstream/main
 .claude/
 
 docker/data
@@ -71,3 +74,9 @@ config/camera.json
 config/xiaovvcamera.json
 pkg/homeclaw/third/miio/mi_client_test.go
 pkg/homeclaw/third/tuya/tuya_client_test.go
+
+.omc/
+=======
+
+.omc/
+>>>>>>> upstream/main

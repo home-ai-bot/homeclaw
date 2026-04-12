@@ -1069,6 +1069,40 @@ func (m *toolFeedbackProvider) GetDefaultModel() string {
 	return "heartbeat-tool-feedback-model"
 }
 
+type picoInterleavedContentProvider struct {
+	calls int
+}
+
+func (m *picoInterleavedContentProvider) Chat(
+	ctx context.Context,
+	messages []providers.Message,
+	tools []providers.ToolDefinition,
+	model string,
+	opts map[string]any,
+) (*providers.LLMResponse, error) {
+	m.calls++
+	if m.calls == 1 {
+		return &providers.LLMResponse{
+			Content: "intermediate model text",
+			ToolCalls: []providers.ToolCall{{
+				ID:        "call_tool_limit_test",
+				Type:      "function",
+				Name:      "tool_limit_test_tool",
+				Arguments: map[string]any{"value": "x"},
+			}},
+		}, nil
+	}
+
+	return &providers.LLMResponse{
+		Content:   "final model text",
+		ToolCalls: []providers.ToolCall{},
+	}, nil
+}
+
+func (m *picoInterleavedContentProvider) GetDefaultModel() string {
+	return "pico-interleaved-content-model"
+}
+
 type toolLimitOnlyProvider struct{}
 
 func (m *toolLimitOnlyProvider) Chat(
@@ -1839,6 +1873,164 @@ func TestProcessMessage_ModelRoutingUsesLightProvider(t *testing.T) {
 	}
 }
 
+// TestProcessMessage_FallbackUsesPerCandidateProvider is the loop-level test for
+// bug #2140. It verifies that when the primary model returns a rate-limit error
+// the fallback closure routes the retry to the fallback model's own provider
+// (its own api_base), not back to the primary provider's endpoint.
+func TestProcessMessage_FallbackUsesPerCandidateProvider(t *testing.T) {
+	workspace := t.TempDir()
+
+	primaryCalls := 0
+	primaryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		primaryCalls++
+		// Return 429 so FallbackChain classifies this as retriable and moves on.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]any{
+				"message": "rate limit exceeded",
+				"type":    "rate_limit_error",
+			},
+		})
+	}))
+	defer primaryServer.Close()
+
+	fallbackCalls := 0
+	fallbackServer := newStrictChatCompletionTestServer(
+		t, "fallback", "gemma-3-27b-it", "fallback reply", &fallbackCalls,
+	)
+	defer fallbackServer.Close()
+
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         workspace,
+				ModelName:         "mistral-primary",
+				ModelFallbacks:    []string{"gemma-fallback"},
+				MaxTokens:         4096,
+				MaxToolIterations: 3,
+			},
+		},
+		ModelList: []*config.ModelConfig{
+			{
+				ModelName: "mistral-primary",
+				Model:     "openrouter/mistralai/mistral-small-3.1",
+				APIBase:   primaryServer.URL,
+				APIKeys:   config.SimpleSecureStrings("primary-key"),
+				Workspace: workspace,
+			},
+			{
+				ModelName: "gemma-fallback",
+				Model:     "gemini/gemma-3-27b-it",
+				APIBase:   fallbackServer.URL,
+				APIKeys:   config.SimpleSecureStrings("fallback-key"),
+				Workspace: workspace,
+			},
+		},
+	}
+
+	provider, _, err := providers.CreateProvider(cfg)
+	if err != nil {
+		t.Fatalf("CreateProvider() error = %v", err)
+	}
+	msgBus := bus.NewMessageBus()
+	al := NewAgentLoop(cfg, msgBus, provider)
+	helper := testHelper{al: al}
+
+	resp := helper.executeAndGetResponse(t, context.Background(), bus.InboundMessage{
+		Channel:  "telegram",
+		SenderID: "user1",
+		ChatID:   "chat1",
+		Content:  "hi",
+		Peer:     bus.Peer{Kind: "direct", ID: "user1"},
+	})
+
+	if resp != "fallback reply" {
+		t.Fatalf("response = %q, want %q (fallback provider)", resp, "fallback reply")
+	}
+	if primaryCalls == 0 {
+		t.Fatal("primary server was never called; expected at least one attempt")
+	}
+	if fallbackCalls != 1 {
+		t.Fatalf("fallback server calls = %d, want 1", fallbackCalls)
+	}
+}
+
+// TestProcessMessage_FallbackUsesActiveProviderWhenCandidateNotRegistered verifies
+// that when a candidate has no model_list entry it is absent from CandidateProviders
+// and the fallback closure falls back to activeProvider instead of panicking.
+func TestProcessMessage_FallbackUsesActiveProviderWhenCandidateNotRegistered(t *testing.T) {
+	workspace := t.TempDir()
+
+	// Primary server: returns 429 on first call, succeeds on second.
+	// Both the primary and the unregistered fallback share this server
+	// (same api_base) so activeProvider routes both calls here.
+	callCount := 0
+	primaryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		if callCount == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]any{"message": "rate limit", "type": "rate_limit_error"},
+			})
+			return
+		}
+		// Second call (fallback via activeProvider) succeeds.
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"content": "active provider reply"}, "finish_reason": "stop"},
+			},
+		})
+	}))
+	defer primaryServer.Close()
+
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         workspace,
+				ModelName:         "primary-model",
+				MaxTokens:         4096,
+				MaxToolIterations: 3,
+				// No model_list entry for this alias — absent from CandidateProviders.
+				ModelFallbacks: []string{"openrouter/fallback-model"},
+			},
+		},
+		ModelList: []*config.ModelConfig{
+			{
+				ModelName: "primary-model",
+				Model:     "openrouter/primary-model",
+				APIBase:   primaryServer.URL,
+				APIKeys:   config.SimpleSecureStrings("primary-key"),
+				Workspace: workspace,
+			},
+		},
+	}
+
+	provider, _, err := providers.CreateProvider(cfg)
+	if err != nil {
+		t.Fatalf("CreateProvider() error = %v", err)
+	}
+	msgBus := bus.NewMessageBus()
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	helper := testHelper{al: al}
+	resp := helper.executeAndGetResponse(t, context.Background(), bus.InboundMessage{
+		Channel:  "telegram",
+		SenderID: "user1",
+		ChatID:   "chat1",
+		Content:  "hi",
+		Peer:     bus.Peer{Kind: "direct", ID: "user1"},
+	})
+
+	if resp != "active provider reply" {
+		t.Fatalf("response = %q, want %q", resp, "active provider reply")
+	}
+	if callCount < 2 {
+		t.Fatalf("primary server calls = %d, want >= 2 (one 429 + one success via activeProvider)", callCount)
+	}
+}
+
 // TestToolResult_SilentToolDoesNotSendUserMessage verifies silent tools don't trigger outbound
 func TestToolResult_SilentToolDoesNotSendUserMessage(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "agent-test-*")
@@ -2571,6 +2763,133 @@ func TestProcessMessage_PublishesToolFeedbackWhenEnabled(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected outbound tool feedback for regular messages")
+	}
+}
+
+func TestRun_PicoPublishesAssistantContentDuringToolCallsWithoutFinalDuplicate(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				ModelName:         "test-model",
+				MaxTokens:         4096,
+				MaxToolIterations: 10,
+			},
+		},
+	}
+
+	msgBus := bus.NewMessageBus()
+	provider := &picoInterleavedContentProvider{}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	agent := al.GetRegistry().GetDefaultAgent()
+	if agent == nil {
+		t.Fatal("expected default agent")
+	}
+	agent.Tools.Register(&toolLimitTestTool{})
+
+	runCtx, runCancel := context.WithCancel(context.Background())
+	defer runCancel()
+
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- al.Run(runCtx)
+	}()
+
+	if err := msgBus.PublishInbound(context.Background(), bus.InboundMessage{
+		Channel:  "pico",
+		SenderID: "user-1",
+		ChatID:   "session-1",
+		Content:  "run with tools",
+	}); err != nil {
+		t.Fatalf("PublishInbound() error = %v", err)
+	}
+
+	outputs := make([]string, 0, 2)
+	deadline := time.After(2 * time.Second)
+	for len(outputs) < 2 {
+		select {
+		case outbound := <-msgBus.OutboundChan():
+			outputs = append(outputs, outbound.Content)
+		case <-deadline:
+			t.Fatalf("timed out waiting for pico outputs, got %v", outputs)
+		}
+	}
+
+	if outputs[0] != "intermediate model text" {
+		t.Fatalf("first outbound content = %q, want %q", outputs[0], "intermediate model text")
+	}
+	if outputs[1] != "final model text" {
+		t.Fatalf("second outbound content = %q, want %q", outputs[1], "final model text")
+	}
+
+	runCancel()
+	select {
+	case err := <-runDone:
+		if err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for Run() to exit")
+	}
+
+	select {
+	case outbound := <-msgBus.OutboundChan():
+		if outbound.Content == "final model text" {
+			t.Fatalf("unexpected duplicate final pico output: %+v", outbound)
+		}
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestRunAgentLoop_PicoSkipsInterimPublishWhenNotAllowed(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				ModelName:         "test-model",
+				MaxTokens:         4096,
+				MaxToolIterations: 10,
+			},
+		},
+	}
+
+	msgBus := bus.NewMessageBus()
+	provider := &picoInterleavedContentProvider{}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	agent := al.GetRegistry().GetDefaultAgent()
+	if agent == nil {
+		t.Fatal("expected default agent")
+	}
+	agent.Tools.Register(&toolLimitTestTool{})
+
+	response, err := al.runAgentLoop(context.Background(), agent, processOptions{
+		SessionKey:              "agent:main:pico:session-1",
+		Channel:                 "pico",
+		ChatID:                  "session-1",
+		UserMessage:             "run with tools",
+		DefaultResponse:         defaultResponse,
+		EnableSummary:           false,
+		SendResponse:            false,
+		AllowInterimPicoPublish: false,
+		SuppressToolFeedback:    true,
+	})
+	if err != nil {
+		t.Fatalf("runAgentLoop() error = %v", err)
+	}
+	if response != "final model text" {
+		t.Fatalf("runAgentLoop() response = %q, want %q", response, "final model text")
+	}
+
+	select {
+	case outbound := <-msgBus.OutboundChan():
+		t.Fatalf("unexpected outbound message when interim publish disabled: %+v", outbound)
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 
