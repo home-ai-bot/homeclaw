@@ -102,7 +102,12 @@
 
 #### 🔌 Client 接口实现
 
-为保证实现跨平台，尽量使用实现client接口的方式来实现接入，参考 pkg\homeclaw\third\tuya\tuya_client.go、pkg\homeclaw\third\miio\mi_client.go
+为保证实现跨平台，使用实现client接口的方式接入
+1. client主要用于同步设备，控制设备，参考 pkg\homeclaw\third\tuya\tuya_client.go、pkg\homeclaw\third\miio\mi_client.go
+
+前端页面主要是进行授权：
+1. 页面参考 web\frontend\src\homeclaw\components\tuya-page.tsx
+2. 前端api参考 web\backend\homeclaw\tuya.go
 
 ```go
 // 身份识别
@@ -127,7 +132,6 @@ DisableEvent(params map[string]any) error  // 禁用事件订阅
 GetRtspStr(deviceID string) (string, error)  // 获取RTSP视频流URL
 ```
 
-**本地控制特性**：支持本地控制，可接受设备事件推送。
 
 #### 🛠️ Skill 方式
 
