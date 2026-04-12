@@ -582,6 +582,13 @@ type VoiceConfig struct {
 	EchoTranscription bool   `json:"echo_transcription"       env:"PICOCLAW_VOICE_ECHO_TRANSCRIPTION"`
 }
 
+type PicoLMProviderConfig struct {
+	Binary    string `json:"binary" env:"PICOCLAW_PROVIDERS_PICOLM_BINARY"`
+	Model     string `json:"model" env:"PICOCLAW_PROVIDERS_PICOLM_MODEL"`
+	MaxTokens int    `json:"max_tokens" env:"PICOCLAW_PROVIDERS_PICOLM_MAX_TOKENS"`
+	Threads   int    `json:"threads" env:"PICOCLAW_PROVIDERS_PICOLM_THREADS"`
+}
+
 // ModelConfig represents a model-centric provider configuration.
 // It allows adding new providers (especially OpenAI-compatible ones) via configuration only.
 // The model field uses protocol prefix format: [protocol/]model-identifier
@@ -610,6 +617,9 @@ type ModelConfig struct {
 	RequestTimeout int            `json:"request_timeout,omitempty"`
 	ThinkingLevel  string         `json:"thinking_level,omitempty"` // Extended thinking: off|low|medium|high|xhigh|adaptive
 	ExtraBody      map[string]any `json:"extra_body,omitempty"`     // Additional fields to inject into request body
+
+	// PicoLM-specific fields (for picolm protocol)
+	PicoLM PicoLMProviderConfig `json:"picolm,omitempty"` // PicoLM subprocess config
 
 	APIKeys SecureStrings `json:"api_keys,omitzero" yaml:"api_keys,omitempty"` // API authentication keys (multiple keys for failover)
 
