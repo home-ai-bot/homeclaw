@@ -103,6 +103,16 @@ func NewBaseChannel(
 	allowList []string,
 	opts ...BaseChannelOption,
 ) *BaseChannel {
+	isEmpty := true
+	for _, s := range allowList {
+		if s != "" {
+			isEmpty = false
+			break
+		}
+	}
+	if isEmpty {
+		allowList = []string{}
+	}
 	bc := &BaseChannel{
 		config:    config,
 		bus:       bus,
