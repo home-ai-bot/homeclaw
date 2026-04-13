@@ -47,7 +47,7 @@ func NewLLMTool(llm *llm.LLM) *LLMTool {
 func (t *LLMTool) Name() string { return "hc_llm" }
 
 func (t *LLMTool) Description() string {
-	return "!IMPORTANT: Do NOT call by llm directly, must invoke by skills"
+	return "Do NOT use directly!"
 }
 
 func (t *LLMTool) Parameters() map[string]any {
@@ -56,7 +56,7 @@ func (t *LLMTool) Parameters() map[string]any {
 		"properties": map[string]any{
 			"commandJson": map[string]any{
 				"type":        "string",
-				"description": `JSON string with "method" and "params" Do NOT fabricate or guess any json,must follow skill`,
+				"description": ``,
 			},
 		},
 		"required": []string{"commandJson"},

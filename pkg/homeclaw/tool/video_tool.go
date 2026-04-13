@@ -58,7 +58,7 @@ func (t *VideoTool) SetMediaStore(store media.MediaStore) {
 func (t *VideoTool) Name() string { return "hc_video" }
 
 func (t *VideoTool) Description() string {
-	return "!IMPORTANT: Do NOT call by llm directly, must invoke by skill[camera-control]."
+	return "Do NOT use directly!"
 }
 
 func (t *VideoTool) Parameters() map[string]any {
@@ -67,7 +67,7 @@ func (t *VideoTool) Parameters() map[string]any {
 		"properties": map[string]any{
 			"commandJson": map[string]any{
 				"type":        "string",
-				"description": `JSON string with "method" and "params". Do NOT fabricate or guess any json,must follow skill `,
+				"description": ``,
 			},
 		},
 		"required": []string{"commandJson"},

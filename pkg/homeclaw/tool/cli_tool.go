@@ -34,10 +34,11 @@ import (
 // setProps    – write device properties; params are brand-specific.
 // execute     – send an action command to a device; params are brand-specific.
 type CLITool struct {
-	clients     map[string]third.Client
-	homeStore   data.HomeStore
-	spaceStore  data.SpaceStore
-	deviceStore data.DeviceStore
+	clients       map[string]third.Client
+	homeStore     data.HomeStore
+	spaceStore    data.SpaceStore
+	deviceStore   data.DeviceStore
+	deviceOpStore data.DeviceOpStore
 }
 
 // NewCLITool creates a CLITool with the given brand clients and data stores.
@@ -47,12 +48,14 @@ func NewCLITool(
 	homeStore data.HomeStore,
 	spaceStore data.SpaceStore,
 	deviceStore data.DeviceStore,
+	deviceOpStore data.DeviceOpStore,
 ) *CLITool {
 	return &CLITool{
-		clients:     clients,
-		homeStore:   homeStore,
-		spaceStore:  spaceStore,
-		deviceStore: deviceStore,
+		clients:       clients,
+		homeStore:     homeStore,
+		spaceStore:    spaceStore,
+		deviceStore:   deviceStore,
+		deviceOpStore: deviceOpStore,
 	}
 }
 
@@ -67,7 +70,7 @@ func (t *CLITool) RegisterClient(client third.Client) {
 func (t *CLITool) Name() string { return "hc_cli" }
 
 func (t *CLITool) Description() string {
-	return "!IMPORTANT: Do NOT call by llm directly, must invoke by skills"
+	return "Do NOT use directly!"
 }
 
 func (t *CLITool) Parameters() map[string]any {
@@ -76,7 +79,7 @@ func (t *CLITool) Parameters() map[string]any {
 		"properties": map[string]any{
 			"commandJson": map[string]any{
 				"type":        "string",
-				"description": `JSON string with "brand", "method", and optional "params". Do NOT fabricate or guess any json,must follow skill `,
+				"description": ``,
 			},
 		},
 		"required": []string{"commandJson"},
@@ -139,6 +142,12 @@ func (t *CLITool) Execute(_ context.Context, args map[string]any) *tools.ToolRes
 		return t.execSetCurrentHome(req.Params)
 	case "getCurrentHome":
 		return t.execGetCurrentHome(req.Params)
+	case "saveDeviceOps":
+		return t.execSaveDeviceOps(req.Params)
+	case "getDeviceOps":
+		return t.execGetDeviceOps(req.Params)
+	case "listDevicesWithoutOps":
+		return t.execListDevicesWithoutOps(req.Params)
 	default:
 		return &tools.ToolResult{
 			ForLLM:  fmt.Sprintf("unknown method '%s'; Must Confirm! tool must invoke by skills,please use the right skill!", req.Method),
@@ -443,6 +452,134 @@ func (t *CLITool) execGetCurrentHome(params map[string]any) *tools.ToolResult {
 		"home_id": home.FromID,
 		"name":    home.Name,
 		"from":    home.From,
+	})
+	return tools.NewToolResult(string(result))
+}
+
+// execSaveDeviceOps saves device operations analyzed by AI.
+func (t *CLITool) execSaveDeviceOps(params map[string]any) *tools.ToolResult {
+	if params == nil {
+		return &tools.ToolResult{ForLLM: "missing 'params' for saveDeviceOps", IsError: true}
+	}
+
+	fromID, ok := params["from_id"].(string)
+	if !ok || fromID == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: from_id", IsError: true}
+	}
+
+	from, ok := params["from"].(string)
+	if !ok || from == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: from", IsError: true}
+	}
+
+	ops, ok := params["ops"].(string)
+	if !ok || ops == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: ops", IsError: true}
+	}
+
+	command, ok := params["command"].(string)
+	if !ok || command == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: command", IsError: true}
+	}
+
+	deviceOp := data.DeviceOp{
+		FromID:  fromID,
+		From:    from,
+		Ops:     ops,
+		Command: command,
+	}
+
+	if err := t.deviceOpStore.Save(deviceOp); err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to save device operation: %v", err), IsError: true}
+	}
+
+	return tools.NewToolResult(fmt.Sprintf("successfully saved device operation: %s for device %s from %s", ops, fromID, from))
+}
+
+// execGetDeviceOps retrieves saved device operations for a specific device.
+func (t *CLITool) execGetDeviceOps(params map[string]any) *tools.ToolResult {
+	if params == nil {
+		return &tools.ToolResult{ForLLM: "missing 'params' for getDeviceOps", IsError: true}
+	}
+
+	fromID, ok := params["from_id"].(string)
+	if !ok || fromID == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: from_id", IsError: true}
+	}
+
+	from, ok := params["from"].(string)
+	if !ok || from == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: from", IsError: true}
+	}
+
+	ops, err := t.deviceOpStore.GetOpsByDevice(fromID, from)
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get device operations: %v", err), IsError: true}
+	}
+
+	if len(ops) == 0 {
+		return tools.NewToolResult(fmt.Sprintf(`{"from_id":"%s","from":"%s","operations":[],"message":"No operations found for this device"}`, fromID, from))
+	}
+
+	result, _ := json.Marshal(map[string]any{
+		"from_id":    fromID,
+		"from":       from,
+		"operations": ops,
+	})
+	return tools.NewToolResult(string(result))
+}
+
+// execListDevicesWithoutOps lists all devices that don't have any device operations saved.
+func (t *CLITool) execListDevicesWithoutOps(params map[string]any) *tools.ToolResult {
+	// Get all devices
+	devices, err := t.deviceStore.GetAll()
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get devices: %v", err), IsError: true}
+	}
+
+	// Get all device operations
+	allOps, err := t.deviceOpStore.GetAll()
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get device operations: %v", err), IsError: true}
+	}
+
+	// Build a set of devices that have operations
+	devicesWithOps := make(map[string]struct{})
+	for _, op := range allOps {
+		key := op.FromID + "|" + op.From
+		devicesWithOps[key] = struct{}{}
+	}
+
+	// Filter devices without operations
+	type deviceWithoutOps struct {
+		FromID    string `json:"from_id"`
+		From      string `json:"from"`
+		Name      string `json:"name"`
+		Type      string `json:"type"`
+		SpaceName string `json:"space_name,omitempty"`
+	}
+
+	var devicesWithoutOps []deviceWithoutOps
+	for _, d := range devices {
+		key := d.FromID + "|" + d.From
+		if _, exists := devicesWithOps[key]; !exists {
+			devicesWithoutOps = append(devicesWithoutOps, deviceWithoutOps{
+				FromID:    d.FromID,
+				From:      d.From,
+				Name:      d.Name,
+				Type:      d.Type,
+				SpaceName: d.SpaceName,
+			})
+		}
+	}
+
+	if len(devicesWithoutOps) == 0 {
+		return tools.NewToolResult(`{"devices":[],"message":"All devices have operations configured"}`)
+	}
+
+	result, _ := json.Marshal(map[string]any{
+		"devices": devicesWithoutOps,
+		"count":   len(devicesWithoutOps),
 	})
 	return tools.NewToolResult(string(result))
 }

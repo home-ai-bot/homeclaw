@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/web/backend/homeclaw"
 	"github.com/sipeed/picoclaw/web/backend/launcherconfig"
@@ -51,9 +52,14 @@ func NewHandler(configPath string) *Handler {
 		wecomFlows:    make(map[string]*wecomFlow),
 	}
 
-	// Derive workspace path from config path
+	// Derive workspace path from config
 	if configPath != "" {
-		h.workspacePath = filepath.Dir(configPath)
+		if cfg, err := config.LoadConfig(configPath); err == nil {
+			h.workspacePath = cfg.WorkspacePath()
+		} else {
+			// Fallback to config directory if config loading fails
+			h.workspacePath = filepath.Dir(configPath)
+		}
 	}
 
 	return h

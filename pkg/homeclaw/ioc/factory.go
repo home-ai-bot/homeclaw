@@ -42,6 +42,7 @@ type Factory struct {
 	spaceStore     data.SpaceStore
 	workflowStore  data.WorkflowStore
 	homeStore      data.HomeStore
+	deviceOpStore  data.DeviceOpStore
 	eventCenter    *event.Center
 	classifier     intent.IntentClassifier
 	router         *intent.Router
@@ -180,6 +181,24 @@ func (f *Factory) GetHomeStore() (data.HomeStore, error) {
 		return nil, fmt.Errorf("home store init failed: %w", err)
 	}
 	return f.homeStore, nil
+}
+
+// GetDeviceOpStore returns the singleton DeviceOpStore instance (lazy initialized)
+func (f *Factory) GetDeviceOpStore() (data.DeviceOpStore, error) {
+	if f.deviceOpStore != nil {
+		return f.deviceOpStore, nil
+	}
+
+	store, err := f.GetJSONStore()
+	if err != nil {
+		return nil, err
+	}
+
+	f.deviceOpStore, err = data.NewDeviceOpStore(store)
+	if err != nil {
+		return nil, fmt.Errorf("device op store init failed: %w", err)
+	}
+	return f.deviceOpStore, nil
 }
 
 // GetEventCenter returns the singleton EventCenter instance

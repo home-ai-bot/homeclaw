@@ -28,22 +28,18 @@ type ThirdFactory struct {
 	hcfg      *hcc.HomeclawConfig
 	factory   *ioc.Factory
 	// Singleton instances - lazy loaded
-	jsonStore           *hcd.JSONStore
-	rootJSONStore       *hcd.JSONStore
-	miDeviceStore       miio.MiDeviceStore
-	miHomeStore         miio.MiHomeStore
-	cloud               *xiaomi.Cloud
-	miClient            *miio.MiClient
-	specFetcher         *miio.SpecFetcher
-	syncHomesTool       *miio.SyncHomesTool
-	syncDevicesTool     *miio.SyncDevicesTool
-	executeActionTool   *miio.ExecuteActionTool
-	getSpecCommandsTool *miio.GetSpecCommandsTool
-	tuyaTokenStore      tuya.TokenStore
-	tuyaSecretStore     tuya.SecretStore
-	tuyaClient          *tuya.TuyaClient
-	cliTool             *homeclawtool.CLITool
-	cliToolMu           sync.Mutex
+	jsonStore       *hcd.JSONStore
+	rootJSONStore   *hcd.JSONStore
+	miDeviceStore   miio.MiDeviceStore
+	miHomeStore     miio.MiHomeStore
+	cloud           *xiaomi.Cloud
+	miClient        *miio.MiClient
+	specFetcher     *miio.SpecFetcher
+	tuyaTokenStore  tuya.TokenStore
+	tuyaSecretStore tuya.SecretStore
+	tuyaClient      *tuya.TuyaClient
+	cliTool         *homeclawtool.CLITool
+	cliToolMu       sync.Mutex
 
 	// Initialization tracking
 	storeOnce      sync.Once
@@ -192,92 +188,6 @@ func (f *ThirdFactory) GetMiClient(country string) (*miio.MiClient, error) {
 	return f.miClient, nil
 }
 
-// GetSyncHomesTool returns the singleton SyncHomesTool instance (lazy initialized).
-func (f *ThirdFactory) GetSyncHomesTool() (*miio.SyncHomesTool, error) {
-	if f.syncHomesTool != nil {
-		return f.syncHomesTool, nil
-	}
-	country := "cn"
-	client, err := f.GetMiClient(country)
-	if err != nil {
-		return nil, fmt.Errorf("get mi client: %w", err)
-	}
-
-	homeStore, err := f.factory.GetHomeStore()
-	if err != nil {
-		return nil, fmt.Errorf("get home store: %w", err)
-	}
-
-	f.syncHomesTool, err = miio.NewSyncHomesTool(client, homeStore)
-	if err != nil {
-		return nil, fmt.Errorf("create sync homes tool: %w", err)
-	}
-	return f.syncHomesTool, nil
-}
-
-// GetSyncDevicesTool returns the singleton SyncDevicesTool instance (lazy initialized).
-func (f *ThirdFactory) GetSyncDevicesTool() (*miio.SyncDevicesTool, error) {
-	if f.syncDevicesTool != nil {
-		return f.syncDevicesTool, nil
-	}
-	country := "cn"
-	client, err := f.GetMiClient(country)
-	if err != nil {
-		return nil, fmt.Errorf("get mi client: %w", err)
-	}
-
-	homeStore, err := f.factory.GetHomeStore()
-	if err != nil {
-		return nil, fmt.Errorf("get home store: %w", err)
-	}
-
-	spaceStore, err := f.factory.GetSpaceStore()
-	if err != nil {
-		return nil, fmt.Errorf("get space store: %w", err)
-	}
-
-	deviceStore, err := f.factory.GetDeviceStore()
-	if err != nil {
-		return nil, fmt.Errorf("get device store: %w", err)
-	}
-
-	specFetcher, err := f.GetSpecFetcher()
-	if err != nil {
-		return nil, fmt.Errorf("get spec fetcher: %w", err)
-	}
-
-	f.syncDevicesTool = miio.NewSyncDevicesTool(client, homeStore, spaceStore, deviceStore, specFetcher)
-	return f.syncDevicesTool, nil
-}
-
-// GetExecuteActionTool returns the singleton ExecuteActionTool instance (lazy initialized).
-func (f *ThirdFactory) GetExecuteActionTool() (*miio.ExecuteActionTool, error) {
-	if f.executeActionTool != nil {
-		return f.executeActionTool, nil
-	}
-	country := "cn"
-	client, err := f.GetMiClient(country)
-	if err != nil {
-		return nil, fmt.Errorf("get mi client: %w", err)
-	}
-
-	f.executeActionTool = miio.NewExecuteActionTool(client)
-	return f.executeActionTool, nil
-}
-
-// GetSpecCommandsTool returns the singleton GetSpecCommandsTool instance (lazy initialized).
-func (f *ThirdFactory) GetSpecCommandsTool() (*miio.GetSpecCommandsTool, error) {
-	if f.getSpecCommandsTool != nil {
-		return f.getSpecCommandsTool, nil
-	}
-	specFetcher, err := f.GetSpecFetcher()
-	if err != nil {
-		return nil, fmt.Errorf("get spec fetcher: %w", err)
-	}
-	f.getSpecCommandsTool = miio.NewGetSpecCommandsTool(specFetcher)
-	return f.getSpecCommandsTool, nil
-}
-
 // GetTuyaTokenStore returns the singleton TokenStore instance (lazy initialized).
 func (f *ThirdFactory) GetTuyaTokenStore() (tuya.TokenStore, error) {
 	f.tuyaTokenOnce.Do(func() {
@@ -377,6 +287,11 @@ func (f *ThirdFactory) GetCLITool() (*homeclawtool.CLITool, error) {
 		return nil, fmt.Errorf("get device store: %w", err)
 	}
 
+	deviceOpStore, err := f.factory.GetDeviceOpStore()
+	if err != nil {
+		return nil, fmt.Errorf("get device op store: %w", err)
+	}
+
 	clients := make(map[string]third.Client)
 
 	// Register Xiaomi client if available
@@ -404,6 +319,6 @@ func (f *ThirdFactory) GetCLITool() (*homeclawtool.CLITool, error) {
 		// No brand configured yet; still create the tool so it can be populated later
 	}
 
-	f.cliTool = homeclawtool.NewCLITool(clients, homeStore, spaceStore, deviceStore)
+	f.cliTool = homeclawtool.NewCLITool(clients, homeStore, spaceStore, deviceStore, deviceOpStore)
 	return f.cliTool, nil
 }
