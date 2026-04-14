@@ -2594,7 +2594,8 @@ func (p *visionUnsupportedMediaProvider) Chat(
 	p.mediaSeen = append(p.mediaSeen, hasMedia)
 
 	if hasMedia {
-		return nil, fmt.Errorf("API request failed: Status: 404 Body: {\"error\":{\"message\":\"No endpoints found that support image input\"}}")
+		return nil, fmt.Errorf("API request failed: " +
+			"Status: 404 Body: {\"error\":{\"message\":\"No endpoints found that support image input\"}}")
 	}
 
 	return &providers.LLMResponse{
