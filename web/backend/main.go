@@ -139,43 +139,103 @@ func advertiseIPForWildcardBindHosts(bindHosts []string) string {
 	return wildcardAdvertiseIP(bindHosts, utils.GetLocalIPv4(), utils.GetLocalIPv6())
 }
 
-func launcherConsoleHosts(bindHosts []string, probeHost string) []string {
-	hosts := make([]string, 0, 6)
-	seen := make(map[string]struct{}, 6)
+func appendLauncherConsoleHostList(hosts []string, seen map[string]struct{}, values []string) []string {
+	for _, value := range values {
+		hosts = appendUniqueHost(hosts, seen, value)
+	}
+	return hosts
+}
 
-	hosts = appendUniqueHost(hosts, seen, probeHost)
+func isConsoleDisplayGlobalIPv6(ip net.IP) bool {
+	if ip == nil || ip.IsLoopback() || ip.To4() != nil {
+		return false
+	}
+	ip = ip.To16()
+	if ip == nil {
+		return false
+	}
+	return ip[0]&0xe0 == 0x20
+}
 
-	for _, bindHost := range bindHosts {
-		switch {
-		case netbind.IsUnspecifiedHost(bindHost):
-			if ip := net.ParseIP(strings.Trim(bindHost, "[]")); ip != nil && ip.To4() != nil {
-				hosts = appendUniqueHost(hosts, seen, "127.0.0.1")
-			} else {
-				hosts = appendUniqueHost(hosts, seen, "::1")
-			}
-		case netbind.IsLoopbackHost(bindHost):
-			hosts = appendUniqueHost(hosts, seen, "localhost")
-			if ip := net.ParseIP(strings.Trim(bindHost, "[]")); ip != nil {
-				if ip.To4() != nil {
-					hosts = appendUniqueHost(hosts, seen, "127.0.0.1")
-				} else {
-					hosts = appendUniqueHost(hosts, seen, "::1")
-				}
-			}
-		default:
-			hosts = appendUniqueHost(hosts, seen, bindHost)
+func launcherConsoleHostsWithLocalAddrs(
+	hostInput string,
+	public bool,
+	ipv4s []string,
+	globalIPv6s []string,
+) []string {
+	hosts := make([]string, 0, 8)
+	seen := make(map[string]struct{}, 8)
+
+	hosts = appendUniqueHost(hosts, seen, "localhost")
+
+	normalizedHostInput := strings.TrimSpace(hostInput)
+	if normalizedHostInput == "" {
+		if public {
+			hosts = appendLauncherConsoleHostList(hosts, seen, globalIPv6s)
+			hosts = appendLauncherConsoleHostList(hosts, seen, ipv4s)
+		}
+		return hosts
+	}
+
+	hasStar := false
+	hasIPv4Any := false
+	hasIPv6Any := false
+	for _, token := range strings.Split(normalizedHostInput, ",") {
+		switch strings.TrimSpace(token) {
+		case "*":
+			hasStar = true
+		case "0.0.0.0":
+			hasIPv4Any = true
+		case "::":
+			hasIPv6Any = true
 		}
 	}
 
-	if hasWildcardBindHosts(bindHosts) {
-		hosts = appendUniqueHost(hosts, seen, "localhost")
-		hosts = appendUniqueHost(hosts, seen, "::1")
-		hosts = appendUniqueHost(hosts, seen, "127.0.0.1")
-		hosts = appendUniqueHost(hosts, seen, utils.GetLocalIPv6())
-		hosts = appendUniqueHost(hosts, seen, utils.GetLocalIPv4())
+	if hasStar {
+		hosts = appendLauncherConsoleHostList(hosts, seen, globalIPv6s)
+		hosts = appendLauncherConsoleHostList(hosts, seen, ipv4s)
+		return hosts
+	}
+
+	for _, token := range strings.Split(normalizedHostInput, ",") {
+		token = strings.TrimSpace(token)
+		if token == "" || strings.EqualFold(token, "localhost") || netbind.IsLoopbackHost(token) {
+			continue
+		}
+
+		ip := net.ParseIP(strings.Trim(token, "[]"))
+		switch {
+		case token == "::":
+			hosts = appendLauncherConsoleHostList(hosts, seen, globalIPv6s)
+		case token == "0.0.0.0":
+			hosts = appendLauncherConsoleHostList(hosts, seen, ipv4s)
+		case ip != nil && ip.To4() != nil:
+			if hasIPv4Any {
+				continue
+			}
+			hosts = appendUniqueHost(hosts, seen, ip.String())
+		case ip != nil:
+			if hasIPv6Any {
+				continue
+			}
+			if isConsoleDisplayGlobalIPv6(ip) {
+				hosts = appendUniqueHost(hosts, seen, ip.String())
+			}
+		default:
+			hosts = appendUniqueHost(hosts, seen, token)
+		}
 	}
 
 	return hosts
+}
+
+func launcherConsoleHosts(_ []string, hostInput string, public bool) []string {
+	return launcherConsoleHostsWithLocalAddrs(
+		hostInput,
+		public,
+		utils.GetLocalIPv4s(),
+		utils.GetGlobalIPv6s(),
+	)
 }
 
 func firstNonEmpty(values ...string) string {
@@ -443,7 +503,7 @@ func main() {
 
 	// Print startup banner and token (console mode only).
 	if enableConsole || debug {
-		consoleHosts := launcherConsoleHosts(openResult.BindHosts, openResult.ProbeHost)
+		consoleHosts := launcherConsoleHosts(openResult.BindHosts, hostInput, effectivePublic)
 
 		fmt.Print(utils.Banner)
 		fmt.Println()

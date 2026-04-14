@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,27 +124,100 @@ func TestResolveLauncherHostInput(t *testing.T) {
 }
 
 func TestLauncherConsoleHosts(t *testing.T) {
-	t.Run("wildcard exposes local loopback hints", func(t *testing.T) {
-		hosts := launcherConsoleHosts([]string{"::"}, netbind.ResolveAdaptiveLoopbackHost())
-		seen := make(map[string]bool, len(hosts))
-		for _, host := range hosts {
-			seen[host] = true
-		}
-		if !seen["localhost"] {
-			t.Fatalf("expected localhost in %#v", hosts)
-		}
-		if !seen["::1"] {
-			t.Fatalf("expected ::1 in %#v", hosts)
-		}
-		if !seen["127.0.0.1"] {
-			t.Fatalf("expected 127.0.0.1 in %#v", hosts)
+	t.Run("default loopback shows localhost only", func(t *testing.T) {
+		hosts := launcherConsoleHostsWithLocalAddrs(
+			"",
+			false,
+			[]string{"192.168.1.2", "10.0.0.8"},
+			[]string{"2001:db8::1", "2001:db8::2"},
+		)
+		want := []string{"localhost"}
+		if strings.Join(hosts, ",") != strings.Join(want, ",") {
+			t.Fatalf("hosts = %#v, want %#v", hosts, want)
 		}
 	})
 
-	t.Run("explicit ipv6 host remains visible", func(t *testing.T) {
-		hosts := launcherConsoleHosts([]string{"::1"}, "::1")
-		if len(hosts) < 1 || hosts[0] != "::1" {
-			t.Fatalf("hosts = %#v, want probe host first", hosts)
+	t.Run("explicit loopback hosts collapse to localhost", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			hostInput string
+		}{
+			{name: "ipv6 loopback", hostInput: "::1"},
+			{name: "ipv4 loopback", hostInput: "127.0.0.1"},
+			{name: "localhost", hostInput: "localhost"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				hosts := launcherConsoleHostsWithLocalAddrs(
+					tt.hostInput,
+					false,
+					[]string{"192.168.1.2", "10.0.0.8"},
+					[]string{"2001:db8::1", "2001:db8::2"},
+				)
+				want := []string{"localhost"}
+				if strings.Join(hosts, ",") != strings.Join(want, ",") {
+					t.Fatalf("hosts = %#v, want %#v", hosts, want)
+				}
+			})
+		}
+	})
+
+	t.Run("public wildcard shows localhost then ipv6 and ipv4", func(t *testing.T) {
+		hosts := launcherConsoleHostsWithLocalAddrs(
+			"",
+			true,
+			[]string{"192.168.1.2", "10.0.0.8"},
+			[]string{"2001:db8::1", "2001:db8::2"},
+		)
+		want := []string{"localhost", "2001:db8::1", "2001:db8::2", "192.168.1.2", "10.0.0.8"}
+		if strings.Join(hosts, ",") != strings.Join(want, ",") {
+			t.Fatalf("hosts = %#v, want %#v", hosts, want)
+		}
+	})
+
+	t.Run("explicit ipv6 any shows localhost then ipv6 variants", func(t *testing.T) {
+		hosts := launcherConsoleHostsWithLocalAddrs(
+			"::",
+			false,
+			[]string{"192.168.1.2", "10.0.0.8"},
+			[]string{"2001:db8::1", "2001:db8::2"},
+		)
+		want := []string{"localhost", "2001:db8::1", "2001:db8::2"}
+		if strings.Join(hosts, ",") != strings.Join(want, ",") {
+			t.Fatalf("hosts = %#v, want %#v", hosts, want)
+		}
+
+		for _, host := range hosts {
+			if host == "::1" || host == "127.0.0.1" || strings.HasPrefix(strings.ToLower(host), "fe80:") {
+				t.Fatalf("hosts = %#v, loopback IPs must not be displayed", hosts)
+			}
+		}
+	})
+
+	t.Run("explicit ipv4 any shows localhost then lan ipv4", func(t *testing.T) {
+		hosts := launcherConsoleHostsWithLocalAddrs(
+			"0.0.0.0",
+			false,
+			[]string{"192.168.1.2", "10.0.0.8"},
+			[]string{"2001:db8::1", "2001:db8::2"},
+		)
+		want := []string{"localhost", "192.168.1.2", "10.0.0.8"}
+		if strings.Join(hosts, ",") != strings.Join(want, ",") {
+			t.Fatalf("hosts = %#v, want %#v", hosts, want)
+		}
+	})
+
+	t.Run("explicit multi-address binding shows all exact ipv4 and global ipv6 addresses", func(t *testing.T) {
+		hosts := launcherConsoleHostsWithLocalAddrs(
+			"192.168.1.2,10.0.0.8,2001:db8::1,2001:db8::2,fe80::1",
+			false,
+			[]string{"192.168.1.2", "10.0.0.8"},
+			[]string{"2001:db8::1", "2001:db8::2"},
+		)
+		want := []string{"localhost", "192.168.1.2", "10.0.0.8", "2001:db8::1", "2001:db8::2"}
+		if strings.Join(hosts, ",") != strings.Join(want, ",") {
+			t.Fatalf("hosts = %#v, want %#v", hosts, want)
 		}
 	})
 }
