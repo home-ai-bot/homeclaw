@@ -49,13 +49,6 @@ type Factory struct {
 	workflowEngine workflow.Engine
 	toolRegistry   *tools.ToolRegistry
 
-	// Provider for intent classification or other small use
-	smallProvider providers.LLMProvider
-	smallModel    string
-
-	// Provider for other purposes or large use
-	bigProvider providers.LLMProvider
-	bigModel    string
 	// Initialization tracking
 	storeOnce sync.Once
 	storeErr  error
@@ -73,6 +66,9 @@ type Factory struct {
 
 	// Video tool singleton - lazy loaded
 	videoTool *homeclawtool.VideoTool
+
+	// Common tool singleton - lazy loaded
+	commonTool *homeclawtool.CommonTool
 
 	// Media store for sending images to channels
 	mediaStore media.MediaStore
@@ -194,7 +190,13 @@ func (f *Factory) GetDeviceOpStore() (data.DeviceOpStore, error) {
 		return nil, err
 	}
 
-	f.deviceOpStore, err = data.NewDeviceOpStore(store)
+	// Get device store first
+	deviceStore, err := f.GetDeviceStore()
+	if err != nil {
+		return nil, err
+	}
+
+	f.deviceOpStore, err = data.NewDeviceOpStore(store, deviceStore)
 	if err != nil {
 		return nil, fmt.Errorf("device op store init failed: %w", err)
 	}
@@ -228,58 +230,38 @@ func (f *Factory) GetWorkflowEngine() workflow.Engine {
 	return f.workflowEngine
 }
 
-// getIntentProvider returns the LLM provider for intent classification (lazy initialized)
-func (f *Factory) getIntentProvider() (providers.LLMProvider, error) {
-	if f.smallProvider != nil {
-		return f.smallProvider, nil
+// getSmallProvider creates an LLM provider for the small model.
+// It resolves the model dynamically based on SmallModel config or falls back to default.
+func (f *Factory) getSmallProvider() (providers.LLMProvider, string, error) {
+	modelName := f.Hcfg.SmallModel
+	if modelName == "" {
+		// Fall back to PicoClaw's default model
+		modelName = f.Cfg.Agents.Defaults.ModelName
 	}
 
-	mc := f.Hcfg.IntentModel
-
-	if mc.IsModelName() {
-		for i := range f.Cfg.ModelList {
-			if f.Cfg.ModelList[i].ModelName == mc.ModelName {
-				p, modelID, err := providers.CreateProviderFromConfig(f.Cfg.ModelList[i])
-				if err != nil {
-					return nil, fmt.Errorf("intent model_ref %q: %w", mc.ModelName, err)
-				}
-				f.smallProvider = p
-				f.smallModel = modelID
-				return f.smallProvider, nil
-			}
-		}
-		return nil, fmt.Errorf("intent model_ref %q not found in model_list", mc.ModelName)
-	}
-
-	if mc.Model == "" {
-		return nil, fmt.Errorf("intent_model: model is required when model_ref is not set")
-	}
-
-	modelCfg := &config.ModelConfig{
-		ModelName: mc.ModelName,
-		Model:     mc.Model,
-		APIBase:   mc.APIBase,
-		APIKeys:   config.SecureStrings{config.NewSecureString(mc.APIKey)},
-	}
-	p, _, err := providers.CreateProviderFromConfig(modelCfg)
+	// Use GetModelConfig to support load balancing (round-robin)
+	modelCfg, err := f.Cfg.GetModelConfig(modelName)
 	if err != nil {
-		return nil, fmt.Errorf("intent inline provider: %w", err)
+		return nil, "", fmt.Errorf("small model %q: %w", modelName, err)
 	}
-	f.smallProvider = p
-	f.smallModel = mc.ModelName
-	return f.smallProvider, nil
+
+	p, modelID, err := providers.CreateProviderFromConfig(modelCfg)
+	if err != nil {
+		return nil, "", fmt.Errorf("small model %q: %w", modelName, err)
+	}
+	return p, modelID, nil
 }
 
-// GetLocalLLM returns an LLM struct wrapping the intent provider and model.
-// This provides a convenient interface for simple chat operations.
-func (f *Factory) GetLocalLLM() (*llm.LLM, error) {
-	provider, err := f.getIntentProvider()
+// GetSmallLLM returns an LLM struct for the small model.
+// The provider is created dynamically on each call.
+func (f *Factory) GetSmallLLM() (*llm.LLM, error) {
+	provider, modelID, err := f.getSmallProvider()
 	if err != nil {
 		return nil, err
 	}
 	return &llm.LLM{
 		Provider: provider,
-		Model:    f.GetIntentModelName(),
+		Model:    modelID,
 	}, nil
 }
 
@@ -289,12 +271,12 @@ func (f *Factory) GetIntentClassifier() (intent.IntentClassifier, error) {
 		return f.classifier, nil
 	}
 
-	provider, err := f.getIntentProvider()
+	provider, modelID, err := f.getSmallProvider()
 	if err != nil {
 		return nil, err
 	}
 
-	f.classifier = intent.NewLLMClassifier(provider, f.Hcfg, f.Hcfg.IntentModel.ModelName)
+	f.classifier = intent.NewLLMClassifier(provider, f.Hcfg, modelID)
 	return f.classifier, nil
 }
 
@@ -308,7 +290,7 @@ func (f *Factory) GetIntentRouter() (*intent.Router, error) {
 		return nil, fmt.Errorf("intent processing is disabled")
 	}
 
-	provider, err := f.getIntentProvider()
+	provider, modelID, err := f.getSmallProvider()
 	if err != nil {
 		return nil, err
 	}
@@ -331,7 +313,7 @@ func (f *Factory) GetIntentRouter() (*intent.Router, error) {
 	}
 
 	workflowEngine := f.GetWorkflowEngine()
-	deviceControlHandler := intent.NewDeviceControlIntent(workflowStore, workflowEngine, provider, f.Hcfg.IntentModel.ModelName)
+	deviceControlHandler := intent.NewDeviceControlIntent(workflowStore, workflowEngine, provider, modelID)
 	f.router = intent.NewRouter(
 		chatHandler,
 		deviceControlHandler,
@@ -343,36 +325,38 @@ func (f *Factory) GetIntentRouter() (*intent.Router, error) {
 	return f.router, nil
 }
 
-func (f *Factory) getBigProvider() (providers.LLMProvider, error) {
-	if f.bigProvider != nil {
-		return f.bigProvider, nil
+// getBigProvider creates an LLM provider for the big model.
+// It resolves the model dynamically based on BigModel config or falls back to default.
+func (f *Factory) getBigProvider() (providers.LLMProvider, string, error) {
+	modelName := f.Hcfg.BigModel
+	if modelName == "" {
+		// Fall back to PicoClaw's default model
+		modelName = f.Cfg.Agents.Defaults.ModelName
 	}
-	defaultModelName := f.Cfg.Agents.Defaults.ModelName
 
-	for i := range f.Cfg.ModelList {
-		if f.Cfg.ModelList[i].ModelName == defaultModelName {
-			p, modelID, err := providers.CreateProviderFromConfig(f.Cfg.ModelList[i])
-			if err != nil {
-				return nil, fmt.Errorf("big model create err %q: %w", defaultModelName, err)
-			}
-			f.bigProvider = p
-			f.bigModel = modelID
-			return f.bigProvider, nil
-		}
+	// Use GetModelConfig to support load balancing (round-robin)
+	modelCfg, err := f.Cfg.GetModelConfig(modelName)
+	if err != nil {
+		return nil, "", fmt.Errorf("big model %q: %w", modelName, err)
 	}
-	return nil, fmt.Errorf(" %q not found in model_list", defaultModelName)
+
+	p, modelID, err := providers.CreateProviderFromConfig(modelCfg)
+	if err != nil {
+		return nil, "", fmt.Errorf("big model %q: %w", modelName, err)
+	}
+	return p, modelID, nil
 }
 
-// GetBigLLM returns an LLM struct wrapping the big provider and model.
-// This provides a convenient interface for simple chat operations.
+// GetBigLLM returns an LLM struct for the big model.
+// The provider is created dynamically on each call.
 func (f *Factory) GetBigLLM() (*llm.LLM, error) {
-	provider, err := f.getBigProvider()
+	provider, modelID, err := f.getBigProvider()
 	if err != nil {
 		return nil, err
 	}
 	return &llm.LLM{
 		Provider: provider,
-		Model:    f.bigModel,
+		Model:    modelID,
 	}, nil
 }
 
@@ -462,15 +446,13 @@ func (f *Factory) GetDisableWorkflowTool() (*homeclawtool.DisableWorkflowTool, e
 // Intent model name accessor (implements tool.IntentProviderFactory)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// GetIntentModelName returns the model name used by the intent classifier.
-// It triggers lazy initialization of the provider if not yet done.
-func (f *Factory) GetIntentModelName() string {
-	if f.smallModel != "" {
-		return f.smallModel
+// GetSmallModelName returns the model name used for small/intent tasks.
+func (f *Factory) GetSmallModelName() string {
+	if f.Hcfg.SmallModel != "" {
+		return f.Hcfg.SmallModel
 	}
-	// Trigger provider init to populate f.modelName
-	_, _ = f.getIntentProvider()
-	return f.smallModel
+	// Fall back to PicoClaw's default model
+	return f.Cfg.Agents.Defaults.GetModelName()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -479,18 +461,16 @@ func (f *Factory) GetIntentModelName() string {
 
 // GetVideoTool returns the singleton VideoTool instance (lazy initialized).
 // It provides unified video operations: capImage, capAnalyze.
+// The LLM is optional — capImage works without it, capAnalyze will fail at runtime if LLM is unavailable.
 func (f *Factory) GetVideoTool() (*homeclawtool.VideoTool, error) {
 	if f.videoTool != nil {
 		return f.videoTool, nil
 	}
 
-	// Get the local LLM instance
-	localLLM, err := f.GetLocalLLM()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get local LLM for VideoTool: %w", err)
-	}
+	// Get the small LLM instance (optional — capImage doesn't need it)
+	smallLLM, _ := f.GetSmallLLM()
 
-	f.videoTool = homeclawtool.NewVideoTool(localLLM)
+	f.videoTool = homeclawtool.NewVideoTool(smallLLM)
 	// Inject media store if available
 	if f.mediaStore != nil {
 		f.videoTool.SetMediaStore(f.mediaStore)
@@ -519,12 +499,28 @@ func (f *Factory) GetLLMTool() (*homeclawtool.LLMTool, error) {
 		return f.llmTool, nil
 	}
 
-	// Get the local LLM instance
-	localLLM, err := f.GetLocalLLM()
+	// Get the small LLM instance
+	smallLLM, err := f.GetSmallLLM()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get local LLM for LLMTool: %w", err)
+		return nil, fmt.Errorf("failed to get small LLM for LLMTool: %w", err)
 	}
 
-	f.llmTool = homeclawtool.NewLLMTool(localLLM)
+	f.llmTool = homeclawtool.NewLLMTool(smallLLM)
 	return f.llmTool, nil
+}
+
+// GetCommonTool returns the singleton CommonTool instance (lazy initialized).
+// It provides common utility methods that are brand-agnostic.
+func (f *Factory) GetCommonTool() (*homeclawtool.CommonTool, error) {
+	if f.commonTool != nil {
+		return f.commonTool, nil
+	}
+
+	deviceStore, err := f.GetDeviceStore()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get device store for CommonTool: %w", err)
+	}
+
+	f.commonTool = homeclawtool.NewCommonTool(deviceStore)
+	return f.commonTool, nil
 }

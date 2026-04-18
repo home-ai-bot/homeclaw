@@ -141,6 +141,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         labelNamespace: "homeclaw",
         items: [
           {
+            title: "navigation.device_control",
+            url: "/smart-home/device-control",
+            icon: IconHome,
+            translateTitle: true,
+            namespace: "homeclaw" as const,
+          },
+          {
             title: "navigation.xiaomi",
             url: "/smart-home/xiaomi",
             icon: IconHome,

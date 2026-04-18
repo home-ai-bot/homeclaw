@@ -5,8 +5,10 @@ package homeclaw
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
@@ -167,6 +169,9 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	// LLM tools
 	registerTool(toolRegistry, f.GetLLMTool)
 
+	// Common tools
+	registerTool(toolRegistry, f.GetCommonTool)
+
 	//Third
 	thirdf := hc.thirdf
 
@@ -183,4 +188,111 @@ func (hc *HomeClaw) SetMediaStore(store media.MediaStore) {
 		return
 	}
 	hc.f.SetMediaStore(store)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Device command handling via hc_cli tool
+// ─────────────────────────────────────────────────────────────────────────────
+
+// HandleToolCall checks if the message is a tool command (format: "tool:name" + JSON params)
+// and executes it via the specified tool directly, bypassing the LLM.
+// Returns (response, handled) where handled=true means the command was processed.
+func (hc *HomeClaw) HandleToolCall(ctx context.Context, channel, chatID, content string, toolRegistry *tools.ToolRegistry) (string, bool) {
+	if hc == nil || toolRegistry == nil {
+		return "", false
+	}
+
+	// Parse tool name and command JSON from content
+	toolName, commandJSON, ok := hc.ParseToolCommand(content)
+	if !ok {
+		return "", false
+	}
+
+	logger.InfoCF("homeclaw", "Tool command detected, executing via tool",
+		map[string]any{
+			"channel":   channel,
+			"chat_id":   chatID,
+			"tool_name": toolName,
+		})
+
+	// Get the specified tool from registry
+	tool, ok := toolRegistry.Get(toolName)
+	if !ok {
+		logger.ErrorCF("homeclaw", "Tool not found",
+			map[string]any{
+				"tool_name":       toolName,
+				"available_tools": toolRegistry.List(),
+			})
+		return fmt.Sprintf("工具执行失败：工具 '%s' 未注册", toolName), true
+	}
+
+	// Execute the tool with the command JSON
+	toolArgs := map[string]any{
+		"commandJson": commandJSON,
+	}
+
+	logger.DebugCF("homeclaw", "Executing tool",
+		map[string]any{
+			"tool_name":    toolName,
+			"command_json": commandJSON,
+		})
+
+	result := tool.Execute(ctx, toolArgs)
+
+	if result.IsError {
+		logger.ErrorCF("homeclaw", "Tool execution failed",
+			map[string]any{
+				"tool_name": toolName,
+				"error":     result.ForLLM,
+			})
+		return fmt.Sprintf("工具执行失败：%s", result.ForLLM), true
+	}
+
+	logger.InfoCF("homeclaw", "Tool executed successfully",
+		map[string]any{
+			"tool_name":     toolName,
+			"result_length": len(result.ForLLM),
+		})
+
+	return result.ForLLM, true
+}
+
+// ParseToolCommand parses the content to extract tool name and command JSON.
+// Expected format: "tool:toolName {json_params}"
+// Returns (toolName, commandJSON, success)
+func (hc *HomeClaw) ParseToolCommand(content string) (string, string, bool) {
+	content = strings.TrimSpace(content)
+
+	// Check if content starts with "tool:"
+	if !strings.HasPrefix(content, "tool:") {
+		return "", "", false
+	}
+
+	// Remove "tool:" prefix
+	content = content[5:]
+
+	// Find the first space to separate tool name from JSON
+	spaceIdx := strings.Index(content, " ")
+	if spaceIdx == -1 {
+		return "", "", false
+	}
+
+	toolName := strings.TrimSpace(content[:spaceIdx])
+	if toolName == "" {
+		return "", "", false
+	}
+
+	// Extract JSON part
+	commandJSON := strings.TrimSpace(content[spaceIdx+1:])
+	if commandJSON == "" {
+		return "", "", false
+	}
+
+	// Validate JSON format
+	var cmd map[string]interface{}
+	if err := json.Unmarshal([]byte(commandJSON), &cmd); err != nil {
+		return "", "", false
+	}
+
+	return toolName, commandJSON, true
 }

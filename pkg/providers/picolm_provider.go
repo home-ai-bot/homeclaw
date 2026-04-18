@@ -25,7 +25,10 @@ type PicoLMProvider struct {
 
 // NewPicoLMProvider creates a new PicoLM provider from config.
 // Returns an error if the binary path does not point to an executable file.
-func NewPicoLMProvider(cfg config.PicoLMProviderConfig) (*PicoLMProvider, error) {
+func NewPicoLMProvider(cfg *config.PicoLMProviderConfig) (*PicoLMProvider, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("picolm: config is nil")
+	}
 	binary, err := expandHome(cfg.Binary)
 	if err != nil {
 		return nil, fmt.Errorf("picolm: failed to expand binary path: %w", err)

@@ -11,22 +11,24 @@ type Space struct {
 
 // Device represents a smart device in the home.
 type Device struct {
-	FromID    string `json:"from_id"`
-	From      string `json:"from"`
-	Name      string `json:"name"`
-	Type      string `json:"type"`
-	Token     string `json:"token"`
-	IP        string `json:"ip"`
-	URN       string `json:"urn"`
-	SpaceName string `json:"space_name,omitempty"`
+	FromID    string   `json:"from_id"`
+	From      string   `json:"from"`
+	Name      string   `json:"name"`
+	Type      string   `json:"type"`
+	Token     string   `json:"token"`
+	IP        string   `json:"ip"`
+	URN       string   `json:"urn"`
+	SpaceName string   `json:"space_name,omitempty"`
+	Ops       []string `json:"ops,omitempty"`
 }
 
 // DeviceOp represents an operation that a device can perform
 type DeviceOp struct {
-	FromID  string `json:"from_id"`
-	From    string `json:"from"`
-	Ops     string `json:"ops"`     // Operation name, e.g. "getProps", "setProps", "execute", "getSpec"
-	Command string `json:"command"` // CLI tool command parameters
+	FromID string `json:"from_id"`
+	From   string `json:"from"`
+	Ops    string `json:"ops"`    // Operation name, e.g. "turn_on,turn_off"
+	Method string `json:"method"` // Method name, e.g. "getProps,setProps,execute"
+	Param  string `json:"param"`  // CLI tool command parameters
 }
 
 // Home represents a home information

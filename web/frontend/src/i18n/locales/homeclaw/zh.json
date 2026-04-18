@@ -1,6 +1,7 @@
 {
   "navigation": {
     "smart_home": "智能家居",
+    "device_control": "设备控制",
     "xiaomi": "小米",
     "tuya": "涂鸦",
     "apple": "苹果",

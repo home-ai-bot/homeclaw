@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	hcconfig "github.com/sipeed/picoclaw/pkg/homeclaw/config"
 )
 
 // cachedFFmpegPath stores the resolved ffmpeg binary path.
@@ -75,8 +77,11 @@ func buildInputArgs(streamURL string, rtspTransport string) []string {
 // If the file is stored in MediaStore, it will be cleaned up when the scope is released.
 // If not stored, the caller should delete it after reading.
 func CapImgBase64(ctx context.Context, streamURL string, seek int, end int, timeout int, rtspTransport string) (dataURI string, filePath string, err error) {
-	tmpDir := os.TempDir()
-	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("homeclaw_frame_%s.jpg", GenerateUUID()))
+	imgDir := hcconfig.WorkspaceImgDir()
+	if mkErr := os.MkdirAll(imgDir, 0o750); mkErr != nil {
+		imgDir = os.TempDir()
+	}
+	tmpFile := filepath.Join(imgDir, fmt.Sprintf("homeclaw_frame_%s.jpg", GenerateUUID()))
 
 	if err := capImg2File(ctx, streamURL, seek, end, timeout, tmpFile, rtspTransport); err != nil {
 		return "", "", err

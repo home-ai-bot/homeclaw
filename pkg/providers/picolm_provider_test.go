@@ -108,7 +108,7 @@ func createSlowMockPicoLM(t *testing.T, sleepSeconds int) string {
 
 func TestNewPicoLMProvider(t *testing.T) {
 	binary := createMockPicoLM(t, "", "", 0)
-	p, err := NewPicoLMProvider(config.PicoLMProviderConfig{
+	p, err := NewPicoLMProvider(&config.PicoLMProviderConfig{
 		Binary:    binary,
 		Model:     "/tmp/model.gguf",
 		MaxTokens: 128,
@@ -130,7 +130,7 @@ func TestNewPicoLMProvider(t *testing.T) {
 
 func TestNewPicoLMProvider_Defaults(t *testing.T) {
 	binary := createMockPicoLM(t, "", "", 0)
-	p, err := NewPicoLMProvider(config.PicoLMProviderConfig{
+	p, err := NewPicoLMProvider(&config.PicoLMProviderConfig{
 		Binary: binary,
 		Model:  "/tmp/model.gguf",
 	})
@@ -146,7 +146,7 @@ func TestNewPicoLMProvider_Defaults(t *testing.T) {
 }
 
 func TestNewPicoLMProvider_BinaryNotFound(t *testing.T) {
-	_, err := NewPicoLMProvider(config.PicoLMProviderConfig{
+	_, err := NewPicoLMProvider(&config.PicoLMProviderConfig{
 		Binary: "/nonexistent/path/picolm",
 		Model:  "/tmp/model.gguf",
 	})
@@ -160,7 +160,7 @@ func TestNewPicoLMProvider_BinaryNotFound(t *testing.T) {
 
 func TestNewPicoLMProvider_BinaryIsDirectory(t *testing.T) {
 	dir := t.TempDir()
-	_, err := NewPicoLMProvider(config.PicoLMProviderConfig{
+	_, err := NewPicoLMProvider(&config.PicoLMProviderConfig{
 		Binary: dir,
 		Model:  "/tmp/model.gguf",
 	})
@@ -181,7 +181,7 @@ func TestNewPicoLMProvider_BinaryNotExecutable(t *testing.T) {
 	if err := os.WriteFile(notExec, []byte("not executable"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := NewPicoLMProvider(config.PicoLMProviderConfig{
+	_, err := NewPicoLMProvider(&config.PicoLMProviderConfig{
 		Binary: notExec,
 		Model:  "/tmp/model.gguf",
 	})
@@ -195,7 +195,7 @@ func TestNewPicoLMProvider_BinaryNotExecutable(t *testing.T) {
 
 func TestNewPicoLMProvider_EmptyBinaryAllowed(t *testing.T) {
 	// Empty binary is allowed at construction time (caught at Chat time)
-	p, err := NewPicoLMProvider(config.PicoLMProviderConfig{
+	p, err := NewPicoLMProvider(&config.PicoLMProviderConfig{
 		Model: "/tmp/model.gguf",
 	})
 	if err != nil {
@@ -210,7 +210,7 @@ func TestNewPicoLMProvider_EmptyBinaryAllowed(t *testing.T) {
 
 func TestPicoLMProvider_GetDefaultModel(t *testing.T) {
 	binary := createMockPicoLM(t, "", "", 0)
-	p, _ := NewPicoLMProvider(config.PicoLMProviderConfig{Binary: binary})
+	p, _ := NewPicoLMProvider(&config.PicoLMProviderConfig{Binary: binary})
 	if got := p.GetDefaultModel(); got != "picolm-local" {
 		t.Errorf("GetDefaultModel() = %q, want %q", got, "picolm-local")
 	}

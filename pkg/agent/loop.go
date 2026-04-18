@@ -1442,6 +1442,13 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 		return response, nil
 	}
 
+	// Check if this is a device control command (JSON format) and execute via hc_cli
+	if al.homeclaw != nil {
+		if response, handled := al.homeclaw.HandleToolCall(ctx, msg.Channel, msg.ChatID, msg.Content, agent.Tools); handled {
+			return response, nil
+		}
+	}
+
 	if pending := al.takePendingSkills(opts.SessionKey); len(pending) > 0 {
 		opts.ForcedSkills = append(opts.ForcedSkills, pending...)
 		logger.InfoCF("agent", "Applying pending skill override",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
@@ -104,13 +105,27 @@ func (t *CLITool) Execute(_ context.Context, args map[string]any) *tools.ToolRes
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to parse commandJson: %v", err), IsError: true}
 	}
 
-	if req.Brand == "" {
-		return &tools.ToolResult{ForLLM: "missing 'brand' in commandJson", IsError: true}
-	}
 	if req.Method == "" {
 		return &tools.ToolResult{ForLLM: "missing 'method' in commandJson", IsError: true}
 	}
 
+	switch req.Method {
+	case "listCameras":
+		return t.execListCameras()
+	case "setCurrentHome":
+		return t.execSetCurrentHome(req.Params)
+	case "getCurrentHome":
+		return t.execGetCurrentHome(req.Params)
+	case "saveDeviceOps":
+		return t.execSaveDeviceOps(req.Params)
+	case "listDevicesWithoutOps":
+		return t.execListDevicesWithoutOps(req.Params)
+	case "markNoAction":
+		return t.execMarkNoAction(req.Params)
+	}
+	if req.Brand == "" {
+		return &tools.ToolResult{ForLLM: "missing 'brand' in commandJson", IsError: true}
+	}
 	client, found := t.clients[req.Brand]
 	if !found {
 		available := make([]string, 0, len(t.clients))
@@ -136,18 +151,8 @@ func (t *CLITool) Execute(_ context.Context, args map[string]any) *tools.ToolRes
 		return t.execExecute(client, req.Params)
 	case "getSpec":
 		return t.execGetSpec(client, req.Params)
-	case "listCameras":
-		return t.execListCameras()
-	case "setCurrentHome":
-		return t.execSetCurrentHome(req.Params)
-	case "getCurrentHome":
-		return t.execGetCurrentHome(req.Params)
-	case "saveDeviceOps":
-		return t.execSaveDeviceOps(req.Params)
-	case "getDeviceOps":
-		return t.execGetDeviceOps(req.Params)
-	case "listDevicesWithoutOps":
-		return t.execListDevicesWithoutOps(req.Params)
+	case "exe":
+		return t.execExe(client, req.Params)
 	default:
 		return &tools.ToolResult{
 			ForLLM:  fmt.Sprintf("unknown method '%s'; Must Confirm! tool must invoke by skills,please use the right skill!", req.Method),
@@ -456,50 +461,17 @@ func (t *CLITool) execGetCurrentHome(params map[string]any) *tools.ToolResult {
 	return tools.NewToolResult(string(result))
 }
 
-// execSaveDeviceOps saves device operations analyzed by AI.
+// execSaveDeviceOps saves device operations analyzed by AI in batch.
+// Required params: from, from_id, ops_array (JSON string)
 func (t *CLITool) execSaveDeviceOps(params map[string]any) *tools.ToolResult {
 	if params == nil {
 		return &tools.ToolResult{ForLLM: "missing 'params' for saveDeviceOps", IsError: true}
 	}
 
-	fromID, ok := params["from_id"].(string)
-	if !ok || fromID == "" {
-		return &tools.ToolResult{ForLLM: "missing required parameter: from_id", IsError: true}
-	}
-
+	// Extract from and from_id from top-level params
 	from, ok := params["from"].(string)
 	if !ok || from == "" {
 		return &tools.ToolResult{ForLLM: "missing required parameter: from", IsError: true}
-	}
-
-	ops, ok := params["ops"].(string)
-	if !ok || ops == "" {
-		return &tools.ToolResult{ForLLM: "missing required parameter: ops", IsError: true}
-	}
-
-	command, ok := params["command"].(string)
-	if !ok || command == "" {
-		return &tools.ToolResult{ForLLM: "missing required parameter: command", IsError: true}
-	}
-
-	deviceOp := data.DeviceOp{
-		FromID:  fromID,
-		From:    from,
-		Ops:     ops,
-		Command: command,
-	}
-
-	if err := t.deviceOpStore.Save(deviceOp); err != nil {
-		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to save device operation: %v", err), IsError: true}
-	}
-
-	return tools.NewToolResult(fmt.Sprintf("successfully saved device operation: %s for device %s from %s", ops, fromID, from))
-}
-
-// execGetDeviceOps retrieves saved device operations for a specific device.
-func (t *CLITool) execGetDeviceOps(params map[string]any) *tools.ToolResult {
-	if params == nil {
-		return &tools.ToolResult{ForLLM: "missing 'params' for getDeviceOps", IsError: true}
 	}
 
 	fromID, ok := params["from_id"].(string)
@@ -507,26 +479,65 @@ func (t *CLITool) execGetDeviceOps(params map[string]any) *tools.ToolResult {
 		return &tools.ToolResult{ForLLM: "missing required parameter: from_id", IsError: true}
 	}
 
-	from, ok := params["from"].(string)
-	if !ok || from == "" {
-		return &tools.ToolResult{ForLLM: "missing required parameter: from", IsError: true}
+	// Extract ops_array - accept both string (JSON-encoded) and array formats
+	var opsArrayJSON string
+
+	// Try string format first (JSON-encoded array)
+	if opsArrayStr, ok := params["ops_array"].(string); ok && opsArrayStr != "" {
+		opsArrayJSON = opsArrayStr
+	} else if opsArrayRaw, ok := params["ops_array"].([]any); ok && len(opsArrayRaw) > 0 {
+		// Convert array back to JSON string
+		opsArrayBytes, err := json.Marshal(opsArrayRaw)
+		if err != nil {
+			return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to marshal ops_array: %v", err), IsError: true}
+		}
+		opsArrayJSON = string(opsArrayBytes)
+	} else {
+		return &tools.ToolResult{ForLLM: "missing required parameter: ops_array", IsError: true}
 	}
 
-	ops, err := t.deviceOpStore.GetOpsByDevice(fromID, from)
-	if err != nil {
-		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get device operations: %v", err), IsError: true}
+	// Parse the JSON array - use json.RawMessage to avoid parsing param
+	type opEntry struct {
+		Method string          `json:"method"`
+		Ops    string          `json:"ops"`
+		Param  json.RawMessage `json:"param"`
 	}
 
-	if len(ops) == 0 {
-		return tools.NewToolResult(fmt.Sprintf(`{"from_id":"%s","from":"%s","operations":[],"message":"No operations found for this device"}`, fromID, from))
+	var opsArray []opEntry
+	if err := json.Unmarshal([]byte(opsArrayJSON), &opsArray); err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to parse ops_array JSON: %v", err), IsError: true}
 	}
 
-	result, _ := json.Marshal(map[string]any{
-		"from_id":    fromID,
-		"from":       from,
-		"operations": ops,
-	})
-	return tools.NewToolResult(string(result))
+	if len(opsArray) == 0 {
+		return &tools.ToolResult{ForLLM: "ops_array is empty", IsError: true}
+	}
+
+	// Convert to DeviceOp slice - param is saved directly as JSON string without parsing
+	deviceOps := make([]data.DeviceOp, 0, len(opsArray))
+	for _, entry := range opsArray {
+		if len(entry.Param) == 0 {
+			continue
+		}
+
+		deviceOps = append(deviceOps, data.DeviceOp{
+			FromID: fromID,
+			From:   from,
+			Ops:    entry.Ops,
+			Method: entry.Method,
+			Param:  string(entry.Param),
+		})
+	}
+
+	if len(deviceOps) == 0 {
+		return &tools.ToolResult{ForLLM: "no valid operations to save", IsError: true}
+	}
+
+	// Batch save all operations
+	if err := t.deviceOpStore.Save(deviceOps...); err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to batch save device operations: %v", err), IsError: true}
+	}
+
+	return tools.NewToolResult(fmt.Sprintf("successfully saved %d device operations for device %s from %s", len(deviceOps), fromID, from))
 }
 
 // execListDevicesWithoutOps lists all devices that don't have any device operations saved.
@@ -535,19 +546,6 @@ func (t *CLITool) execListDevicesWithoutOps(params map[string]any) *tools.ToolRe
 	devices, err := t.deviceStore.GetAll()
 	if err != nil {
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get devices: %v", err), IsError: true}
-	}
-
-	// Get all device operations
-	allOps, err := t.deviceOpStore.GetAll()
-	if err != nil {
-		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get device operations: %v", err), IsError: true}
-	}
-
-	// Build a set of devices that have operations
-	devicesWithOps := make(map[string]struct{})
-	for _, op := range allOps {
-		key := op.FromID + "|" + op.From
-		devicesWithOps[key] = struct{}{}
 	}
 
 	// Filter devices without operations
@@ -561,8 +559,8 @@ func (t *CLITool) execListDevicesWithoutOps(params map[string]any) *tools.ToolRe
 
 	var devicesWithoutOps []deviceWithoutOps
 	for _, d := range devices {
-		key := d.FromID + "|" + d.From
-		if _, exists := devicesWithOps[key]; !exists {
+		// Check if ops is empty or only contains "NoAction"
+		if len(d.Ops) == 0 || (len(d.Ops) == 1 && d.Ops[0] == "NoAction") {
 			devicesWithoutOps = append(devicesWithoutOps, deviceWithoutOps{
 				FromID:    d.FromID,
 				From:      d.From,
@@ -582,4 +580,104 @@ func (t *CLITool) execListDevicesWithoutOps(params map[string]any) *tools.ToolRe
 		"count":   len(devicesWithoutOps),
 	})
 	return tools.NewToolResult(string(result))
+}
+
+// execExe executes a device operation by reading from DeviceOpStore and calling the appropriate method.
+func (t *CLITool) execExe(client third.Client, params map[string]any) *tools.ToolResult {
+	if params == nil {
+		return &tools.ToolResult{ForLLM: "missing 'params' for exe", IsError: true}
+	}
+
+	fromID, ok := params["from_id"].(string)
+	if !ok || fromID == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: from_id", IsError: true}
+	}
+
+	// Use brand as from if not explicitly provided
+	from := client.Brand()
+	if fromParam, ok := params["from"].(string); ok && fromParam != "" {
+		from = fromParam
+	}
+
+	ops, ok := params["ops"].(string)
+	if !ok || ops == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: ops", IsError: true}
+	}
+
+	// Get the device operation from store
+	deviceOp, err := t.deviceOpStore.GetOpsCommand(fromID, from, ops)
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get device operation: %v", err), IsError: true}
+	}
+
+	// Parse the command JSON
+	var commandParams map[string]any
+	if err := json.Unmarshal([]byte(deviceOp.Param), &commandParams); err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to parse command JSON: %v", err), IsError: true}
+	}
+
+	// Execute based on the method.
+	// Normalize across naming conventions:
+	//   Xiaomi spec_parser stores: "SetProp", "GetProp", "Action"
+	//   Tuya skill stores:         "setProps", "getProps", "execute"
+	var result any
+	switch strings.ToLower(deviceOp.Method) {
+	case "getprop", "getprops":
+		result, err = client.GetProps(commandParams)
+		if err != nil {
+			return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to execute getProps: %v", err), IsError: true}
+		}
+	case "setprop", "setprops":
+		result, err = client.SetProps(commandParams)
+		if err != nil {
+			return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to execute setProps: %v", err), IsError: true}
+		}
+	case "action", "execute":
+		result, err = client.Execute(commandParams)
+		if err != nil {
+			return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to execute action: %v", err), IsError: true}
+		}
+	default:
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("unknown method: %s", deviceOp.Method), IsError: true}
+	}
+
+	b, _ := json.Marshal(result)
+	return tools.NewToolResult(fmt.Sprintf("exe result (%s): %s", deviceOp.Method, string(b)))
+}
+
+// execMarkNoAction marks a device as non-operable by setting its Ops to ["NoAction"].
+func (t *CLITool) execMarkNoAction(params map[string]any) *tools.ToolResult {
+	if params == nil {
+		return &tools.ToolResult{ForLLM: "missing 'params' for markNoAction", IsError: true}
+	}
+
+	fromID, ok := params["from_id"].(string)
+	if !ok || fromID == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: from_id", IsError: true}
+	}
+
+	// Use brand as from if not explicitly provided
+	from := ""
+	if fromParam, ok := params["from"].(string); ok && fromParam != "" {
+		from = fromParam
+	}
+
+	// Get all devices to find the target device
+	devices, err := t.deviceStore.GetAll()
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get devices: %v", err), IsError: true}
+	}
+
+	// Find and update the target device
+	for _, device := range devices {
+		if device.FromID == fromID && (from == "" || device.From == from) {
+			device.Ops = []string{"NoAction"}
+			if err := t.deviceStore.Save(device); err != nil {
+				return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to save device: %v", err), IsError: true}
+			}
+			return tools.NewToolResult(fmt.Sprintf("successfully marked device %s from %s as NoAction", fromID, device.From))
+		}
+	}
+
+	return &tools.ToolResult{ForLLM: fmt.Sprintf("device not found: from_id=%s, from=%s", fromID, from), IsError: true}
 }

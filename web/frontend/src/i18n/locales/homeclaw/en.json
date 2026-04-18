@@ -1,6 +1,7 @@
 {
   "navigation": {
     "smart_home": "Smart Home",
+    "device_control": "Device Control",
     "xiaomi": "Xiaomi",
     "tuya": "Tuya",
     "apple": "Apple",

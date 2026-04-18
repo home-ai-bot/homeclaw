@@ -38,50 +38,14 @@ type HomeclawConfig struct {
 	// to the large-model agent loop. Default: 0.7.
 	ConfidenceThreshold float64 `json:"confidence_threshold"`
 
-	// IntentModel specifies the small model used for intent classification and
-	// workflow matching.
-	IntentModel IntentModelConfig `json:"intent_model"`
+	// SmallModel specifies the model_name (from PicoClaw's model_list) used for
+	// intent classification and other small tasks. If empty, falls back to the
+	// default model from PicoClaw config.
+	SmallModel string `json:"small_model,omitempty"`
 
-	Rtsp string `json:"rtsp"`
-}
-
-// IntentModelConfig holds connection details for the small intent-classification model.
-// Two usage modes are supported (mutually exclusive):
-//
-//  1. ModelRef – reference the model_name of a model already declared in PicoClaw's
-//     model_list; the AgentLoop will resolve the full config from there.
-//  2. Inline (APIBase + APIKey + Model) – fully self-contained; does not require
-//     any entry in PicoClaw's model_list.
-type IntentModelConfig struct {
-	// ModelName references a model_name entry in PicoClaw's model_list.
-	// When set, APIBase / APIKey / Model below are ignored.
-	ModelName string `json:"model_name,omitempty"`
-
-	// APIBase is the OpenAI-compatible API endpoint, e.g. "http://localhost:11434/v1".
-	APIBase string `json:"api_base,omitempty"`
-
-	// APIKey is the API authentication key.
-	APIKey string `json:"api_key,omitempty"`
-
-	// Model is the protocol-prefixed model identifier, e.g. "openai/qwen2.5:1.5b".
-	Model string `json:"model,omitempty"`
-}
-
-// IsModelRef returns true when the config uses a PicoClaw model_list reference.
-func (m IntentModelConfig) IsModelName() bool {
-	return m.ModelName != ""
-}
-
-// Validate checks that the IntentModelConfig has sufficient information to
-// build a provider.
-func (m IntentModelConfig) Validate() error {
-	if m.ModelName != "" {
-		return nil
-	}
-	if m.Model == "" {
-		return fmt.Errorf("intent_model: either model_ref or model must be set")
-	}
-	return nil
+	// BigModel specifies the model_name (from PicoClaw's model_list) used for
+	// complex tasks. If empty, falls back to the default model from PicoClaw config.
+	BigModel string `json:"big_model,omitempty"`
 }
 
 // applyDefaults fills in zero-value fields with their defaults.
@@ -132,9 +96,8 @@ func DefaultHomeclawConfig() *HomeclawConfig {
 		Enabled:             true,
 		IntentEnabled:       false,
 		ConfidenceThreshold: DefaultConfidenceThreshold,
-		IntentModel: IntentModelConfig{
-			ModelName: "local-model",
-		},
+		SmallModel:          "",
+		BigModel:            "",
 	}
 }
 

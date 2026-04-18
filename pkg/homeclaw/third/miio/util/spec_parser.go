@@ -449,33 +449,35 @@ func (s *SimplifiedSpec) GetSummary() *SpecSummary {
 
 // DeviceCommand represents a command that can be sent to a device
 type DeviceCommand struct {
-	Desc      string `json:"desc"`
-	Method    string `json:"method"`
-	Param     any    `json:"param"`
-	ParamDesc string `json:"param_desc"`
+	Desc   string `json:"desc"`
+	Method string `json:"method"`
+	Param  any    `json:"param"`
 }
 
 // SetPropParam represents parameters for SetProp command
 type SetPropParam struct {
-	DID   string `json:"did"`
-	SIID  int    `json:"siid"`
-	PIID  int    `json:"piid"`
-	Value string `json:"value"`
+	DID       string `json:"did"`
+	SIID      int    `json:"siid"`
+	PIID      int    `json:"piid"`
+	Value     string `json:"value"`
+	ParamDesc string `json:"param_desc"`
 }
 
 // GetPropParam represents parameters for GetProp command
 type GetPropParam struct {
-	DID  string `json:"did"`
-	SIID int    `json:"siid"`
-	PIID int    `json:"piid"`
+	DID       string `json:"did"`
+	SIID      int    `json:"siid"`
+	PIID      int    `json:"piid"`
+	ParamDesc string `json:"param_desc"`
 }
 
 // ActionCommandParam represents parameters for Action command
 type ActionCommandParam struct {
-	DID  string `json:"did"`
-	SIID int    `json:"siid"`
-	AIID int    `json:"aiid"`
-	In   []any  `json:"in"`
+	DID       string `json:"did"`
+	SIID      int    `json:"siid"`
+	AIID      int    `json:"aiid"`
+	In        []any  `json:"in"`
+	ParamDesc string `json:"param_desc"`
 }
 
 // CommandParam is kept for backward compatibility
@@ -546,14 +548,14 @@ func (s *SimplifiedSpec) GenerateDeviceCommands(did string) []DeviceCommand {
 
 				cmd := DeviceCommand{
 					Desc:   fmt.Sprintf("%s-%s", svc.Description, prop.Description),
-					Method: "SetProp",
+					Method: "SetProps",
 					Param: SetPropParam{
-						DID:   did,
-						SIID:  svc.IID,
-						PIID:  prop.IID,
-						Value: "$value$",
+						DID:       did,
+						SIID:      svc.IID,
+						PIID:      prop.IID,
+						Value:     "$value$",
+						ParamDesc: paramDesc,
 					},
-					ParamDesc: paramDesc,
 				}
 				commands = append(commands, cmd)
 			}
@@ -589,12 +591,12 @@ func (s *SimplifiedSpec) GenerateDeviceCommands(did string) []DeviceCommand {
 				Desc:   fmt.Sprintf("%s-%s", svc.Description, action.Description),
 				Method: "Action",
 				Param: ActionCommandParam{
-					DID:  did,
-					SIID: svc.IID,
-					AIID: action.IID,
-					In:   inParams,
+					DID:       did,
+					SIID:      svc.IID,
+					AIID:      action.IID,
+					In:        inParams,
+					ParamDesc: paramDesc,
 				},
-				ParamDesc: paramDesc,
 			}
 			commands = append(commands, cmd)
 		}
@@ -619,13 +621,13 @@ func (s *SimplifiedSpec) GenerateStatusCommands(did string) []DeviceCommand {
 			if hasReadAccess(prop.Access) {
 				cmd := DeviceCommand{
 					Desc:   fmt.Sprintf("%s-%s", svc.Description, prop.Description),
-					Method: "GetProp",
+					Method: "GetProps",
 					Param: GetPropParam{
-						DID:  did,
-						SIID: svc.IID,
-						PIID: prop.IID,
+						DID:       did,
+						SIID:      svc.IID,
+						PIID:      prop.IID,
+						ParamDesc: prop.Format,
 					},
-					ParamDesc: prop.Format,
 				}
 				commands = append(commands, cmd)
 			}

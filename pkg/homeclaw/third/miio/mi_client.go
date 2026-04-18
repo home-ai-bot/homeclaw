@@ -109,7 +109,7 @@ func (c *MiClient) checkLoadToken() error {
 		if localIP == "" {
 			localIP = "<device_ip>"
 		}
-		return fmt.Errorf("Must Confirm!: xiaomi token is empty, please open http://%s:1984, login with your xiaomi account in the interface, then click 'Config Save & Restart'", localIP)
+		return fmt.Errorf("Must Confirm!: xiaomi token is empty, please login first！", localIP)
 	}
 
 	// Update cloud with new token
@@ -182,7 +182,7 @@ func getAuthErrorMsg() string {
 	if localIP == "" {
 		localIP = "<device_ip>"
 	}
-	return fmt.Sprintf("Must Confirm!: xiaomi token is empty or invalid, please open http://%s:1984, login with your xiaomi account in the interface, then click 'Config Save & Restart'", localIP)
+	return fmt.Sprintf("Must Confirm!: xiaomi token is empty or invalid, please login first！", localIP)
 }
 
 // request performs an authenticated request to the Xiaomi cloud API.

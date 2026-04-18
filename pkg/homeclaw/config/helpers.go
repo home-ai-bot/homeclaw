@@ -28,6 +28,17 @@ func GetPicoclawHome() string {
 	return filepath.Join(home, ".picoclaw")
 }
 
+// WorkspaceImgDir returns the img sub-directory inside the picoclaw workspace
+// for storing captured images (e.g. camera frames).
+// It reads the workspace path from the loaded config (Agents.Defaults.Workspace).
+// Falls back to $PICOCLAW_HOME/workspace/img when the config cannot be loaded.
+func WorkspaceImgDir() string {
+	if cfg, err := LoadConfig(); err == nil && cfg.Agents.Defaults.Workspace != "" {
+		return filepath.Join(cfg.Agents.Defaults.Workspace, "img")
+	}
+	return filepath.Join(GetPicoclawHome(), "workspace", "img")
+}
+
 func GetConfigPath() string {
 	if configPath := os.Getenv("PICOCLAW_CONFIG"); configPath != "" {
 		return configPath
