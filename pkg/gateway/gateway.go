@@ -173,7 +173,7 @@ func Run(debug bool, homePath, configPath string, allowEmptyStartup bool) (runEr
 	}
 
 	if modelID != "" {
-		cfg.Agents.Defaults.ModelName = modelID
+		cfg.Agents.Defaults.ModelID = modelID
 	}
 
 	msgBus := bus.NewMessageBus()

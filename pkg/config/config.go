@@ -248,6 +248,7 @@ type AgentDefaults struct {
 	AllowReadOutsideWorkspace bool               `json:"allow_read_outside_workspace"     env:"PICOCLAW_AGENTS_DEFAULTS_ALLOW_READ_OUTSIDE_WORKSPACE"`
 	Provider                  string             `json:"provider"                         env:"PICOCLAW_AGENTS_DEFAULTS_PROVIDER"`
 	ModelName                 string             `json:"model_name"                       env:"PICOCLAW_AGENTS_DEFAULTS_MODEL_NAME"`
+	ModelID                   string             `json:"model_id,omitempty"`
 	ModelFallbacks            []string           `json:"model_fallbacks,omitempty"`
 	ImageModel                string             `json:"image_model,omitempty"            env:"PICOCLAW_AGENTS_DEFAULTS_IMAGE_MODEL"`
 	ImageModelFallbacks       []string           `json:"image_model_fallbacks,omitempty"`
@@ -613,10 +614,10 @@ type VoiceConfig struct {
 }
 
 type PicoLMProviderConfig struct {
-	Binary    string `json:"binary" env:"PICOCLAW_PROVIDERS_PICOLM_BINARY"`
-	Model     string `json:"model" env:"PICOCLAW_PROVIDERS_PICOLM_MODEL"`
-	MaxTokens int    `json:"max_tokens" env:"PICOCLAW_PROVIDERS_PICOLM_MAX_TOKENS"`
-	Threads   int    `json:"threads" env:"PICOCLAW_PROVIDERS_PICOLM_THREADS"`
+	Binary    string `json:"binary,omitempty" env:"PICOCLAW_PROVIDERS_PICOLM_BINARY"`
+	Model     string `json:"model,omitempty" env:"PICOCLAW_PROVIDERS_PICOLM_MODEL"`
+	MaxTokens int    `json:"max_tokens,omitempty" env:"PICOCLAW_PROVIDERS_PICOLM_MAX_TOKENS"`
+	Threads   int    `json:"threads,omitempty" env:"PICOCLAW_PROVIDERS_PICOLM_THREADS"`
 }
 
 // ModelConfig represents a model-centric provider configuration.
@@ -650,7 +651,7 @@ type ModelConfig struct {
 	CustomHeaders  map[string]string `json:"custom_headers,omitempty"` // Additional headers to inject into every HTTP request
 
 	// PicoLM-specific fields (for picolm protocol)
-	PicoLM PicoLMProviderConfig `json:"picolm,omitempty"` // PicoLM subprocess config
+	PicoLM *PicoLMProviderConfig `json:"picolm,omitempty"` // PicoLM subprocess config
 
 	APIKeys SecureStrings `json:"api_keys,omitzero" yaml:"api_keys,omitempty"` // API authentication keys (multiple keys for failover)
 
