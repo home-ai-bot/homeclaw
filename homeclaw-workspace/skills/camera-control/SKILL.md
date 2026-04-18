@@ -14,7 +14,7 @@ description: Control smart home cameras and perform visual analysis. Use when th
 
 ```
 hc_cli
-- commandJson: {"brand":"","method":"listCameras"}
+- commandJson: {"brand":"any","method":"listCameras"}
 ```
 
 Returns camera list with `from_id`, `from`, `name`, `type`, `space_name`, `rtsp_url`.
@@ -45,67 +45,12 @@ hc_video
 - If user wants to receive the image, set `return_image: true`
 - Image content will be sent in MediaResult (QQ、dingding can display images directly, no additional steps needed)
 
-**Returns (capAnalyze):**
-```json
-{"analysis": "Description of what's visible...","file_path": "/tmp/homeclaw_frame_123.jpg"}
-```
-Plus image content in MediaResult if `return_image: true`
-
-**Returns (capImage):**
-```json
-{"file_path": "/tmp/homeclaw_frame_123.jpg"}
-```
 Plus image content in MediaResult if `return_image: true`
 
 Report the analysis result to the user in natural language.
 
 ---
 
-## Examples
-
-### Example 1: What does [camera-name] camera see?
-
-```
-1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"listCameras\"}"}
-   → {"cameras": [{"from_id": "cam001", "from": "xiaomi", "name": "[camera-name]", "type": "...", "space_name": "Living Room", "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam001"}]}
-
-2. hc_video {"commandJson":"{\"method\":\"capAnalyze\",\"params\":{\"rtsp_url\":\"rtsp://127.0.0.1:8554/xiaomi_cam001\",\"prompt\":\"Describe what you see\"}}"}
-   → {"analysis": "The room is well-lit. A desk with a laptop is visible. No people present."}
-```
-
-### Example 2: Is anyone at the door?
-
-```
-1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"listCameras\"}"}
-   → {"cameras": [{"from_id": "cam002", "from": "xiaomi", "name": "Door Camera", "type": "...", "space_name": "Entrance", "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam002"}]}
-
-2. hc_video {"commandJson":"{\"method\":\"capAnalyze\",\"params\":{\"rtsp_url\":\"rtsp://127.0.0.1:8554/xiaomi_cam002\",\"prompt\":\"Is there anyone at the door?\",\"return_image\":true}}"}
-   → {"analysis": "A person is standing at the door, wearing a blue jacket."}
-   → Image sent via MediaResult
-```
-
-### Example 3: Capture living room camera frame only
-
-```
-1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"listCameras\"}"}
-   → {"cameras": [{"from_id": "cam001", "from": "xiaomi", "name": "Living Room Camera", "type": "...", "space_name": "Living Room", "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam001"}]}
-
-2. hc_video {"commandJson":"{\"method\":\"capImage\",\"params\":{\"rtsp_url\":\"rtsp://127.0.0.1:8554/xiaomi_cam001\",\"return_image\":true}}"}
-   → {"file_path": "/tmp/homeclaw_frame_123.jpg"}
-   → Image sent via MediaResult
-```
-
-### Example 4: Check baby monitor
-
-```
-1. hc_cli {"commandJson":"{\"brand\":\"xiaomi\",\"method\":\"listCameras\"}"}
-   → {"cameras": [{"from_id": "cam003", "from": "xiaomi", "name": "Baby Monitor", "type": "...", "space_name": "Bedroom", "rtsp_url": "rtsp://127.0.0.1:8554/xiaomi_cam003"}]}
-
-2. hc_video {"commandJson":"{\"method\":\"capAnalyze\",\"params\":{\"rtsp_url\":\"rtsp://127.0.0.1:8554/xiaomi_cam003\",\"prompt\":\"Is the baby sleeping? Describe the room conditions\"}}"}
-   → {"analysis": "The baby is sleeping peacefully in the crib. The room has soft lighting and comfortable temperature."}
-```
-
----
 
 ## Error Handling
 
