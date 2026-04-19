@@ -171,6 +171,9 @@
     }
   },
   "device_control": "Device Control",
+  "device_control_page": {
+    "noDevices": "You don't have any devices yet. Please add devices first."
+  },
   "home_section": {
     "title": "Family Information",
     "syncHomes": "Sync Homes",
@@ -184,6 +187,8 @@
     "title": "Device List",
     "syncDevices": "Sync Devices",
     "syncingDevices": "Syncing devices...",
+    "generateOps": "AI Generate Ops",
+    "generatingOps": "Generating...",
     "noDevices": "No devices found. Please sync to fetch your devices.",
     "selectHomeFirst": "Please select a home first to view devices.",
     "online": "Online",

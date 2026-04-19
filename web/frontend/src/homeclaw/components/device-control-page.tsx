@@ -245,111 +245,43 @@ export function DeviceControlPage() {
       isLoading={state.isLoading}
     >
       <div className="pt-2 space-y-6">
-        {state.rooms.map((room) => (
-          <div key={room.room_name}>
-            <h2 className="text-lg font-semibold mb-3">{room.room_name}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {room.devices.map((device) => {
-                const isNoAction =
-                  device.ops && device.ops.includes("NoAction")
-                const deviceKey = `${device.from_id}-${device.from}`
+        {state.rooms.length === 0 ? (
+          <div className="text-muted-foreground py-12 text-center">
+            <p className="text-base">{t("device_control_page.noDevices")}</p>
+          </div>
+        ) : (
+          state.rooms.map((room) => (
+            <div key={room.room_name}>
+              <h2 className="text-lg font-semibold mb-3">{room.room_name}</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {room.devices.map((device) => {
+                  const isNoAction =
+                    device.ops && device.ops.includes("NoAction")
+                  const deviceKey = `${device.from_id}-${device.from}`
 
-                return (
-                  <Card
-                    key={deviceKey}
-                    className={isNoAction ? "bg-muted/50" : ""}
-                  >
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-base">{device.name}</CardTitle>
-                        <Badge variant="outline">{device.type}</Badge>
-                      </div>
-                      <CardDescription>
-                        {device.from} · {device.from_id}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex flex-wrap gap-2">
-                        {isNoAction ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={processingDevices.has(deviceKey)}
-                            onClick={() =>
-                              handleGenerateOps(device.from_id, device.from, device.name)
-                            }
-                            className="flex items-center gap-1"
-                          >
-                            {processingDevices.has(deviceKey) ? (
-                              <IconLoader2 className="size-3 animate-spin" />
-                            ) : (
-                              <IconWand className="size-3" />
-                            )}
-                            <span className="text-xs">生成操作</span>
-                          </Button>
-                        ) : device.ops && device.ops.length > 0 ? (
-                          device.ops.map((op) => {
-                            const Icon = getOpIcon(op)
-                            const opKey = `${deviceKey}-${op}`
-                            const isExecuting = executingOps.has(opKey)
-
-                            return (
-                              <Button
-                                key={op}
-                                variant="outline"
-                                size="sm"
-                                disabled={isExecuting}
-                                onClick={() =>
-                                  handleExecuteOp(
-                                    device.from_id,
-                                    device.from,
-                                    op,
-                                    device.name,
-                                  )
-                                }
-                                className="flex items-center gap-1"
-                              >
-                                {isExecuting ? (
-                                  <IconLoader2 className="size-3 animate-spin" />
-                                ) : (
-                                  <Icon className="size-3" />
-                                )}
-                                <span className="text-xs">{op}</span>
-                              </Button>
-                            )
-                          })
-                        ) : (
-                          <>
+                  return (
+                    <Card
+                      key={deviceKey}
+                      className={isNoAction ? "bg-muted/50" : ""}
+                    >
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-base">{device.name}</CardTitle>
+                          <Badge variant="outline">{device.type}</Badge>
+                        </div>
+                        <CardDescription>
+                          {device.from} · {device.from_id}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex flex-wrap gap-2">
+                          {isNoAction ? (
                             <Button
                               variant="outline"
                               size="sm"
                               disabled={processingDevices.has(deviceKey)}
                               onClick={() =>
-                                handleMarkAsNoAction(
-                                  device.from_id,
-                                  device.from,
-                                  device.name,
-                                )
-                              }
-                              className="flex items-center gap-1"
-                            >
-                              {processingDevices.has(deviceKey) ? (
-                                <IconLoader2 className="size-3 animate-spin" />
-                              ) : (
-                                <IconBan className="size-3" />
-                              )}
-                              <span className="text-xs">不可操作</span>
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={processingDevices.has(deviceKey)}
-                              onClick={() =>
-                                handleGenerateOps(
-                                  device.from_id,
-                                  device.from,
-                                  device.name,
-                                )
+                                handleGenerateOps(device.from_id, device.from, device.name)
                               }
                               className="flex items-center gap-1"
                             >
@@ -360,16 +292,90 @@ export function DeviceControlPage() {
                               )}
                               <span className="text-xs">生成操作</span>
                             </Button>
-                          </>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
+                          ) : device.ops && device.ops.length > 0 ? (
+                            device.ops.map((op) => {
+                              const Icon = getOpIcon(op)
+                              const opKey = `${deviceKey}-${op}`
+                              const isExecuting = executingOps.has(opKey)
+
+                              return (
+                                <Button
+                                  key={op}
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={isExecuting}
+                                  onClick={() =>
+                                    handleExecuteOp(
+                                      device.from_id,
+                                      device.from,
+                                      op,
+                                      device.name,
+                                    )
+                                  }
+                                  className="flex items-center gap-1"
+                                >
+                                  {isExecuting ? (
+                                    <IconLoader2 className="size-3 animate-spin" />
+                                  ) : (
+                                    <Icon className="size-3" />
+                                  )}
+                                  <span className="text-xs">{op}</span>
+                                </Button>
+                              )
+                            })
+                          ) : (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={processingDevices.has(deviceKey)}
+                                onClick={() =>
+                                  handleMarkAsNoAction(
+                                    device.from_id,
+                                    device.from,
+                                    device.name,
+                                  )
+                                }
+                                className="flex items-center gap-1"
+                              >
+                                {processingDevices.has(deviceKey) ? (
+                                  <IconLoader2 className="size-3 animate-spin" />
+                                ) : (
+                                  <IconBan className="size-3" />
+                                )}
+                                <span className="text-xs">不可操作</span>
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={processingDevices.has(deviceKey)}
+                                onClick={() =>
+                                  handleGenerateOps(
+                                    device.from_id,
+                                    device.from,
+                                    device.name,
+                                  )
+                                }
+                                className="flex items-center gap-1"
+                              >
+                                {processingDevices.has(deviceKey) ? (
+                                  <IconLoader2 className="size-3 animate-spin" />
+                                ) : (
+                                  <IconWand className="size-3" />
+                                )}
+                                <span className="text-xs">生成操作</span>
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Device operation log panel (local) */}

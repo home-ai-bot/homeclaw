@@ -45,9 +45,11 @@ export function XiaomiPage() {
   const [captcha, setCaptcha] = useState("")
   const [verify, setVerify] = useState("")
   const [isLoggingIn, setIsLoggingIn] = useState(false)
+  const [isGeneratingOps, setIsGeneratingOps] = useState(false)
 
   const {
     wsStatus,
+    sendWebSocketMessage,
   } = useDeviceControl()
 
   useEffect(() => {
@@ -273,6 +275,25 @@ export function XiaomiPage() {
     }))
   }
 
+  const handleGenerateOps = async () => {
+    if (!state.selectedHomeId) return
+    setIsGeneratingOps(true)
+    try {
+      // Trigger device-spec-analyze skill workflow 2 (batch all devices)
+      const messageId = `generate-ops-batch-${Date.now()}`
+      const content = "使用device-spec-analyze skill批量生成所有未配置设备操作"
+
+      sendWebSocketMessage({
+        type: "message.send",
+        id: messageId,
+        session_id: "device-control",
+        payload: { content, media: [] },
+      })
+    } finally {
+      setIsGeneratingOps(false)
+    }
+  }
+
   const renderLoginForm = () => (
     <Card className="mt-4">
       <CardHeader>
@@ -471,6 +492,8 @@ export function XiaomiPage() {
           devices={state.devices}
           isSyncing={state.isSyncingDevices}
           onSync={() => void handleSyncDevices()}
+          onGenerateOps={() => void handleGenerateOps()}
+          isGeneratingOps={isGeneratingOps}
           disabled={!state.selectedHomeId}
         />
       )}

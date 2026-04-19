@@ -1,4 +1,4 @@
-import { IconLoader2, IconDevices, IconRefresh, IconCircle, IconCircleOff } from "@tabler/icons-react"
+import { IconLoader2, IconDevices, IconRefresh, IconCircle, IconCircleOff, IconWand } from "@tabler/icons-react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -21,6 +21,8 @@ interface DeviceListSectionProps {
   devices: DeviceInfo[]
   isSyncing: boolean
   onSync: () => void
+  onGenerateOps?: () => void
+  isGeneratingOps?: boolean
   disabled?: boolean
 }
 
@@ -28,6 +30,8 @@ export function DeviceListSection({
   devices,
   isSyncing,
   onSync,
+  onGenerateOps,
+  isGeneratingOps,
   disabled,
 }: DeviceListSectionProps) {
   const { t } = useTranslation("homeclaw")
@@ -48,25 +52,48 @@ export function DeviceListSection({
             <IconDevices className="size-4" />
             {t("device_section.title")}
           </CardTitle>
-          <Button
-            onClick={onSync}
-            disabled={isSyncing || disabled}
-            variant="outline"
-            size="sm"
-            className="h-8"
-          >
-            {isSyncing ? (
-              <>
-                <IconLoader2 className="mr-1 size-3 animate-spin" />
-                {t("device_section.syncingDevices")}
-              </>
-            ) : (
-              <>
-                <IconRefresh className="mr-1 size-3" />
-                {t("device_section.syncDevices")}
-              </>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={onSync}
+              disabled={isSyncing || disabled}
+              variant="outline"
+              size="sm"
+              className="h-8"
+            >
+              {isSyncing ? (
+                <>
+                  <IconLoader2 className="mr-1 size-3 animate-spin" />
+                  {t("device_section.syncingDevices")}
+                </>
+              ) : (
+                <>
+                  <IconRefresh className="mr-1 size-3" />
+                  {t("device_section.syncDevices")}
+                </>
+              )}
+            </Button>
+            {onGenerateOps && (
+              <Button
+                onClick={onGenerateOps}
+                disabled={isGeneratingOps || disabled}
+                variant="outline"
+                size="sm"
+                className="h-8"
+              >
+                {isGeneratingOps ? (
+                  <>
+                    <IconLoader2 className="mr-1 size-3 animate-spin" />
+                    {t("device_section.generatingOps")}
+                  </>
+                ) : (
+                  <>
+                    <IconWand className="mr-1 size-3" />
+                    {t("device_section.generateOps")}
+                  </>
+                )}
+              </Button>
             )}
-          </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-4">

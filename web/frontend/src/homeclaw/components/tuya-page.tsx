@@ -40,7 +40,7 @@ import { useDeviceControl } from "@/homeclaw/context/device-control-context"
 export function TuyaPage() {
   const { t } = useTranslation("homeclaw")
   const store = useStore()
-  const { wsStatus } = useDeviceControl()
+  const { wsStatus, sendWebSocketMessage } = useDeviceControl()
 
   const [state, setState] = useState(store.get(tuyaAtom))
   const [initialized, setInitialized] = useState(false)
@@ -54,6 +54,7 @@ export function TuyaPage() {
   const [password, setPassword] = useState("")
   const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
+  const [isGeneratingOps, setIsGeneratingOps] = useState(false)
 
   useEffect(() => {
     const unsub = store.sub(tuyaAtom, () => {
@@ -227,6 +228,25 @@ export function TuyaPage() {
     }))
   }
 
+  const handleGenerateOps = async () => {
+    if (!state.selectedHomeId) return
+    setIsGeneratingOps(true)
+    try {
+      // Trigger device-spec-analyze skill workflow 2 (batch all devices)
+      const messageId = `generate-ops-batch-${Date.now()}`
+      const content = "使用device-spec-analyze skill批量生成所有未配置设备操作"
+
+      sendWebSocketMessage({
+        type: "message.send",
+        id: messageId,
+        session_id: "device-control",
+        payload: { content, media: [] },
+      })
+    } finally {
+      setIsGeneratingOps(false)
+    }
+  }
+
   // Check if connected via token
   const isTokenConnected = state.authType === "token"
   // Check if connected via credentials
@@ -377,6 +397,8 @@ export function TuyaPage() {
           devices={state.devices}
           isSyncing={state.isSyncingDevices}
           onSync={() => void handleSyncDevices()}
+          onGenerateOps={() => void handleGenerateOps()}
+          isGeneratingOps={isGeneratingOps}
           disabled={!state.selectedHomeId}
         />
       )}

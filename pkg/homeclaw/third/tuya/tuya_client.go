@@ -101,8 +101,22 @@ func (tc *TuyaClient) Brand() string {
 }
 
 // checkAPI returns an error if the openAPI client is not initialized.
+// If openAPI is nil but a token store is available, it will attempt to load the token.
 func (tc *TuyaClient) checkAPI() error {
 	if tc.openAPI == nil {
+		// Try to load token from store if available
+		if tc.store != nil {
+			tokenStore, err := NewTokenStore(tc.store)
+			if err == nil && tokenStore.Exists() {
+				token, err := tokenStore.GetDecrypted()
+				if err == nil && token != "" {
+					// Token loaded successfully, initialize openAPI
+					tc.apiKey = token
+					tc.openAPI = NewTuyaOpenAPI(token)
+					return nil
+				}
+			}
+		}
 		return errors.New("Must Confirm!API key not configured, please set API key via WithAPIKey")
 	}
 	return nil

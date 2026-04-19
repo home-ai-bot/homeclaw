@@ -171,6 +171,9 @@
     }
   },
   "device_control": "设备控制",
+  "device_control_page": {
+    "noDevices": "你还没有设备，请先去添加设备吧"
+  },
   "home_section": {
     "title": "家庭信息",
     "syncHomes": "同步家庭",
@@ -184,6 +187,8 @@
     "title": "设备列表",
     "syncDevices": "同步设备",
     "syncingDevices": "同步设备中...",
+    "generateOps": "AI生成操作",
+    "generatingOps": "生成中...",
     "noDevices": "未找到设备，请同步获取您的设备信息。",
     "selectHomeFirst": "请先选择一个家庭以查看设备。",
     "online": "在线",
