@@ -258,6 +258,15 @@ func (f *ThirdFactory) GetTuyaClient() (*tuya.TuyaClient, error) {
 		}
 
 		f.tuyaClient, f.tuyaClientErr = tuya.NewTuyaClient(store, token, email, password, region)
+		if f.tuyaClientErr != nil {
+			return
+		}
+
+		// Set root store to enable lazy token loading
+		rootStore, err := f.GetRootJSONStore()
+		if err == nil {
+			f.tuyaClient.SetRootStore(rootStore)
+		}
 	})
 	return f.tuyaClient, f.tuyaClientErr
 }
