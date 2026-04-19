@@ -3,7 +3,6 @@ import { useStore } from "jotai"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -24,6 +23,8 @@ import {
   xiaomiLogoutAction,
   resetLoginStep,
 } from "@/homeclaw/store/xiaomi"
+import { useSmartHomeWebSocket } from "@/homeclaw/hooks/use-smart-home-websocket"
+import { SmartHomeLayout } from "@/homeclaw/components/smart-home-layout"
 
 export function XiaomiPage() {
   const { t } = useTranslation("homeclaw")
@@ -35,6 +36,16 @@ export function XiaomiPage() {
   const [captcha, setCaptcha] = useState("")
   const [verify, setVerify] = useState("")
   const [isLoggingIn, setIsLoggingIn] = useState(false)
+
+  // Use shared smart home WebSocket hook
+  const {
+    wsStatus,
+    logs,
+    showLogPanel,
+    logContainerRef,
+    clearLogs,
+    toggleLogPanel,
+  } = useSmartHomeWebSocket()
 
   useEffect(() => {
     const unsub = store.sub(xiaomiAtom, () => {
@@ -175,6 +186,14 @@ export function XiaomiPage() {
     }))
     setCaptcha("")
     setVerify("")
+  }
+
+  const handleRefresh = async () => {
+    const status = await fetchXiaomiStatus()
+    store.set(xiaomiAtom, (prev) => ({
+      ...prev,
+      ...status,
+    }))
   }
 
   const renderLoginForm = () => (
@@ -318,54 +337,60 @@ export function XiaomiPage() {
   )
 
   return (
-    <div className="flex h-full flex-col">
-      <PageHeader title={t("navigation.xiaomi")} />
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-6">
-        <div className="pt-2">
-          <p className="text-muted-foreground text-sm">
-            {t("xiaomi.description")}
-          </p>
-        </div>
-
-        {state.isLoading ? (
-          <div className="text-muted-foreground flex items-center gap-2 py-10 text-sm">
-            <IconLoader2 className="size-4 animate-spin" />
-            {t("labels.loading")}
-          </div>
-        ) : state.isLoggedIn ? (
-          <Card className="mt-4">
-            <CardHeader>
-              <CardTitle>{t("xiaomi.status.loggedIn")}</CardTitle>
-              <CardDescription>
-                {t("xiaomi.status.loggedInDesc")}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {state.userId && (
-                <div className="text-sm">
-                  <span className="text-muted-foreground">
-                    {t("xiaomi.field.userId")}:
-                  </span>{" "}
-                  <span className="font-medium">{state.userId}</span>
-                </div>
-              )}
-            </CardContent>
-            <CardFooter>
-              <Button variant="outline" onClick={() => void handleLogout()}>
-                {t("xiaomi.action.logout")}
-              </Button>
-            </CardFooter>
-          </Card>
-        ) : state.loginStep === "captcha" ? (
-          renderCaptchaForm()
-        ) : state.loginStep === "verify" ? (
-          renderVerifyForm()
-        ) : (
-          renderLoginForm()
-        )}
+    <SmartHomeLayout
+      title={t("navigation.xiaomi")}
+      wsStatus={wsStatus}
+      logs={logs}
+      showLogPanel={showLogPanel}
+      logContainerRef={logContainerRef}
+      onRefresh={handleRefresh}
+      onToggleLogPanel={toggleLogPanel}
+      onClearLogs={clearLogs}
+      isLoading={state.isLoading}
+    >
+      <div className="pt-2">
+        <p className="text-muted-foreground text-sm">
+          {t("xiaomi.description")}
+        </p>
       </div>
-    </div>
+
+      {state.isLoading ? (
+        <div className="text-muted-foreground flex items-center gap-2 py-10 text-sm">
+          <IconLoader2 className="size-4 animate-spin" />
+          {t("labels.loading")}
+        </div>
+      ) : state.isLoggedIn ? (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>{t("xiaomi.status.loggedIn")}</CardTitle>
+            <CardDescription>
+              {t("xiaomi.status.loggedInDesc")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {state.userId && (
+              <div className="text-sm">
+                <span className="text-muted-foreground">
+                  {t("xiaomi.field.userId")}:
+                </span>{" "}
+                <span className="font-medium">{state.userId}</span>
+              </div>
+            )}
+          </CardContent>
+          <CardFooter>
+            <Button variant="outline" onClick={() => void handleLogout()}>
+              {t("xiaomi.action.logout")}
+            </Button>
+          </CardFooter>
+        </Card>
+      ) : state.loginStep === "captcha" ? (
+        renderCaptchaForm()
+      ) : state.loginStep === "verify" ? (
+        renderVerifyForm()
+      ) : (
+        renderLoginForm()
+      )}
+    </SmartHomeLayout>
   )
 }
 

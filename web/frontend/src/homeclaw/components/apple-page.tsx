@@ -3,7 +3,6 @@ import { useStore } from "jotai"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -24,6 +23,8 @@ import {
   pairHomeKitDevice,
   unpairHomeKitDevice,
 } from "@/homeclaw/api/apple"
+import { useSmartHomeWebSocket } from "@/homeclaw/hooks/use-smart-home-websocket"
+import { SmartHomeLayout } from "@/homeclaw/components/smart-home-layout"
 
 export function ApplePage() {
   const { t } = useTranslation("homeclaw")
@@ -34,6 +35,16 @@ export function ApplePage() {
   const [pin, setPin] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Use shared smart home WebSocket hook
+  const {
+    wsStatus,
+    logs,
+    showLogPanel,
+    logContainerRef,
+    clearLogs,
+    toggleLogPanel,
+  } = useSmartHomeWebSocket()
 
   useEffect(() => {
     const unsub = store.sub(appleAtom, () => {
@@ -217,68 +228,78 @@ export function ApplePage() {
     )
   }
 
+  const handleRefresh = async () => {
+    await loadDevices()
+  }
+
   return (
-    <div className="flex h-full flex-col">
-      <PageHeader title={t("navigation.apple")} />
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-6">
-        <div className="pt-2">
-          <p className="text-muted-foreground text-sm">
-            {t("apple.description")}
-          </p>
-        </div>
-
-        {state.isLoading ? (
-          <div className="text-muted-foreground flex items-center gap-2 py-10 text-sm">
-            <IconLoader2 className="size-4 animate-spin" />
-            {t("labels.loading")}
-          </div>
-        ) : (
-          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-            {/* Unpaired Devices - Left Column */}
-            <div>
-              <h3 className="mb-3 text-lg font-semibold">
-                {t("apple.unpaired.title")}
-              </h3>
-              {state.unpairedDevices.length === 0 ? (
-                <div className="text-muted-foreground rounded border border-dashed p-8 text-center text-sm">
-                  {t("apple.unpaired.empty")}
-                </div>
-              ) : (
-                <div className="max-h-[600px] overflow-y-auto pr-2">
-                  {state.unpairedDevices.map((device) =>
-                    renderDeviceCard(device, false),
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Paired Devices - Right Column */}
-            <div>
-              <h3 className="mb-3 text-lg font-semibold">
-                {t("apple.paired.title")}
-              </h3>
-              {state.pairedDevices.length === 0 ? (
-                <div className="text-muted-foreground rounded border border-dashed p-8 text-center text-sm">
-                  {t("apple.paired.empty")}
-                </div>
-              ) : (
-                <div className="max-h-[600px] overflow-y-auto pr-2">
-                  {state.pairedDevices.map((device) =>
-                    renderDeviceCard(device, true),
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {error && !pairingDevice && (
-          <div className="mt-4 text-destructive text-sm">{error}</div>
-        )}
+    <SmartHomeLayout
+      title={t("navigation.apple")}
+      wsStatus={wsStatus}
+      logs={logs}
+      showLogPanel={showLogPanel}
+      logContainerRef={logContainerRef}
+      onRefresh={handleRefresh}
+      onToggleLogPanel={toggleLogPanel}
+      onClearLogs={clearLogs}
+      isLoading={state.isLoading}
+    >
+      <div className="pt-2">
+        <p className="text-muted-foreground text-sm">
+          {t("apple.description")}
+        </p>
       </div>
 
+      {state.isLoading ? (
+        <div className="text-muted-foreground flex items-center gap-2 py-10 text-sm">
+          <IconLoader2 className="size-4 animate-spin" />
+          {t("labels.loading")}
+        </div>
+      ) : (
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+          {/* Unpaired Devices - Left Column */}
+          <div>
+            <h3 className="mb-3 text-lg font-semibold">
+              {t("apple.unpaired.title")}
+            </h3>
+            {state.unpairedDevices.length === 0 ? (
+              <div className="text-muted-foreground rounded border border-dashed p-8 text-center text-sm">
+                {t("apple.unpaired.empty")}
+              </div>
+            ) : (
+              <div className="max-h-[600px] overflow-y-auto pr-2">
+                {state.unpairedDevices.map((device) =>
+                  renderDeviceCard(device, false),
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Paired Devices - Right Column */}
+          <div>
+            <h3 className="mb-3 text-lg font-semibold">
+              {t("apple.paired.title")}
+            </h3>
+            {state.pairedDevices.length === 0 ? (
+              <div className="text-muted-foreground rounded border border-dashed p-8 text-center text-sm">
+                {t("apple.paired.empty")}
+              </div>
+            ) : (
+              <div className="max-h-[600px] overflow-y-auto pr-2">
+                {state.pairedDevices.map((device) =>
+                  renderDeviceCard(device, true),
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {error && !pairingDevice && (
+        <div className="mt-4 text-destructive text-sm">{error}</div>
+      )}
+
       {pairingDevice && renderPairingDialog()}
-    </div>
+    </SmartHomeLayout>
   )
 }

@@ -152,5 +152,23 @@
     "validation": {
       "pinRequired": "请输入 HomeKit 设置代码。"
     }
-  }
+  },
+  "smart_home": {
+    "ws": {
+      "connected": "已连接",
+      "connecting": "连接中",
+      "error": "连接错误",
+      "disconnected": "未连接"
+    },
+    "log": {
+      "title": "通信记录",
+      "empty": "暂无通信记录",
+      "clear": "清空记录",
+      "close": "关闭",
+      "send": "发送",
+      "receive": "接收",
+      "error": "错误"
+    }
+  },
+  "device_control": "设备控制"
 }

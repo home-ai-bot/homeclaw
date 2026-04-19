@@ -152,5 +152,23 @@
     "validation": {
       "pinRequired": "Please enter the HomeKit setup code."
     }
-  }
+  },
+  "smart_home": {
+    "ws": {
+      "connected": "Connected",
+      "connecting": "Connecting",
+      "error": "Connection Error",
+      "disconnected": "Disconnected"
+    },
+    "log": {
+      "title": "Communication Log",
+      "empty": "No communication logs yet",
+      "clear": "Clear Logs",
+      "close": "Close",
+      "send": "Send",
+      "receive": "Receive",
+      "error": "Error"
+    }
+  },
+  "device_control": "Device Control"
 }
