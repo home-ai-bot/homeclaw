@@ -41,10 +41,20 @@ import {
 import { useGateway } from "@/hooks/use-gateway.ts"
 import { useTheme } from "@/hooks/use-theme.ts"
 import { postLauncherDashboardLogout } from "@/api/launcher-auth"
+import { useDeviceControl } from "@/homeclaw/context/device-control-context"
+import { DeviceControlPanel } from "@/homeclaw/components/device-control-panel"
 
 export function AppHeader() {
   const { i18n, t } = useTranslation()
   const { theme, toggleTheme } = useTheme()
+  const {
+    wsStatus,
+    logs,
+    showLogPanel,
+    logContainerRef,
+    toggleLogPanel,
+    clearLogs,
+  } = useDeviceControl()
   const {
     state: gwState,
     loading: gwLoading,
@@ -278,6 +288,16 @@ export function AppHeader() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Device Control WebSocket Panel */}
+        <DeviceControlPanel
+          wsStatus={wsStatus}
+          logs={logs}
+          showLogPanel={showLogPanel}
+          logContainerRef={logContainerRef}
+          onToggleLogPanel={toggleLogPanel}
+          onClearLogs={clearLogs}
+        />
 
         {/* Theme Toggle */}
         <Tooltip delayDuration={700}>

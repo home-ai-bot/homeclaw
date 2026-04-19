@@ -8,6 +8,15 @@ import {
   xiaomiVerify,
   xiaomiLogout,
 } from "@/homeclaw/api/xiaomi"
+import {
+  syncHomesViaWS,
+  setCurrentHomeViaWS,
+  syncDevicesViaWS,
+  loadHomesFromBackend,
+  type HomeInfo,
+  type DeviceInfo,
+} from "@/homeclaw/api/home-sync"
+import { getAllDevicesWithOps } from "@/homeclaw/api/device-ops"
 
 export type LoginStep = "login" | "captcha" | "verify" | "success"
 
@@ -21,6 +30,13 @@ export interface XiaomiStoreState {
   captchaImage: string | null // base64 image
   verifyTarget: string | null // phone or email to verify
   verifyType: "phone" | "email" | null
+  // Home/Family state
+  homes: HomeInfo[]
+  selectedHomeId: string | null
+  isSyncingHomes: boolean
+  // Device state
+  devices: DeviceInfo[]
+  isSyncingDevices: boolean
 }
 
 const DEFAULT_XIAOMI_STATE: XiaomiStoreState = {
@@ -32,6 +48,11 @@ const DEFAULT_XIAOMI_STATE: XiaomiStoreState = {
   captchaImage: null,
   verifyTarget: null,
   verifyType: null,
+  homes: [],
+  selectedHomeId: null,
+  isSyncingHomes: false,
+  devices: [],
+  isSyncingDevices: false,
 }
 
 export const xiaomiAtom = atom<XiaomiStoreState>(DEFAULT_XIAOMI_STATE)
@@ -163,5 +184,63 @@ export function resetLoginStep(): Partial<XiaomiStoreState> {
     verifyTarget: null,
     verifyType: null,
     error: null,
+  }
+}
+
+export async function syncXiaomiHomes(): Promise<{ success: boolean; error?: string }> {
+  const result = await syncHomesViaWS("xiaomi")
+  return result
+}
+
+export async function selectXiaomiHome(
+  homeId: string,
+): Promise<{ success: boolean; error?: string }> {
+  return await setCurrentHomeViaWS("xiaomi", homeId)
+}
+
+export async function syncXiaomiDevices(
+  homeId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const result = await syncDevicesViaWS("xiaomi", homeId)
+  return result
+}
+
+export async function loadXiaomiHomes(): Promise<HomeInfo[]> {
+  const allHomes = await loadHomesFromBackend()
+  console.log('[loadXiaomiHomes] All homes from backend:', allHomes)
+  const xiaomiHomes = allHomes
+    .filter((h) => h.from === "xiaomi")
+    .map((h) => ({
+      id: h.from_id,
+      name: h.name,
+      current: h.current,
+    }))
+  console.log('[loadXiaomiHomes] Filtered xiaomi homes:', xiaomiHomes)
+  return xiaomiHomes
+}
+
+export async function loadXiaomiDevices(): Promise<DeviceInfo[]> {
+  try {
+    const response = await getAllDevicesWithOps()
+    console.log('[loadXiaomiDevices] All devices response:', response)
+    const xiaomiDevices: DeviceInfo[] = []
+    for (const room of response.rooms) {
+      for (const device of room.devices) {
+        if (device.from === "xiaomi") {
+          xiaomiDevices.push({
+            from_id: device.from_id,
+            name: device.name,
+            type: device.type,
+            space_name: room.room_name !== "Unknown" ? room.room_name : undefined,
+            online: true,
+          })
+        }
+      }
+    }
+    console.log('[loadXiaomiDevices] Filtered xiaomi devices:', xiaomiDevices)
+    return xiaomiDevices
+  } catch (error) {
+    console.error("Failed to load xiaomi devices:", error)
+    return []
   }
 }

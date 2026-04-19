@@ -173,18 +173,21 @@ func (t *CLITool) execSyncHomes(client third.Client) *tools.ToolResult {
 		return tools.NewToolResult(fmt.Sprintf("no homes found for brand '%s'", client.Brand()))
 	}
 
+	// Find existing current home for this brand to preserve selection
+	existingCurrent, _ := t.homeStore.GetCurrent(client.Brand())
+
 	dataHomes := make([]data.Home, 0, len(homes))
 	for _, h := range homes {
+		isCurrent := false
+		if existingCurrent != nil && existingCurrent.FromID == h.ID {
+			isCurrent = true
+		}
 		dataHomes = append(dataHomes, data.Home{
 			FromID:  h.ID,
 			From:    client.Brand(),
 			Name:    h.Name,
-			Current: false,
+			Current: isCurrent,
 		})
-	}
-	// Mark the only home as current automatically
-	if len(dataHomes) == 1 {
-		dataHomes[0].Current = true
 	}
 
 	if err := t.homeStore.Save(dataHomes...); err != nil {

@@ -1,4 +1,4 @@
-import { IconLoader2 } from "@tabler/icons-react"
+import { IconLoader2, IconCircleCheck } from "@tabler/icons-react"
 import { useStore } from "jotai"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -22,13 +22,22 @@ import {
   xiaomiAuthVerify,
   xiaomiLogoutAction,
   resetLoginStep,
+  syncXiaomiHomes,
+  selectXiaomiHome,
+  syncXiaomiDevices,
+  loadXiaomiHomes,
+  loadXiaomiDevices,
 } from "@/homeclaw/store/xiaomi"
-import { useSmartHomeWebSocket } from "@/homeclaw/hooks/use-smart-home-websocket"
+import { useDeviceControl } from "@/homeclaw/context/device-control-context"
 import { SmartHomeLayout } from "@/homeclaw/components/smart-home-layout"
+import { HomeSection } from "@/homeclaw/components/home-section"
+import { DeviceListSection } from "@/homeclaw/components/device-list-section"
+import { VideoSettingsSection } from "@/homeclaw/components/video-settings-section"
 
 export function XiaomiPage() {
   const { t } = useTranslation("homeclaw")
   const store = useStore()
+  const [initialized, setInitialized] = useState(false)
 
   const [state, setState] = useState(store.get(xiaomiAtom))
   const [username, setUsername] = useState("")
@@ -37,15 +46,9 @@ export function XiaomiPage() {
   const [verify, setVerify] = useState("")
   const [isLoggingIn, setIsLoggingIn] = useState(false)
 
-  // Use shared smart home WebSocket hook
   const {
     wsStatus,
-    logs,
-    showLogPanel,
-    logContainerRef,
-    clearLogs,
-    toggleLogPanel,
-  } = useSmartHomeWebSocket()
+  } = useDeviceControl()
 
   useEffect(() => {
     const unsub = store.sub(xiaomiAtom, () => {
@@ -55,15 +58,52 @@ export function XiaomiPage() {
   }, [store])
 
   useEffect(() => {
-    const init = async () => {
+    // Wait for WebSocket to be connected before loading data
+    // Only run initialization once
+    if (initialized || wsStatus !== "connected") {
+      if (wsStatus !== "connected") {
+        console.log('[XiaomiPage] Waiting for WebSocket connection, current status:', wsStatus)
+      }
+      return
+    }
+
+    const initialize = async () => {
+      console.log('[XiaomiPage] WebSocket connected, starting initialization')
       const status = await fetchXiaomiStatus()
+      console.log('[XiaomiPage] Initial status:', status)
       store.set(xiaomiAtom, (prev) => ({
         ...prev,
         ...status,
       }))
+
+      // Always load existing homes from backend
+      const homes = await loadXiaomiHomes()
+      console.log('[XiaomiPage] Loaded homes:', homes)
+      // Only select home if one is marked as current
+      const currentHome = homes.find((h) => h.current) || null
+      console.log('[XiaomiPage] Selected home:', currentHome)
+      store.set(xiaomiAtom, (prev) => ({
+        ...prev,
+        homes,
+        selectedHomeId: currentHome?.id || null,
+      }))
+
+      // Load devices if logged in and have selected home
+      if (status.isLoggedIn && currentHome?.id) {
+        console.log('[XiaomiPage] Loading devices for home:', currentHome.id)
+        const devices = await loadXiaomiDevices()
+        console.log('[XiaomiPage] Loaded devices:', devices)
+        store.set(xiaomiAtom, (prev) => ({
+          ...prev,
+          devices,
+        }))
+      }
+
+      setInitialized(true)
     }
-    void init()
-  }, [store])
+
+    void initialize()
+  }, [store, wsStatus, initialized])
 
   const handleLogin = async () => {
     if (!username || !password) {
@@ -176,6 +216,9 @@ export function XiaomiPage() {
       ...prev,
       isLoggedIn: false,
       userId: null,
+      homes: [],
+      selectedHomeId: null,
+      devices: [],
     }))
   }
 
@@ -188,11 +231,45 @@ export function XiaomiPage() {
     setVerify("")
   }
 
-  const handleRefresh = async () => {
-    const status = await fetchXiaomiStatus()
+  const handleSyncHomes = async () => {
+    store.set(xiaomiAtom, (prev) => ({ ...prev, isSyncingHomes: true, error: null }))
+    const result = await syncXiaomiHomes()
+    // Reload homes from backend after sync
+    const homes = await loadXiaomiHomes()
+    // Preserve current selection: find the previously selected home in new list, or keep existing current
+    const prevSelectedId = store.get(xiaomiAtom).selectedHomeId
+    const currentHome = homes.find((h) => h.id === prevSelectedId) || homes.find((h) => h.current) || null
     store.set(xiaomiAtom, (prev) => ({
       ...prev,
-      ...status,
+      isSyncingHomes: false,
+      homes,
+      selectedHomeId: currentHome?.id || null,
+      error: result.error || null,
+    }))
+  }
+
+  const handleSelectHome = async (homeId: string) => {
+    store.set(xiaomiAtom, (prev) => ({ ...prev, selectedHomeId: homeId }))
+    const result = await selectXiaomiHome(homeId)
+    if (result.error) {
+      store.set(xiaomiAtom, (prev) => ({ ...prev, error: result.error || null }))
+      return
+    }
+    // Load devices for the newly selected home
+    const devices = await loadXiaomiDevices()
+    store.set(xiaomiAtom, (prev) => ({ ...prev, devices }))
+  }
+
+  const handleSyncDevices = async () => {
+    if (!state.selectedHomeId) return
+    store.set(xiaomiAtom, (prev) => ({ ...prev, isSyncingDevices: true, error: null }))
+    const result = await syncXiaomiDevices(state.selectedHomeId)
+    const devices = await loadXiaomiDevices()
+    store.set(xiaomiAtom, (prev) => ({
+      ...prev,
+      isSyncingDevices: false,
+      devices,
+      error: result.error || null,
     }))
   }
 
@@ -336,61 +413,70 @@ export function XiaomiPage() {
     </Card>
   )
 
+  const renderAuthSection = () => {
+    if (state.isLoggedIn) {
+      return (
+        <Card className="mt-4">
+          <CardContent className="flex items-center justify-between py-3">
+            <div className="flex items-center gap-2">
+              <IconCircleCheck className="size-4 text-green-500" />
+              {state.userId && (
+                <span className="text-sm">
+                  <span className="text-muted-foreground">
+                    {t("xiaomi.field.userId")}:
+                  </span>{" "}
+                  <span className="font-medium">{state.userId}</span>
+                </span>
+              )}
+            </div>
+            <Button variant="outline" size="sm" className="h-8" onClick={() => void handleLogout()}>
+              {t("xiaomi.action.logout")}
+            </Button>
+          </CardContent>
+        </Card>
+      )
+    }
+
+    if (state.loginStep === "captcha") {
+      return renderCaptchaForm()
+    }
+    if (state.loginStep === "verify") {
+      return renderVerifyForm()
+    }
+    return renderLoginForm()
+  }
+
   return (
     <SmartHomeLayout
       title={t("navigation.xiaomi")}
-      wsStatus={wsStatus}
-      logs={logs}
-      showLogPanel={showLogPanel}
-      logContainerRef={logContainerRef}
-      onRefresh={handleRefresh}
-      onToggleLogPanel={toggleLogPanel}
-      onClearLogs={clearLogs}
       isLoading={state.isLoading}
     >
-      <div className="pt-2">
-        <p className="text-muted-foreground text-sm">
-          {t("xiaomi.description")}
-        </p>
-      </div>
+      {/* Section 1: Authorization */}
+      {renderAuthSection()}
 
-      {state.isLoading ? (
-        <div className="text-muted-foreground flex items-center gap-2 py-10 text-sm">
-          <IconLoader2 className="size-4 animate-spin" />
-          {t("labels.loading")}
-        </div>
-      ) : state.isLoggedIn ? (
-        <Card className="mt-4">
-          <CardHeader>
-            <CardTitle>{t("xiaomi.status.loggedIn")}</CardTitle>
-            <CardDescription>
-              {t("xiaomi.status.loggedInDesc")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {state.userId && (
-              <div className="text-sm">
-                <span className="text-muted-foreground">
-                  {t("xiaomi.field.userId")}:
-                </span>{" "}
-                <span className="font-medium">{state.userId}</span>
-              </div>
-            )}
-          </CardContent>
-          <CardFooter>
-            <Button variant="outline" onClick={() => void handleLogout()}>
-              {t("xiaomi.action.logout")}
-            </Button>
-          </CardFooter>
-        </Card>
-      ) : state.loginStep === "captcha" ? (
-        renderCaptchaForm()
-      ) : state.loginStep === "verify" ? (
-        renderVerifyForm()
-      ) : (
-        renderLoginForm()
+      {/* Section 2: Family Information (only show if logged in) */}
+      {state.isLoggedIn && (
+        <HomeSection
+          homes={state.homes}
+          selectedHomeId={state.selectedHomeId}
+          isSyncing={state.isSyncingHomes}
+          onSync={() => void handleSyncHomes()}
+          onSelect={(id) => void handleSelectHome(id)}
+        />
       )}
+
+      {/* Section 3: Device List (always show when logged in) */}
+      {state.isLoggedIn && (
+        <DeviceListSection
+          devices={state.devices}
+          isSyncing={state.isSyncingDevices}
+          onSync={() => void handleSyncDevices()}
+          disabled={!state.selectedHomeId}
+        />
+      )}
+
+      {/* Section 4: Video Settings (placeholder) */}
+      <VideoSettingsSection />
     </SmartHomeLayout>
   )
 }
-

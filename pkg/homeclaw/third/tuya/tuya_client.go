@@ -171,23 +171,41 @@ func (tc *TuyaClient) GetDevices(homeID string) ([]*data.Device, error) {
 	}
 	key := cacheKeyDevices(homeID)
 
+	// Fetch rooms to build room ID -> room name mapping
+	rooms, err := tc.GetRooms(homeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rooms: %w", err)
+	}
+	roomMap := make(map[string]string)
+	for _, room := range rooms {
+		if room.From != nil {
+			if roomID, ok := room.From[BrandTuya]; ok {
+				roomMap[roomID] = room.Name
+			}
+		}
+	}
+
 	var devices []*DeviceInfo
-	var err error
-
 	devices, err = tc.openAPI.GetHomeDevices(homeID)
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to get devices: %w", err)
 	}
 
 	var result []*data.Device
 	for _, device := range devices {
+		spaceName := ""
+		if device.RoomID != "" {
+			if name, ok := roomMap[device.RoomID]; ok {
+				spaceName = name
+			}
+		}
 		result = append(result, &data.Device{
-			FromID: device.DeviceID,
-			From:   BrandTuya,
-			Name:   device.Name,
-			Type:   device.Category,
-			URN:    device.ProductID,
+			FromID:    device.DeviceID,
+			From:      BrandTuya,
+			Name:      device.Name,
+			Type:      device.Category,
+			URN:       device.ProductID,
+			SpaceName: spaceName,
 		})
 	}
 

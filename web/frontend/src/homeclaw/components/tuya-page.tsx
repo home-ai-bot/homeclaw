@@ -1,4 +1,4 @@
-import { IconLoader2 } from "@tabler/icons-react"
+import { IconLoader2, IconCircleCheck } from "@tabler/icons-react"
 import { useStore } from "jotai"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -7,13 +7,8 @@ import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -30,15 +25,25 @@ import {
   tuyaDeleteCredentials,
   tuyaSaveToken,
   tuyaDeleteToken,
+  syncTuyaHomes,
+  selectTuyaHome,
+  syncTuyaDevices,
+  loadTuyaHomes,
+  loadTuyaDevices,
 } from "@/homeclaw/store/tuya"
-import { useSmartHomeWebSocket } from "@/homeclaw/hooks/use-smart-home-websocket"
 import { SmartHomeLayout } from "@/homeclaw/components/smart-home-layout"
+import { HomeSection } from "@/homeclaw/components/home-section"
+import { DeviceListSection } from "@/homeclaw/components/device-list-section"
+import { VideoSettingsSection } from "@/homeclaw/components/video-settings-section"
+import { useDeviceControl } from "@/homeclaw/context/device-control-context"
 
 export function TuyaPage() {
   const { t } = useTranslation("homeclaw")
   const store = useStore()
+  const { wsStatus } = useDeviceControl()
 
   const [state, setState] = useState(store.get(tuyaAtom))
+  const [initialized, setInitialized] = useState(false)
   // Token form state
   const [token, setToken] = useState("")
   const [isSavingToken, setIsSavingToken] = useState(false)
@@ -50,16 +55,6 @@ export function TuyaPage() {
   const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
 
-  // Use shared smart home WebSocket hook
-  const {
-    wsStatus,
-    logs,
-    showLogPanel,
-    logContainerRef,
-    clearLogs,
-    toggleLogPanel,
-  } = useSmartHomeWebSocket()
-
   useEffect(() => {
     const unsub = store.sub(tuyaAtom, () => {
       setState(store.get(tuyaAtom))
@@ -68,7 +63,8 @@ export function TuyaPage() {
   }, [store])
 
   useEffect(() => {
-    const init = async () => {
+    // Load HTTP-based data immediately (regions, status)
+    const loadHttpData = async () => {
       const regions = await fetchTuyaRegions()
       const status = await fetchTuyaStatus()
       store.set(tuyaAtom, (prev) => ({
@@ -77,8 +73,39 @@ export function TuyaPage() {
         ...status,
       }))
     }
-    void init()
+    void loadHttpData()
   }, [store])
+
+  // Load WS-based data (homes, devices) only after connection is ready
+  useEffect(() => {
+    if (initialized || wsStatus !== "connected") {
+      return
+    }
+
+    const loadWsData = async () => {
+      // Load existing homes from backend via WebSocket
+      const homes = await loadTuyaHomes()
+      // Only select home if one is marked as current
+      const currentHome = homes.find((h) => h.current) || null
+      store.set(tuyaAtom, (prev) => ({
+        ...prev,
+        homes,
+        selectedHomeId: currentHome?.id || null,
+      }))
+
+      // Load devices if logged in
+      const currentState = store.get(tuyaAtom)
+      if (currentState.isLoggedIn) {
+        const devices = await loadTuyaDevices()
+        store.set(tuyaAtom, (prev) => ({
+          ...prev,
+          devices,
+        }))
+      }
+      setInitialized(true)
+    }
+    void loadWsData()
+  }, [store, wsStatus, initialized])
 
   const handleSaveToken = async () => {
     if (!token.trim()) {
@@ -144,6 +171,9 @@ export function TuyaPage() {
     store.set(tuyaAtom, (prev) => ({
       ...prev,
       ...status,
+      homes: [],
+      selectedHomeId: null,
+      devices: [],
     }))
   }
 
@@ -156,11 +186,44 @@ export function TuyaPage() {
     }))
   }
 
-  const handleRefresh = async () => {
-    const status = await fetchTuyaStatus()
+  const handleSyncHomes = async () => {
+    store.set(tuyaAtom, (prev) => ({ ...prev, isSyncingHomes: true, error: null }))
+    const result = await syncTuyaHomes()
+    const homes = await loadTuyaHomes()
+    // Preserve current selection: find the previously selected home in new list, or keep existing current
+    const prevSelectedId = store.get(tuyaAtom).selectedHomeId
+    const currentHome = homes.find((h) => h.id === prevSelectedId) || homes.find((h) => h.current) || null
     store.set(tuyaAtom, (prev) => ({
       ...prev,
-      ...status,
+      isSyncingHomes: false,
+      homes,
+      selectedHomeId: currentHome?.id || null,
+      error: result.error || null,
+    }))
+  }
+
+  const handleSelectHome = async (homeId: string) => {
+    store.set(tuyaAtom, (prev) => ({ ...prev, selectedHomeId: homeId }))
+    const result = await selectTuyaHome(homeId)
+    if (result.error) {
+      store.set(tuyaAtom, (prev) => ({ ...prev, error: result.error || null }))
+      return
+    }
+    // Load devices for the newly selected home
+    const devices = await loadTuyaDevices()
+    store.set(tuyaAtom, (prev) => ({ ...prev, devices }))
+  }
+
+  const handleSyncDevices = async () => {
+    if (!state.selectedHomeId) return
+    store.set(tuyaAtom, (prev) => ({ ...prev, isSyncingDevices: true, error: null }))
+    const result = await syncTuyaDevices(state.selectedHomeId)
+    const devices = await loadTuyaDevices()
+    store.set(tuyaAtom, (prev) => ({
+      ...prev,
+      isSyncingDevices: false,
+      devices,
+      error: result.error || null,
     }))
   }
 
@@ -172,174 +235,154 @@ export function TuyaPage() {
   return (
     <SmartHomeLayout
       title={t("navigation.tuya")}
-      wsStatus={wsStatus}
-      logs={logs}
-      showLogPanel={showLogPanel}
-      logContainerRef={logContainerRef}
-      onRefresh={handleRefresh}
-      onToggleLogPanel={toggleLogPanel}
-      onClearLogs={clearLogs}
       isLoading={state.isLoading}
     >
-      <div className="pt-2">
-        <p className="text-muted-foreground text-sm">
-          {t("tuya.description")}
-        </p>
-      </div>
-
+      {/* Section 1: Authorization */}
       {state.isLoading ? (
         <div className="text-muted-foreground flex items-center gap-2 py-10 text-sm">
           <IconLoader2 className="size-4 animate-spin" />
           {t("labels.loading")}
         </div>
       ) : (
-        <>
-          {/* Token Section */}
-          <Card className="mt-4">
-            <CardHeader>
-              <CardTitle>{t("tuya.token.title")}</CardTitle>
-              <CardDescription>{t("tuya.token.description")}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {isTokenConnected ? (
-                <div className="space-y-2">
-                  <div className="text-sm">
-                    <span className="text-muted-foreground">
-                      {t("tuya.field.authType")}:
-                    </span>{" "}
-                    <span className="font-medium">{t("tuya.authType.token")}</span>
+        <Card className="mt-4">
+          <CardContent className="py-3">
+            <div className="grid grid-cols-2 gap-4">
+              {/* Token Auth Section */}
+              <div className="space-y-2">
+                <div className="text-sm font-medium">{t("tuya.token.title")}</div>
+                {isTokenConnected ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <IconCircleCheck className="size-4 text-green-500" />
+                      <span className="text-sm">{t("tuya.authType.token")}</span>
+                    </div>
+                    <Button variant="destructive" size="sm" className="h-7" onClick={() => void handleDeleteToken()}>
+                      {t("tuya.action.deleteToken")}
+                    </Button>
                   </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label htmlFor="token">{t("tuya.field.token")}</Label>
-                  <Input
-                    id="token"
-                    type="password"
-                    placeholder={t("tuya.field.tokenPlaceholder")}
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void handleSaveToken()
-                    }}
-                  />
-                </div>
-              )}
-              {tokenError && (
-                <div className="text-destructive text-sm">{tokenError}</div>
-              )}
-            </CardContent>
-            <CardFooter>
-              {isTokenConnected ? (
-                <Button variant="destructive" onClick={() => void handleDeleteToken()}>
-                  {t("tuya.action.deleteToken")}
-                </Button>
-              ) : (
-                <Button onClick={() => void handleSaveToken()} disabled={isSavingToken}>
-                  {isSavingToken ? (
-                    <>
-                      <IconLoader2 className="mr-2 size-4 animate-spin" />
-                      {t("tuya.token.saving")}
-                    </>
-                  ) : (
-                    t("tuya.token.save")
-                  )}
-                </Button>
-              )}
-            </CardFooter>
-          </Card>
-
-          {/* Login Section for RTSP */}
-          <Card className="mt-4">
-            <CardHeader>
-              <CardTitle>{t("tuya.login.title")}</CardTitle>
-              <CardDescription>{t("tuya.login.descriptionRtsp")}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-                {t("tuya.login.overseasNote")}
-              </div>
-              {isCredentialsConnected ? (
-                <div className="space-y-2">
-                  <div className="text-sm">
-                    <span className="text-muted-foreground">
-                      {t("tuya.field.region")}:
-                    </span>{" "}
-                    <span className="font-medium">{state.region}</span>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="region">{t("tuya.field.region")}</Label>
-                    <Select value={region} onValueChange={setRegion}>
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("tuya.field.selectRegion")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {state.regions.map((r) => (
-                          <SelectItem key={r.name} value={r.name}>
-                            {r.description} ({r.name})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">{t("tuya.field.email")}</Label>
+                ) : (
+                  <div className="flex gap-2">
                     <Input
-                      id="email"
-                      type="email"
-                      placeholder={t("tuya.field.emailPlaceholder")}
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="password">{t("tuya.field.password")}</Label>
-                    <Input
-                      id="password"
                       type="password"
-                      placeholder={t("tuya.field.passwordPlaceholder")}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder={t("tuya.field.tokenPlaceholder")}
+                      value={token}
+                      onChange={(e) => setToken(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") void handleLogin()
+                        if (e.key === "Enter") void handleSaveToken()
                       }}
+                      className="h-8"
                     />
+                    <Button size="sm" className="h-8" onClick={() => void handleSaveToken()} disabled={isSavingToken}>
+                      {isSavingToken ? (
+                        <IconLoader2 className="size-4 animate-spin" />
+                      ) : (
+                        t("tuya.token.save")
+                      )}
+                    </Button>
                   </div>
-                </>
-              )}
-              {loginError && (
-                <div className="text-destructive text-sm">{loginError}</div>
-              )}
-            </CardContent>
-            <CardFooter className="flex gap-2">
-              {isCredentialsConnected ? (
-                <>
-                  <Button variant="outline" onClick={() => void handleLogout()}>
-                    {t("tuya.action.logout")}
-                  </Button>
-                  <Button variant="destructive" onClick={() => void handleDeleteCredentials()}>
-                    {t("tuya.action.deleteCredentials")}
-                  </Button>
-                </>
-              ) : (
-                <Button onClick={() => void handleLogin()} disabled={isLoggingIn}>
-                  {isLoggingIn ? (
-                    <>
-                      <IconLoader2 className="mr-2 size-4 animate-spin" />
-                      {t("tuya.login.loggingIn")}
-                    </>
-                  ) : (
-                    t("tuya.login.submit")
-                  )}
-                </Button>
-              )}
-            </CardFooter>
-          </Card>
-        </>
+                )}
+                {tokenError && (
+                  <div className="text-destructive text-xs">{tokenError}</div>
+                )}
+              </div>
+
+              {/* Credentials Auth Section */}
+              <div className="space-y-2">
+                <div className="text-sm font-medium">{t("tuya.login.title")}</div>
+                {isCredentialsConnected ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <IconCircleCheck className="size-4 text-green-500" />
+                      <span className="text-sm">{state.region}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" className="h-7" onClick={() => void handleLogout()}>
+                        {t("tuya.action.logout")}
+                      </Button>
+                      <Button variant="destructive" size="sm" className="h-7" onClick={() => void handleDeleteCredentials()}>
+                        {t("tuya.action.deleteCredentials")}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                      {t("tuya.login.overseasNote")}
+                    </div>
+                    <div className="flex gap-2">
+                      <Select value={region} onValueChange={setRegion}>
+                        <SelectTrigger className="h-8">
+                          <SelectValue placeholder={t("tuya.field.selectRegion")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {state.regions.map((r) => (
+                            <SelectItem key={r.name} value={r.name}>
+                              {r.description} ({r.name})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        type="email"
+                        placeholder={t("tuya.field.emailPlaceholder")}
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        className="h-8"
+                      />
+                      <Input
+                        type="password"
+                        placeholder={t("tuya.field.passwordPlaceholder")}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void handleLogin()
+                        }}
+                        className="h-8"
+                      />
+                    </div>
+                    <Button size="sm" className="h-8" onClick={() => void handleLogin()} disabled={isLoggingIn}>
+                      {isLoggingIn ? (
+                        <IconLoader2 className="size-4 animate-spin" />
+                      ) : (
+                        t("tuya.login.submit")
+                      )}
+                    </Button>
+                    {loginError && (
+                      <div className="text-destructive text-xs">{loginError}</div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
+
+      {/* Section 2: Family Information (only show if logged in) */}
+      {state.isLoggedIn && (
+        <HomeSection
+          homes={state.homes}
+          selectedHomeId={state.selectedHomeId}
+          isSyncing={state.isSyncingHomes}
+          onSync={() => void handleSyncHomes()}
+          onSelect={(id) => void handleSelectHome(id)}
+        />
+      )}
+
+      {/* Section 3: Device List (always show when logged in) */}
+      {state.isLoggedIn && (
+        <DeviceListSection
+          devices={state.devices}
+          isSyncing={state.isSyncingDevices}
+          onSync={() => void handleSyncDevices()}
+          disabled={!state.selectedHomeId}
+        />
+      )}
+
+      {/* Section 4: Video Settings (placeholder) */}
+      <VideoSettingsSection />
     </SmartHomeLayout>
   )
 }

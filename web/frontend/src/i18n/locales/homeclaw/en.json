@@ -170,5 +170,32 @@
       "error": "Error"
     }
   },
-  "device_control": "Device Control"
+  "device_control": "Device Control",
+  "home_section": {
+    "title": "Family Information",
+    "syncHomes": "Sync Homes",
+    "syncingHomes": "Syncing homes...",
+    "noHomes": "No families found. Please sync to fetch your homes.",
+    "selectHome": "Select this home",
+    "currentHome": "Current home",
+    "confirmHomeChange": "Changing the selected home will re-sync devices. Continue?"
+  },
+  "device_section": {
+    "title": "Device List",
+    "syncDevices": "Sync Devices",
+    "syncingDevices": "Syncing devices...",
+    "noDevices": "No devices found. Please sync to fetch your devices.",
+    "selectHomeFirst": "Please select a home first to view devices.",
+    "online": "Online",
+    "offline": "Offline",
+    "room": "Room"
+  },
+  "video_section": {
+    "title": "Local Video Settings",
+    "comingSoon": "Coming soon..."
+  },
+  "buttons": {
+    "confirm": "Confirm",
+    "cancel": "Cancel"
+  }
 }

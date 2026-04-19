@@ -11,6 +11,15 @@ import {
   saveTuyaToken,
   deleteTuyaToken,
 } from "@/homeclaw/api/tuya"
+import {
+  syncHomesViaWS,
+  setCurrentHomeViaWS,
+  syncDevicesViaWS,
+  loadHomesFromBackend,
+  type HomeInfo,
+  type DeviceInfo,
+} from "@/homeclaw/api/home-sync"
+import { getAllDevicesWithOps } from "@/homeclaw/api/device-ops"
 
 export interface TuyaStoreState {
   isLoggedIn: boolean
@@ -20,6 +29,13 @@ export interface TuyaStoreState {
   user: TuyaUser | null
   region: string | null
   error: string | null
+  // Home/Family state
+  homes: HomeInfo[]
+  selectedHomeId: string | null
+  isSyncingHomes: boolean
+  // Device state
+  devices: DeviceInfo[]
+  isSyncingDevices: boolean
 }
 
 const DEFAULT_TUYA_STATE: TuyaStoreState = {
@@ -30,6 +46,11 @@ const DEFAULT_TUYA_STATE: TuyaStoreState = {
   user: null,
   region: null,
   error: null,
+  homes: [],
+  selectedHomeId: null,
+  isSyncingHomes: false,
+  devices: [],
+  isSyncingDevices: false,
 }
 
 export const tuyaAtom = atom<TuyaStoreState>(DEFAULT_TUYA_STATE)
@@ -136,5 +157,58 @@ export async function tuyaDeleteToken(): Promise<{ success: boolean; error?: str
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
     }
+  }
+}
+
+export async function syncTuyaHomes(): Promise<{ success: boolean; error?: string }> {
+  const result = await syncHomesViaWS("tuya")
+  return result
+}
+
+export async function selectTuyaHome(
+  homeId: string,
+): Promise<{ success: boolean; error?: string }> {
+  return await setCurrentHomeViaWS("tuya", homeId)
+}
+
+export async function syncTuyaDevices(
+  homeId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const result = await syncDevicesViaWS("tuya", homeId)
+  return result
+}
+
+export async function loadTuyaHomes(): Promise<HomeInfo[]> {
+  const allHomes = await loadHomesFromBackend()
+  return allHomes
+    .filter((h) => h.from === "tuya")
+    .map((h) => ({
+      id: h.from_id,
+      name: h.name,
+      current: h.current,
+    }))
+}
+
+export async function loadTuyaDevices(): Promise<DeviceInfo[]> {
+  try {
+    const response = await getAllDevicesWithOps()
+    const tuyaDevices: DeviceInfo[] = []
+    for (const room of response.rooms) {
+      for (const device of room.devices) {
+        if (device.from === "tuya") {
+          tuyaDevices.push({
+            from_id: device.from_id,
+            name: device.name,
+            type: device.type,
+            space_name: room.room_name !== "Unknown" ? room.room_name : undefined,
+            online: true,
+          })
+        }
+      }
+    }
+    return tuyaDevices
+  } catch (error) {
+    console.error("Failed to load tuya devices:", error)
+    return []
   }
 }

@@ -26,7 +26,7 @@ import {
 } from "@/homeclaw/store/device-ops"
 import { callTool } from "@/homeclaw/api/device-command-executor"
 import { markDeviceAsNoAction } from "@/homeclaw/api/device-ops"
-import { useSmartHomeWebSocket } from "@/homeclaw/hooks/use-smart-home-websocket"
+import { useDeviceControl } from "@/homeclaw/context/device-control-context"
 import { SmartHomeLayout } from "@/homeclaw/components/smart-home-layout"
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -55,14 +55,8 @@ export function DeviceControlPage() {
 
   // Use shared smart home WebSocket hook
   const {
-    wsStatus,
-    logs: wsLogs,
-    showLogPanel,
-    logContainerRef,
     sendWebSocketMessage,
-    clearLogs: clearWsLogs,
-    toggleLogPanel,
-  } = useSmartHomeWebSocket()
+  } = useDeviceControl()
 
   // Local log management for device operations
   const appendLog = (entry: OperationLog) => {
@@ -81,7 +75,6 @@ export function DeviceControlPage() {
 
   const clearLogs = () => {
     store.set(deviceOpsAtom, (prev) => ({ ...prev, logs: [] }))
-    clearWsLogs()
   }
 
   // ── Subscribe to store ───────────────────────────────────────────────────
@@ -249,13 +242,6 @@ export function DeviceControlPage() {
   return (
     <SmartHomeLayout
       title={t("device_control")}
-      wsStatus={wsStatus}
-      logs={wsLogs}
-      showLogPanel={showLogPanel}
-      logContainerRef={logContainerRef}
-      onRefresh={handleRefresh}
-      onToggleLogPanel={toggleLogPanel}
-      onClearLogs={clearLogs}
       isLoading={state.isLoading}
     >
       <div className="pt-2 space-y-6">

@@ -521,6 +521,11 @@ func (f *Factory) GetCommonTool() (*homeclawtool.CommonTool, error) {
 		return nil, fmt.Errorf("failed to get device store for CommonTool: %w", err)
 	}
 
-	f.commonTool = homeclawtool.NewCommonTool(deviceStore)
+	homeStore, err := f.GetHomeStore()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home store for CommonTool: %w", err)
+	}
+
+	f.commonTool = homeclawtool.NewCommonTool(deviceStore, homeStore)
 	return f.commonTool, nil
 }

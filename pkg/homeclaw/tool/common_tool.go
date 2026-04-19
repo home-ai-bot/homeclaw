@@ -19,19 +19,22 @@ import (
 // commandJson schema:
 //
 //	{
-//	  "method": "listDevices" | …,
+//	  "method": "listDevices" | "listHomes" | …,
 //	  "params": { … }   // optional
 //	}
 //
 // listDevices – list all registered smart devices with full details.
+// listHomes – list all registered smart homes with full details.
 type CommonTool struct {
 	deviceStore data.DeviceStore
+	homeStore   data.HomeStore
 }
 
 // NewCommonTool creates a CommonTool with the given data stores.
-func NewCommonTool(deviceStore data.DeviceStore) *CommonTool {
+func NewCommonTool(deviceStore data.DeviceStore, homeStore data.HomeStore) *CommonTool {
 	return &CommonTool{
 		deviceStore: deviceStore,
+		homeStore:   homeStore,
 	}
 }
 
@@ -41,7 +44,8 @@ func (t *CommonTool) Description() string {
 	return "Common utility tool for getting information.\n" +
 		"Available methods:\n" +
 		"- listDevices: lists all registered smart devices with full details (no params required)\n" +
-		"Usage: commandJson = {\"method\": \"listDevices\"}"
+		"- listHomes: lists all registered smart homes with full details (no params required)\n" +
+		"Usage: commandJson = {\"method\": \"listDevices\"} or {\"method\": \"listHomes\"}"
 }
 
 func (t *CommonTool) Parameters() map[string]any {
@@ -81,6 +85,8 @@ func (t *CommonTool) Execute(_ context.Context, args map[string]any) *tools.Tool
 	switch req.Method {
 	case "listDevices":
 		return t.execListDevices()
+	case "listHomes":
+		return t.execListHomes()
 	default:
 		return &tools.ToolResult{
 			ForLLM:  fmt.Sprintf("unknown method '%s'; tool must invoke by skills, please use the right skill!", req.Method),
@@ -96,5 +102,15 @@ func (t *CommonTool) execListDevices() *tools.ToolResult {
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to list devices: %v", err), IsError: true}
 	}
 	b, _ := json.Marshal(devices)
+	return tools.NewToolResult(string(b))
+}
+
+// execListHomes lists all registered smart homes with full details.
+func (t *CommonTool) execListHomes() *tools.ToolResult {
+	homes, err := t.homeStore.GetAll()
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to list homes: %v", err), IsError: true}
+	}
+	b, _ := json.Marshal(homes)
 	return tools.NewToolResult(string(b))
 }

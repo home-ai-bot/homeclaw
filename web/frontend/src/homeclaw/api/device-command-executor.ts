@@ -162,6 +162,31 @@ export async function callTool(
 }
 
 /**
+ * Get the tool call message for logging purposes.
+ * This allows the caller to log the request before sending.
+ */
+export function createToolCallMessage(params: ToolCallParams): unknown {
+  const { toolName, method, brand, params: methodParams } = params
+  const messageId = `tool-${toolName}-${method}-${Date.now()}`
+
+  const commandJson = JSON.stringify({
+    brand,
+    method,
+    params: methodParams || {},
+  })
+
+  return {
+    type: "message.send",
+    id: messageId,
+    session_id: "device-control",
+    payload: {
+      content: `tool:${toolName} ${commandJson}`,
+      media: [],
+    },
+  }
+}
+
+/**
  * Execute a device operation (backward compatible wrapper).
  * @deprecated Use callTool() instead for more flexibility
  */

@@ -23,7 +23,6 @@ import {
   pairHomeKitDevice,
   unpairHomeKitDevice,
 } from "@/homeclaw/api/apple"
-import { useSmartHomeWebSocket } from "@/homeclaw/hooks/use-smart-home-websocket"
 import { SmartHomeLayout } from "@/homeclaw/components/smart-home-layout"
 
 export function ApplePage() {
@@ -35,16 +34,6 @@ export function ApplePage() {
   const [pin, setPin] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  // Use shared smart home WebSocket hook
-  const {
-    wsStatus,
-    logs,
-    showLogPanel,
-    logContainerRef,
-    clearLogs,
-    toggleLogPanel,
-  } = useSmartHomeWebSocket()
 
   useEffect(() => {
     const unsub = store.sub(appleAtom, () => {
@@ -228,20 +217,9 @@ export function ApplePage() {
     )
   }
 
-  const handleRefresh = async () => {
-    await loadDevices()
-  }
-
   return (
     <SmartHomeLayout
       title={t("navigation.apple")}
-      wsStatus={wsStatus}
-      logs={logs}
-      showLogPanel={showLogPanel}
-      logContainerRef={logContainerRef}
-      onRefresh={handleRefresh}
-      onToggleLogPanel={toggleLogPanel}
-      onClearLogs={clearLogs}
       isLoading={state.isLoading}
     >
       <div className="pt-2">

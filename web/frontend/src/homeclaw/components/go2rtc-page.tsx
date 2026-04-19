@@ -17,7 +17,6 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { useGo2RTC } from "@/homeclaw/hooks/use-go2rtc"
-import { useSmartHomeWebSocket } from "@/homeclaw/hooks/use-smart-home-websocket"
 import { SmartHomeLayout } from "@/homeclaw/components/smart-home-layout"
 
 const STATUS_COLOR: Record<string, string> = {
@@ -34,36 +33,14 @@ export function Go2RTCPage() {
   const { t } = useTranslation("homeclaw")
   const { state, loading, canStart, start, stop, restart } = useGo2RTC()
 
-  // Use shared smart home WebSocket hook
-  const {
-    wsStatus,
-    logs,
-    showLogPanel,
-    logContainerRef,
-    clearLogs,
-    toggleLogPanel,
-  } = useSmartHomeWebSocket()
-
   const isTransient =
     state === "starting" || state === "restarting" || state === "stopping"
   const isRunning = state === "running"
   const isBusy = loading || isTransient
 
-  const handleRefresh = () => {
-    // Go2RTC doesn't have a refresh action, so this is a no-op
-    // But we include it for consistency with the SmartHomeLayout interface
-  }
-
   return (
     <SmartHomeLayout
       title={t("go2rtc.title")}
-      wsStatus={wsStatus}
-      logs={logs}
-      showLogPanel={showLogPanel}
-      logContainerRef={logContainerRef}
-      onRefresh={handleRefresh}
-      onToggleLogPanel={toggleLogPanel}
-      onClearLogs={clearLogs}
       isLoading={loading}
     >
       <div className="pt-2">

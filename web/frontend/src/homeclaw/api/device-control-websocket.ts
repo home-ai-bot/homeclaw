@@ -57,6 +57,32 @@ export class DeviceControlWebSocket {
 
   // ── Send ────────────────────────────────────────────────────────────────
 
+  /**
+   * Wait until the WebSocket connection is open.
+   * Resolves immediately if already connected.
+   * Rejects after `timeout` ms.
+   */
+  waitForConnection(timeout = 15000): Promise<void> {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      return Promise.resolve()
+    }
+    return new Promise((resolve, reject) => {
+      const tid = setTimeout(() => {
+        this.offStatus(handler)
+        reject(new Error("DeviceControlWS: connection timed out"))
+      }, timeout)
+
+      const handler: StatusHandler = (status) => {
+        if (status === "connected") {
+          clearTimeout(tid)
+          this.offStatus(handler)
+          resolve()
+        }
+      }
+      this.onStatus(handler)
+    })
+  }
+
   sendMessage(message: unknown): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error(
@@ -68,13 +94,17 @@ export class DeviceControlWebSocket {
 
   /**
    * Send a message and wait for the first response that satisfies matchFn.
+   * Automatically waits for connection if not yet connected.
    * Rejects after `timeout` ms.
    */
-  sendAndWait(
+  async sendAndWait(
     message: unknown,
     matchFn: (data: unknown) => boolean,
     timeout = 60000,
   ): Promise<unknown> {
+    // Wait for connection first (up to 15s)
+    await this.waitForConnection(Math.min(timeout, 15000))
+
     return new Promise((resolve, reject) => {
       const tid = setTimeout(() => {
         this.offMessage(handler)

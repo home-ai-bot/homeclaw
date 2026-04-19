@@ -170,5 +170,32 @@
       "error": "错误"
     }
   },
-  "device_control": "设备控制"
+  "device_control": "设备控制",
+  "home_section": {
+    "title": "家庭信息",
+    "syncHomes": "同步家庭",
+    "syncingHomes": "同步家庭中...",
+    "noHomes": "未找到家庭，请同步获取您的家庭信息。",
+    "selectHome": "选择此家庭",
+    "currentHome": "当前家庭",
+    "confirmHomeChange": "切换家庭将重新同步设备，是否继续？"
+  },
+  "device_section": {
+    "title": "设备列表",
+    "syncDevices": "同步设备",
+    "syncingDevices": "同步设备中...",
+    "noDevices": "未找到设备，请同步获取您的设备信息。",
+    "selectHomeFirst": "请先选择一个家庭以查看设备。",
+    "online": "在线",
+    "offline": "离线",
+    "room": "房间"
+  },
+  "video_section": {
+    "title": "本地视频设置",
+    "comingSoon": "敬请期待..."
+  },
+  "buttons": {
+    "confirm": "确认",
+    "cancel": "取消"
+  }
 }
