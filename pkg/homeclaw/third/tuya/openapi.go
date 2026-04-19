@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/sipeed/picoclaw/pkg/logger"
 )
 
 // API key prefix to Open Platform base URL mapping
@@ -250,7 +252,7 @@ func (api *TuyaOpenAPI) GetHomes() (*HomeListResult, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	logger.Debugf("GetHomes result: %v", result)
 	data, err := json.Marshal(result)
 	if err != nil {
 		return nil, err
@@ -266,6 +268,7 @@ func (api *TuyaOpenAPI) GetHomes() (*HomeListResult, error) {
 // GetRooms returns all rooms in a home.
 func (api *TuyaOpenAPI) GetRooms(homeID string) ([]*RoomInfo, error) {
 	result, err := api.doGet("/v1.0/end-user/homes/" + homeID + "/rooms")
+	logger.Debugf("GetRooms result: %v", result["rooms"])
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +296,7 @@ func (api *TuyaOpenAPI) GetHomeDevices(homeID string) ([]*DeviceInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	logger.Debugf("GetHomeDevices result: %v", result["devices"])
 	devicesRaw, ok := result["devices"]
 	if !ok {
 		return nil, nil
@@ -467,7 +470,7 @@ type HomeListResult struct {
 // RoomInfo represents a room information.
 type RoomInfo struct {
 	RoomID      string `json:"room_id"`
-	RoomName    string `json:"room_name"`
+	Name        string `json:"name"`
 	DeviceCount int    `json:"device_count"`
 }
 

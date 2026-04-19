@@ -161,7 +161,7 @@ func (tc *TuyaClient) GetRooms(homeID string) ([]*data.Space, error) {
 	var result []*data.Space
 	for _, room := range roomList {
 		result = append(result, &data.Space{
-			Name: room.RoomName,
+			Name: room.Name,
 			From: map[string]string{
 				BrandTuya: room.RoomID,
 			},
