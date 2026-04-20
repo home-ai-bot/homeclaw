@@ -72,36 +72,8 @@ func (m *DeviceOpsManager) Initialize(workspacePath string) error {
 
 // RegisterRoutes binds DeviceOps API endpoints to the ServeMux
 func (m *DeviceOpsManager) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/device-ops/devices", m.handleGetAllDevicesWithOps)
 	mux.HandleFunc("POST /api/device-ops/execute", m.handleExecuteDeviceOp)
 	mux.HandleFunc("POST /api/device-ops/mark-no-action", m.handleMarkDeviceAsNoAction)
-}
-
-// handleGetAllDevicesWithOps returns all devices with their operations, grouped by room
-func (m *DeviceOpsManager) handleGetAllDevicesWithOps(w http.ResponseWriter, r *http.Request) {
-	if err := m.Initialize(m.workspacePath); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{
-			"error": "Failed to initialize device ops service",
-		})
-		return
-	}
-
-	devicesByRoom, err := m.deviceOpsService.GetAllDevicesWithOps()
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{
-			"error": err.Error(),
-		})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"rooms": devicesByRoom,
-	})
 }
 
 // handleExecuteDeviceOp executes a device operation by sending command to gateway via Pico channel

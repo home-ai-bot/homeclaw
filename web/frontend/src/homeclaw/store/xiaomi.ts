@@ -16,7 +16,7 @@ import {
   type HomeInfo,
   type DeviceInfo,
 } from "@/homeclaw/api/home-sync"
-import { getAllDevicesWithOps } from "@/homeclaw/api/device-ops"
+import { listDevices, type Device } from "@/homeclaw/api/device-ops"
 
 export type LoginStep = "login" | "captcha" | "verify" | "success"
 
@@ -221,22 +221,36 @@ export async function loadXiaomiHomes(): Promise<HomeInfo[]> {
 
 export async function loadXiaomiDevices(): Promise<DeviceInfo[]> {
   try {
-    const response = await getAllDevicesWithOps()
-    console.log('[loadXiaomiDevices] All devices response:', response)
+    // Fetch flat list of devices
+    const devices = await listDevices()
+    console.log('[loadXiaomiDevices] All devices from backend:', devices)
+
+    // Group by room and filter Xiaomi devices
+    const roomMap = new Map<string, Device[]>()
+    for (const device of devices) {
+      if (device.from !== "xiaomi") continue
+
+      const roomName = device.space_name || "Unassigned"
+      if (!roomMap.has(roomName)) {
+        roomMap.set(roomName, [])
+      }
+      roomMap.get(roomName)!.push(device)
+    }
+
+    // Convert to DeviceInfo format
     const xiaomiDevices: DeviceInfo[] = []
-    for (const room of response.rooms) {
-      for (const device of room.devices) {
-        if (device.from === "xiaomi") {
-          xiaomiDevices.push({
-            from_id: device.from_id,
-            name: device.name,
-            type: device.type,
-            space_name: room.room_name !== "Unknown" ? room.room_name : undefined,
-            online: true,
-          })
-        }
+    for (const [roomName, roomDevices] of roomMap.entries()) {
+      for (const device of roomDevices) {
+        xiaomiDevices.push({
+          from_id: device.from_id,
+          name: device.name,
+          type: device.type,
+          space_name: roomName !== "Unassigned" ? roomName : undefined,
+          online: true,
+        })
       }
     }
+
     console.log('[loadXiaomiDevices] Filtered xiaomi devices:', xiaomiDevices)
     return xiaomiDevices
   } catch (error) {

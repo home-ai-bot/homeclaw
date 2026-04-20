@@ -3,16 +3,9 @@ package service
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 )
-
-// DeviceOpsByRoom represents devices grouped by room/space
-type DeviceOpsByRoom struct {
-	RoomName string        `json:"room_name"`
-	Devices  []data.Device `json:"devices"`
-}
 
 // DeviceOpsService provides device operations querying functionality
 type DeviceOpsService struct {
@@ -26,54 +19,6 @@ func NewDeviceOpsService(deviceStore data.DeviceStore, deviceOpStore data.Device
 		deviceStore:   deviceStore,
 		deviceOpStore: deviceOpStore,
 	}
-}
-
-// GetAllDevicesWithOps returns all devices with their operations, grouped by room
-func (s *DeviceOpsService) GetAllDevicesWithOps() ([]DeviceOpsByRoom, error) {
-	// Get all devices
-	devices, err := s.deviceStore.GetAll()
-	if err != nil {
-		return nil, err
-	}
-
-	// Enrich devices with their operations
-	for i := range devices {
-		ops, err := s.deviceOpStore.GetOpsByDevice(devices[i].FromID, devices[i].From)
-		if err != nil {
-			// Log error but continue processing
-			continue
-		}
-		devices[i].Ops = ops
-	}
-
-	// Group devices by room - show ALL devices including those without ops
-	roomMap := make(map[string]*DeviceOpsByRoom)
-	for _, device := range devices {
-		roomName := device.SpaceName
-		if roomName == "" {
-			roomName = "Unassigned"
-		}
-
-		if _, exists := roomMap[roomName]; !exists {
-			roomMap[roomName] = &DeviceOpsByRoom{
-				RoomName: roomName,
-				Devices:  []data.Device{},
-			}
-		}
-
-		roomMap[roomName].Devices = append(roomMap[roomName].Devices, device)
-	}
-
-	// Convert map to slice and sort by room name for stable ordering
-	result := make([]DeviceOpsByRoom, 0, len(roomMap))
-	for _, room := range roomMap {
-		result = append(result, *room)
-	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].RoomName < result[j].RoomName
-	})
-
-	return result, nil
 }
 
 // GetDeviceOpsCommand returns the command for a specific device operation
