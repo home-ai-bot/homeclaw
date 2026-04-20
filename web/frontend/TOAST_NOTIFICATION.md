@@ -114,8 +114,21 @@ await callTool(
 ### 示例 2：标记不可操作
 
 ```typescript
-await markDeviceAsNoAction({ from_id: "123", from: "xiaomi" })
-// 操作日志显示: "已标记为不可操作"
+await callTool(
+  {
+    toolName: "hc_cli",
+    method: "markNoAction",
+    brand: "xiaomi",
+    params: {
+      from_id: "123",
+      from: "xiaomi",
+    },
+  },
+  {
+    successMessage: "设备已标记为不可操作",
+  }
+)
+// 显示: ✓ 设备已标记为不可操作
 ```
 
 ### 示例 3：生成操作（Fire-and-Forget）

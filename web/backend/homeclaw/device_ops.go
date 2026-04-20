@@ -73,7 +73,6 @@ func (m *DeviceOpsManager) Initialize(workspacePath string) error {
 // RegisterRoutes binds DeviceOps API endpoints to the ServeMux
 func (m *DeviceOpsManager) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/device-ops/execute", m.handleExecuteDeviceOp)
-	mux.HandleFunc("POST /api/device-ops/mark-no-action", m.handleMarkDeviceAsNoAction)
 }
 
 // handleExecuteDeviceOp executes a device operation by sending command to gateway via Pico channel
@@ -145,56 +144,5 @@ func (m *DeviceOpsManager) handleExecuteDeviceOp(w http.ResponseWriter, r *http.
 		"cli_method":   "exe",
 		"command_json": string(commandJSON),
 		"message":      "Command ready to be sent to gateway via Pico channel",
-	})
-}
-
-// handleMarkDeviceAsNoAction marks a device as non-operable
-type markNoActionRequest struct {
-	FromID string `json:"from_id"`
-	From   string `json:"from"`
-}
-
-func (m *DeviceOpsManager) handleMarkDeviceAsNoAction(w http.ResponseWriter, r *http.Request) {
-	if err := m.Initialize(m.workspacePath); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{
-			"error": "Failed to initialize device ops service",
-		})
-		return
-	}
-
-	var req markNoActionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]any{
-			"error": "Invalid request body",
-		})
-		return
-	}
-
-	if req.FromID == "" || req.From == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]any{
-			"error": "Missing required parameters: from_id, from",
-		})
-		return
-	}
-
-	if err := m.deviceOpsService.MarkDeviceAsNoAction(req.FromID, req.From); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{
-			"error": err.Error(),
-		})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"success": true,
-		"message": "Device marked as non-operable",
 	})
 }

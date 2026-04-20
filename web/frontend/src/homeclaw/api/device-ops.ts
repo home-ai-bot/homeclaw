@@ -101,25 +101,3 @@ export async function executeDeviceOp(
     body: JSON.stringify(req),
   })
 }
-
-export interface MarkNoActionRequest {
-  from_id: string
-  from: string
-}
-
-export interface MarkNoActionResponse {
-  success: boolean
-  message: string
-}
-
-export async function markDeviceAsNoAction(
-  req: MarkNoActionRequest,
-): Promise<MarkNoActionResponse> {
-  return request<MarkNoActionResponse>("/api/device-ops/mark-no-action", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(req),
-  })
-}

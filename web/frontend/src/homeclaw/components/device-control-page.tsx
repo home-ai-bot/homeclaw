@@ -25,7 +25,6 @@ import {
   type OperationLog,
 } from "@/homeclaw/store/device-ops"
 import { callTool } from "@/homeclaw/api/device-command-executor"
-import { markDeviceAsNoAction } from "@/homeclaw/api/device-ops"
 import { useDeviceControl } from "@/homeclaw/context/device-control-context"
 import { SmartHomeLayout } from "@/homeclaw/components/smart-home-layout"
 
@@ -174,9 +173,33 @@ export function DeviceControlPage() {
     })
 
     try {
-      await markDeviceAsNoAction({ from_id: fromId, from })
-      updateLog(logId, { status: "success", message: "已标记为不可操作" })
-      await handleRefresh()
+      // Use callTool with hc_cli.markNoAction via WebSocket
+      const result = await callTool(
+        {
+          toolName: "hc_cli",
+          method: "markNoAction",
+          brand: from,
+          params: {
+            from_id: fromId,
+            from: from,
+          },
+        },
+        {
+          timeout: 60000,
+          successMessage: `${deviceName} 已标记为不可操作`,
+        }
+      )
+
+      updateLog(logId, {
+        status: result.success ? "success" : "failed",
+        message: result.success
+          ? result.message || "已标记为不可操作"
+          : result.error || "未知错误",
+      })
+
+      if (result.success) {
+        await handleRefresh()
+      }
     } catch (error) {
       updateLog(logId, {
         status: "failed",
