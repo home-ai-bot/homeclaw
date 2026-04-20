@@ -16,9 +16,6 @@ import (
 const defaultConfigFileName = "homeclaw.json"
 const defaultGo2RtcFileName = "go2rtc.yaml"
 
-// DefaultConfidenceThreshold is the default intent confidence threshold.
-const DefaultConfidenceThreshold = 0.7
-
 // HomeclawConfig is the top-level HomeClaw configuration.
 // It is stored in a standalone homeclaw.json file and loaded independently
 // from PicoClaw's config.json so that upstream changes to PicoClaw do not
@@ -33,11 +30,6 @@ type HomeclawConfig struct {
 	// processing and return immediately, falling through to the large model.
 	IntentEnabled bool `json:"intent_enabled"`
 
-	// ConfidenceThreshold is the minimum intent confidence score required to
-	// dispatch to an Intent handler. Inputs scoring below this value fall through
-	// to the large-model agent loop. Default: 0.7.
-	ConfidenceThreshold float64 `json:"confidence_threshold"`
-
 	// SmallModel specifies the model_name (from PicoClaw's model_list) used for
 	// intent classification and other small tasks. If empty, falls back to the
 	// default model from PicoClaw config.
@@ -50,9 +42,7 @@ type HomeclawConfig struct {
 
 // applyDefaults fills in zero-value fields with their defaults.
 func (c *HomeclawConfig) applyDefaults() {
-	if c.ConfidenceThreshold <= 0 {
-		c.ConfidenceThreshold = DefaultConfidenceThreshold
-	}
+
 }
 
 // Load reads and parses a homeclaw.json file from the given path.
@@ -93,11 +83,10 @@ func LoadHomeclawConfig() (*HomeclawConfig, error) {
 // DefaultHomeclawConfig returns a default HomeclawConfig with sensible defaults.
 func DefaultHomeclawConfig() *HomeclawConfig {
 	return &HomeclawConfig{
-		Enabled:             true,
-		IntentEnabled:       false,
-		ConfidenceThreshold: DefaultConfidenceThreshold,
-		SmallModel:          "",
-		BigModel:            "",
+		Enabled:       true,
+		IntentEnabled: false,
+		SmallModel:    "",
+		BigModel:      "",
 	}
 }
 

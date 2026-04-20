@@ -131,11 +131,8 @@ func (c *llmClassifier) Classify(ctx context.Context, userInput string) (IntentR
 		return unknown, fmt.Errorf("intent classifier: parse response: %w", err)
 	}
 
-	// Apply confidence threshold.
-	threshold := c.cfg.ConfidenceThreshold
-	if threshold <= 0 {
-		threshold = homeclawcfg.DefaultConfidenceThreshold
-	}
+	// Apply confidence threshold (hardcoded default).
+	const threshold = 0.7
 	if result.Confidence < threshold {
 		return unknown, nil
 	}
