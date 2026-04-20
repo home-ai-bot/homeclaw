@@ -1,8 +1,11 @@
 package homeclaw
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 	"sync"
@@ -10,14 +13,257 @@ import (
 	go2rtcTuya "github.com/AlexxIT/go2rtc/pkg/tuya"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	hcd "github.com/sipeed/picoclaw/pkg/homeclaw/data"
-	"github.com/sipeed/picoclaw/pkg/homeclaw/third/tuya"
 	"github.com/sipeed/picoclaw/pkg/logger"
 )
+
+// GetRegionByHost finds a region by its host
+func GetRegionByHost(host string) *go2rtcTuya.Region {
+	for _, r := range go2rtcTuya.AvailableRegions {
+		if r.Host == host {
+			return &r
+		}
+	}
+	return nil
+}
+
+// GetRegionByName finds a region by its name
+func GetRegionByName(name string) *go2rtcTuya.Region {
+	for _, r := range go2rtcTuya.AvailableRegions {
+		if r.Name == name {
+			return &r
+		}
+	}
+	return nil
+}
+
+// TuyaClient handles Tuya API operations with credential storage
+type TuyaClient struct {
+	httpClient  *http.Client
+	baseURL     string
+	countryCode string
+	authStore   hcd.AuthStore
+	region      *go2rtcTuya.Region
+	email       string
+	password    string
+	loginResult *go2rtcTuya.LoginResult
+}
+
+// NewTuyaClient creates a new Tuya client
+func NewTuyaClient(authStore hcd.AuthStore, region, email, password string) (*TuyaClient, error) {
+	client := &TuyaClient{
+		authStore: authStore,
+		email:     email,
+		password:  password,
+	}
+
+	if region != "" {
+		r := GetRegionByName(region)
+		if r == nil {
+			return nil, fmt.Errorf("invalid region: %s", region)
+		}
+		client.region = r
+		client.baseURL = r.Host
+		client.countryCode = r.Continent
+	}
+
+	client.httpClient = go2rtcTuya.CreateHTTPClientWithSession()
+
+	return client, nil
+}
+
+// Login performs the Tuya login flow
+func (c *TuyaClient) Login() (*go2rtcTuya.LoginResult, error) {
+	if c.httpClient == nil {
+		return nil, errors.New("http client not initialized")
+	}
+	if c.baseURL == "" || c.email == "" || c.password == "" {
+		return nil, errors.New("credentials not set")
+	}
+
+	// Step 1: Get login token
+	tokenResp, err := c.getLoginToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get login token: %w", err)
+	}
+
+	// Step 2: Encrypt password
+	encryptedPassword, err := go2rtcTuya.EncryptPassword(c.password, tokenResp.Result.PbKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt password: %w", err)
+	}
+
+	// Step 3: Perform login
+	loginResp, err := c.performLogin(tokenResp.Result.Token, encryptedPassword)
+	if err != nil {
+		return nil, fmt.Errorf("login failed: %w", err)
+	}
+
+	if !loginResp.Success {
+		return nil, errors.New(loginResp.ErrorMsg)
+	}
+
+	c.loginResult = &loginResp.Result
+	return &loginResp.Result, nil
+}
+
+// getLoginToken fetches the login token from Tuya API
+func (c *TuyaClient) getLoginToken() (*go2rtcTuya.LoginTokenResponse, error) {
+	url := fmt.Sprintf("https://%s/api/login/token", c.baseURL)
+
+	tokenReq := go2rtcTuya.LoginTokenRequest{
+		CountryCode: c.countryCode,
+		Username:    c.email,
+		IsUid:       false,
+	}
+
+	jsonData, err := json.Marshal(tokenReq)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Origin", fmt.Sprintf("https://%s", c.baseURL))
+	req.Header.Set("Referer", fmt.Sprintf("https://%s/login", c.baseURL))
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var tokenResp go2rtcTuya.LoginTokenResponse
+	if err = json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, err
+	}
+
+	if !tokenResp.Success {
+		return nil, errors.New("tuya: " + tokenResp.Msg)
+	}
+
+	return &tokenResp, nil
+}
+
+// performLogin sends the login request with encrypted password
+func (c *TuyaClient) performLogin(token, encryptedPassword string) (*go2rtcTuya.PasswordLoginResponse, error) {
+	var loginURL string
+
+	loginReq := go2rtcTuya.PasswordLoginRequest{
+		CountryCode: c.countryCode,
+		Passwd:      encryptedPassword,
+		Token:       token,
+		IfEncrypt:   1,
+		Options:     `{"group":1}`,
+	}
+
+	if go2rtcTuya.IsEmailAddress(c.email) {
+		loginURL = fmt.Sprintf("https://%s/api/private/email/login", c.baseURL)
+		loginReq.Email = c.email
+	} else {
+		loginURL = fmt.Sprintf("https://%s/api/private/phone/login", c.baseURL)
+		loginReq.Mobile = c.email
+	}
+
+	jsonData, err := json.Marshal(loginReq)
+	if err != nil {
+		return nil, err
+	}
+	logger.Info(string(jsonData))
+	req, err := http.NewRequest("POST", loginURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Origin", fmt.Sprintf("https://%s", c.baseURL))
+	req.Header.Set("Referer", fmt.Sprintf("https://%s/login", c.baseURL))
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	// Read body content for logging and decoding
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	logger.Infof("resp.Body: %s", string(bodyBytes))
+	var loginResp go2rtcTuya.PasswordLoginResponse
+	if err := json.Unmarshal(bodyBytes, &loginResp); err != nil {
+		return nil, err
+	}
+
+	return &loginResp, nil
+}
+
+// SaveCredentials saves the credentials to the auth store
+func (c *TuyaClient) SaveCredentials() error {
+	if c.region == nil || c.email == "" || c.password == "" {
+		return errors.New("credentials not set")
+	}
+	return c.authStore.SaveBrand("tuya_pass", c.region.Name, c.email, c.password, nil)
+}
+
+// LoadCredentials loads stored credentials from the auth store
+func (c *TuyaClient) LoadCredentials() error {
+	region, email, password, _, err := c.authStore.GetDecryptedBrand("tuya_pass")
+	if err != nil {
+		return err
+	}
+
+	r := GetRegionByName(region)
+	if r == nil {
+		return fmt.Errorf("invalid stored region: %s", region)
+	}
+
+	c.region = r
+	c.baseURL = r.Host
+	c.countryCode = r.Continent
+	c.email = email
+	c.password = password
+	return nil
+}
+
+// HasStoredCredentials checks if there are stored credentials
+func (c *TuyaClient) HasStoredCredentials() bool {
+	return c.authStore.Exists("tuya_pass")
+}
+
+// DeleteCredentials removes stored credentials
+func (c *TuyaClient) DeleteCredentials() error {
+	return c.authStore.DeleteBrand("tuya_pass")
+}
+
+// GetStoredCredentials returns the stored credentials (encrypted)
+func (c *TuyaClient) GetStoredCredentials() (*hcd.BrandAuthData, error) {
+	return c.authStore.GetBrand("tuya_pass")
+}
+
+// GetLoginResult returns the last login result
+func (c *TuyaClient) GetLoginResult() *go2rtcTuya.LoginResult {
+	return c.loginResult
+}
+
+// Close closes the client and releases resources
+func (c *TuyaClient) Close() {
+	if c.httpClient != nil {
+		c.httpClient.CloseIdleConnections()
+	}
+}
 
 // TuyaManager handles Tuya API operations
 type TuyaManager struct {
 	mu            sync.Mutex
-	clients       map[string]*tuya.Client // keyed by region
+	clients       map[string]*TuyaClient // keyed by region
 	store         *hcd.JSONStore
 	authStore     hcd.AuthStore // Lazy-initialized shared auth store
 	authStoreOnce sync.Once
@@ -31,12 +277,12 @@ func NewTuyaManager() *TuyaManager {
 	if err != nil {
 		logger.ErrorC("tuya", "Failed to create Tuya data store: "+err.Error())
 		return &TuyaManager{
-			clients: make(map[string]*tuya.Client),
+			clients: make(map[string]*TuyaClient),
 		}
 	}
 
 	return &TuyaManager{
-		clients: make(map[string]*tuya.Client),
+		clients: make(map[string]*TuyaClient),
 		store:   store,
 	}
 }
@@ -130,7 +376,7 @@ func (m *TuyaManager) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate region
-	region := tuya.GetRegionByName(req.Region)
+	region := GetRegionByName(req.Region)
 	if region == nil {
 		http.Error(w, "Invalid region", http.StatusBadRequest)
 		return
@@ -146,9 +392,7 @@ func (m *TuyaManager) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := tuya.NewClient(authStore,
-		tuya.WithCredentials(req.Region, req.Username, req.Password),
-	)
+	client, err := NewTuyaClient(authStore, req.Region, req.Username, req.Password)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -194,7 +438,7 @@ func (m *TuyaManager) handleLogout(w http.ResponseWriter, r *http.Request) {
 	for _, client := range m.clients {
 		client.Close()
 	}
-	m.clients = make(map[string]*tuya.Client)
+	m.clients = make(map[string]*TuyaClient)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
@@ -211,7 +455,7 @@ func (m *TuyaManager) handleDeleteCredentials(w http.ResponseWriter, r *http.Req
 	for _, client := range m.clients {
 		client.Close()
 	}
-	m.clients = make(map[string]*tuya.Client)
+	m.clients = make(map[string]*TuyaClient)
 
 	// Create a client to access the secret store
 	authStore := m.getAuthStore()
@@ -220,7 +464,7 @@ func (m *TuyaManager) handleDeleteCredentials(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	client, err := tuya.NewClient(authStore)
+	client, err := NewTuyaClient(authStore, "", "", "")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -267,7 +511,7 @@ func (m *TuyaManager) handleDeleteToken(w http.ResponseWriter, r *http.Request) 
 
 // GetClient returns a Tuya client for the given region
 // If the client doesn't exist, it loads credentials and creates one
-func (m *TuyaManager) GetClient(region string) (*tuya.Client, error) {
+func (m *TuyaManager) GetClient(region string) (*TuyaClient, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -282,7 +526,7 @@ func (m *TuyaManager) GetClient(region string) (*tuya.Client, error) {
 		return nil, fmt.Errorf("auth store not initialized")
 	}
 
-	client, err := tuya.NewClient(authStore)
+	client, err := NewTuyaClient(authStore, "", "", "")
 	if err != nil {
 		return nil, err
 	}
@@ -304,5 +548,5 @@ func (m *TuyaManager) Stop() {
 	for _, client := range m.clients {
 		client.Close()
 	}
-	m.clients = make(map[string]*tuya.Client)
+	m.clients = make(map[string]*TuyaClient)
 }
