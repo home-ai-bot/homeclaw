@@ -73,10 +73,6 @@ export function DeviceControlPage() {
     }))
   }
 
-  const clearLogs = () => {
-    store.set(deviceOpsAtom, (prev) => ({ ...prev, logs: [] }))
-  }
-
   // ── Subscribe to store ───────────────────────────────────────────────────
 
   useEffect(() => {
@@ -377,35 +373,6 @@ export function DeviceControlPage() {
           ))
         )}
       </div>
-
-      {/* Device operation log panel (local) */}
-      {state.logs.length > 0 && (
-        <div className="border-t bg-muted/30 px-4 sm:px-6 pt-2 pb-3 mt-6">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-muted-foreground">操作日志</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs text-muted-foreground"
-              onClick={clearLogs}
-            >
-              清空
-            </Button>
-          </div>
-          <div className="h-36 overflow-y-auto rounded border bg-background px-2">
-            {state.logs.map((log) => (
-              <div key={log.id} className="flex items-start gap-2 py-1.5 border-b last:border-0 text-xs">
-                <span className="font-medium">{log.deviceName}</span>
-                <span className="text-muted-foreground mx-1">·</span>
-                <span className="text-muted-foreground">{log.opsName}</span>
-                {log.message && (
-                  <p className="text-muted-foreground mt-0.5 break-all">{log.message}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </SmartHomeLayout>
   )
 }
