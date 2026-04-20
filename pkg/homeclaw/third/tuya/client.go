@@ -19,7 +19,7 @@ type Client struct {
 	httpClient  *http.Client
 	baseURL     string
 	countryCode string
-	secretStore SecretStore
+	authStore   rootdata.AuthStore
 	region      *tuya.Region
 	email       string
 	password    string
@@ -54,14 +54,9 @@ func WithHTTPClient(httpClient *http.Client) ClientOption {
 }
 
 // NewClient creates a new Tuya client
-func NewClient(dataStore *rootdata.JSONStore, opts ...ClientOption) (*Client, error) {
-	secretStore, err := NewSecretStore(dataStore)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create secret store: %w", err)
-	}
-
+func NewClient(authStore rootdata.AuthStore, opts ...ClientOption) (*Client, error) {
 	client := &Client{
-		secretStore: secretStore,
+		authStore: authStore,
 	}
 
 	for _, opt := range opts {
@@ -211,17 +206,17 @@ func (c *Client) performLogin(token, encryptedPassword string) (*tuya.PasswordLo
 	return &loginResp, nil
 }
 
-// SaveCredentials saves the credentials to the secret store
+// SaveCredentials saves the credentials to the auth store
 func (c *Client) SaveCredentials() error {
 	if c.region == nil || c.email == "" || c.password == "" {
 		return errors.New("credentials not set")
 	}
-	return c.secretStore.Save(c.region.Name, c.email, c.password)
+	return c.authStore.SaveBrand("tuya_pass", c.region.Name, c.email, c.password, nil)
 }
 
-// LoadCredentials loads stored credentials from the secret store
+// LoadCredentials loads stored credentials from the auth store
 func (c *Client) LoadCredentials() error {
-	region, email, password, err := c.secretStore.GetDecrypted()
+	region, email, password, _, err := c.authStore.GetDecryptedBrand("tuya_pass")
 	if err != nil {
 		return err
 	}
@@ -241,17 +236,17 @@ func (c *Client) LoadCredentials() error {
 
 // HasStoredCredentials checks if there are stored credentials
 func (c *Client) HasStoredCredentials() bool {
-	return c.secretStore.Exists()
+	return c.authStore.Exists("tuya_pass")
 }
 
 // DeleteCredentials removes stored credentials
 func (c *Client) DeleteCredentials() error {
-	return c.secretStore.Delete()
+	return c.authStore.DeleteBrand("tuya_pass")
 }
 
-// GetStoredCredentials returns the stored credentials (without decrypting password)
-func (c *Client) GetStoredCredentials() (*SecretData, error) {
-	return c.secretStore.Get()
+// GetStoredCredentials returns the stored credentials (encrypted)
+func (c *Client) GetStoredCredentials() (*rootdata.BrandAuthData, error) {
+	return c.authStore.GetBrand("tuya_pass")
 }
 
 // GetLoginResult returns the last login result

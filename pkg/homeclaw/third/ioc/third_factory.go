@@ -28,27 +28,24 @@ type ThirdFactory struct {
 	hcfg      *hcc.HomeclawConfig
 	factory   *ioc.Factory
 	// Singleton instances - lazy loaded
-	jsonStore       *hcd.JSONStore
-	rootJSONStore   *hcd.JSONStore
-	miDeviceStore   miio.MiDeviceStore
-	miHomeStore     miio.MiHomeStore
-	cloud           *xiaomi.Cloud
-	miClient        *miio.MiClient
-	tuyaTokenStore  tuya.TokenStore
-	tuyaSecretStore tuya.SecretStore
-	tuyaClient      *tuya.TuyaClient
-	cliTool         *homeclawtool.CLITool
-	cliToolMu       sync.Mutex
+	jsonStore     *hcd.JSONStore
+	rootJSONStore *hcd.JSONStore
+	authStore     hcd.AuthStore
+	miDeviceStore miio.MiDeviceStore
+	miHomeStore   miio.MiHomeStore
+	cloud         *xiaomi.Cloud
+	miClient      *miio.MiClient
+	tuyaClient    *tuya.TuyaClient
+	cliTool       *homeclawtool.CLITool
+	cliToolMu     sync.Mutex
 
 	// Initialization tracking
 	storeOnce      sync.Once
 	storeErr       error
 	rootStoreOnce  sync.Once
 	rootStoreErr   error
-	tuyaTokenOnce  sync.Once
-	tuyaTokenErr   error
-	tuyaSecretOnce sync.Once
-	tuyaSecretErr  error
+	authOnce       sync.Once
+	authErr        error
 	tuyaClientOnce sync.Once
 	tuyaClientErr  error
 }
@@ -79,6 +76,32 @@ func (f *ThirdFactory) GetRootJSONStore() (*hcd.JSONStore, error) {
 		f.rootJSONStore, f.rootStoreErr = hcd.NewJSONStore(filepath.Join(hcc.GetPicoclawHome(), "tuya"))
 	})
 	return f.rootJSONStore, f.rootStoreErr
+}
+
+// GetAuthStore returns the singleton AuthStore instance (lazy initialized).
+// It points to workspace/auth, which stores credentials for all brands.
+func (f *ThirdFactory) GetAuthStore() (hcd.AuthStore, error) {
+	f.authOnce.Do(func() {
+		// Get workspace path from config
+		workspace := ""
+		if f.cfg != nil {
+			workspace = f.cfg.WorkspacePath()
+		}
+		if workspace == "" {
+			f.authErr = fmt.Errorf("workspace path not configured")
+			return
+		}
+
+		authDir := filepath.Join(workspace, "auth")
+		store, err := hcd.NewJSONStore(authDir)
+		if err != nil {
+			f.authErr = fmt.Errorf("create auth json store: %w", err)
+			return
+		}
+
+		f.authStore, f.authErr = hcd.NewAuthStore(store)
+	})
+	return f.authStore, f.authErr
 }
 
 // GetMiDeviceStore returns the singleton MiDeviceStore instance (lazy initialized).
@@ -169,61 +192,31 @@ func (f *ThirdFactory) GetMiClient(country string) (*miio.MiClient, error) {
 	return f.miClient, nil
 }
 
-// GetTuyaTokenStore returns the singleton TokenStore instance (lazy initialized).
-func (f *ThirdFactory) GetTuyaTokenStore() (tuya.TokenStore, error) {
-	f.tuyaTokenOnce.Do(func() {
-		store, err := f.GetRootJSONStore()
-		if err != nil {
-			f.tuyaTokenErr = fmt.Errorf("get json store: %w", err)
-			return
-		}
-
-		f.tuyaTokenStore, f.tuyaTokenErr = tuya.NewTokenStore(store)
-	})
-	return f.tuyaTokenStore, f.tuyaTokenErr
-}
-
-// GetTuyaSecretStore returns the singleton SecretStore instance (lazy initialized).
-func (f *ThirdFactory) GetTuyaSecretStore() (tuya.SecretStore, error) {
-	f.tuyaSecretOnce.Do(func() {
-		store, err := f.GetRootJSONStore()
-		if err != nil {
-			f.tuyaSecretErr = fmt.Errorf("get json store: %w", err)
-			return
-		}
-
-		f.tuyaSecretStore, f.tuyaSecretErr = tuya.NewSecretStore(store)
-	})
-	return f.tuyaSecretStore, f.tuyaSecretErr
-}
-
 // GetTuyaClient returns the singleton TuyaClient instance (lazy initialized).
-// It reads the API token from the shared JSONStore via TokenStore.
+// It reads the API token from the AuthStore.
 // Returns nil, nil if no token is configured.
 func (f *ThirdFactory) GetTuyaClient() (*tuya.TuyaClient, error) {
 	f.tuyaClientOnce.Do(func() {
-		tokenStore, err := f.GetTuyaTokenStore()
+		authStore, err := f.GetAuthStore()
 		if err != nil {
-			f.tuyaClientErr = fmt.Errorf("get tuya token store: %w", err)
+			f.tuyaClientErr = fmt.Errorf("get auth store: %w", err)
 			return
 		}
 
-		// Read token if available; empty token is allowed — the client can be
-		// configured later via SetAPIKey once the user provides credentials.
+		// Read token if available
 		var token string
-		if tokenStore.Exists() {
-			token, err = tokenStore.GetDecrypted()
+		if authStore.Exists("tuya_token") {
+			_, _, token, _, err = authStore.GetDecryptedBrand("tuya_token")
 			if err != nil {
 				f.tuyaClientErr = fmt.Errorf("decrypt tuya token: %w", err)
 				return
 			}
 		}
 
-		// Get email, password and region from SecretStore (optional)
+		// Get email, password and region from AuthStore (optional)
 		var email, password, region string
-		secretStore, err := f.GetTuyaSecretStore()
-		if err == nil && secretStore.Exists() {
-			region, email, password, err = secretStore.GetDecrypted()
+		if authStore.Exists("tuya_pass") {
+			region, email, password, _, err = authStore.GetDecryptedBrand("tuya_pass")
 			if err != nil {
 				// Log warning but continue with empty credentials
 				email = ""
@@ -243,11 +236,8 @@ func (f *ThirdFactory) GetTuyaClient() (*tuya.TuyaClient, error) {
 			return
 		}
 
-		// Set root store to enable lazy token loading
-		rootStore, err := f.GetRootJSONStore()
-		if err == nil {
-			f.tuyaClient.SetRootStore(rootStore)
-		}
+		// Set auth store to enable lazy token loading
+		f.tuyaClient.SetAuthStore(authStore)
 	})
 	return f.tuyaClient, f.tuyaClientErr
 }
@@ -282,6 +272,11 @@ func (f *ThirdFactory) GetCLITool() (*homeclawtool.CLITool, error) {
 		return nil, fmt.Errorf("get device op store: %w", err)
 	}
 
+	authStore, err := f.GetAuthStore()
+	if err != nil {
+		return nil, fmt.Errorf("get auth store: %w", err)
+	}
+
 	clients := make(map[string]third.Client)
 
 	// Register Xiaomi client if available
@@ -309,6 +304,6 @@ func (f *ThirdFactory) GetCLITool() (*homeclawtool.CLITool, error) {
 		// No brand configured yet; still create the tool so it can be populated later
 	}
 
-	f.cliTool = homeclawtool.NewCLITool(clients, homeStore, spaceStore, deviceStore, deviceOpStore)
+	f.cliTool = homeclawtool.NewCLITool(clients, homeStore, spaceStore, deviceStore, deviceOpStore, authStore)
 	return f.cliTool, nil
 }

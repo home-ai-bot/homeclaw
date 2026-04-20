@@ -8,9 +8,8 @@ import {
   loginTuya,
   logoutTuya,
   deleteTuyaCredentials,
-  saveTuyaToken,
-  deleteTuyaToken,
 } from "@/homeclaw/api/tuya"
+import { callTool } from "@/homeclaw/api/device-command-executor"
 import {
   syncHomesViaWS,
   setCurrentHomeViaWS,
@@ -67,6 +66,35 @@ export async function fetchTuyaRegions() {
 
 export async function fetchTuyaStatus(): Promise<Partial<TuyaStoreState>> {
   try {
+    // Use WebSocket to get actual authentication status via hc_cli.getAuthStatus
+    const result = await callTool(
+      {
+        toolName: "hc_cli",
+        method: "getAuthStatus",
+        brand: "tuya",
+        params: {
+          brand: "tuya_token",
+        },
+      },
+      { timeout: 5000 },
+    )
+
+    if (result.success && result.message) {
+      try {
+        const statusData = JSON.parse(result.message)
+        return {
+          isLoggedIn: statusData.logged_in || false,
+          authType: statusData.logged_in ? "token" : null,
+          region: statusData.region || null,
+          error: null,
+          isLoading: false,
+        }
+      } catch (parseError) {
+        console.error("Failed to parse auth status:", parseError)
+      }
+    }
+
+    // Fallback to HTTP status check (for backward compatibility)
     const status = await getTuyaStatus()
     return {
       isLoggedIn: status.logged_in,
@@ -137,9 +165,21 @@ export async function tuyaSaveToken(
   token: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const response = await saveTuyaToken(token)
-    if (response.success) return { success: true }
-    return { success: false, error: response.error || "Failed to save token" }
+    const result = await callTool(
+      {
+        toolName: "hc_cli",
+        method: "saveAuth",
+        brand: "tuya",
+        params: {
+          brand: "tuya_token",
+          token: token,
+        },
+      },
+      { successMessage: "Token saved successfully" },
+    )
+
+    if (result.success) return { success: true }
+    return { success: false, error: result.error || "Failed to save token" }
   } catch (error) {
     return {
       success: false,
@@ -150,8 +190,20 @@ export async function tuyaSaveToken(
 
 export async function tuyaDeleteToken(): Promise<{ success: boolean; error?: string }> {
   try {
-    await deleteTuyaToken()
-    return { success: true }
+    const result = await callTool(
+      {
+        toolName: "hc_cli",
+        method: "deleteAuth",
+        brand: "tuya",
+        params: {
+          brand: "tuya_token",
+        },
+      },
+      { successMessage: "Token deleted successfully" },
+    )
+
+    if (result.success) return { success: true }
+    return { success: false, error: result.error || "Failed to delete token" }
   } catch (error) {
     return {
       success: false,

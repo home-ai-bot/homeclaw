@@ -37,7 +37,7 @@ type TuyaClient struct {
 	region   string       // Tuya region (for RTSP streams)
 
 	store     *data.JSONStore // Persistent cache store (workspace/third)
-	rootStore *data.JSONStore // Root store for credentials (picoclawHome/tuya)
+	authStore data.AuthStore  // Auth store for credentials
 }
 
 // NewTuyaClient creates a new TuyaClient instance with the given store and API key.
@@ -45,7 +45,7 @@ type TuyaClient struct {
 // still created so that it can be registered in CLITool and have its key set later
 // via SetAPIKey. Any operation that requires the API key will return an error via
 // checkAPI() until SetAPIKey is called.
-// rootStore is optional and used for loading credentials; if nil, lazy loading won't work.
+// authStore is optional and used for loading credentials; if nil, lazy loading won't work.
 func NewTuyaClient(store *data.JSONStore, apiKey string, email string, password string, region string) (*TuyaClient, error) {
 	if store == nil {
 		return nil, errors.New("store cannot be nil")
@@ -63,10 +63,10 @@ func NewTuyaClient(store *data.JSONStore, apiKey string, email string, password 
 	return tc, nil
 }
 
-// SetRootStore sets the root JSONStore used for loading credentials (token).
+// SetAuthStore sets the auth store used for loading credentials (token).
 // This enables lazy token loading when the client is created without an API key.
-func (tc *TuyaClient) SetRootStore(rootStore *data.JSONStore) {
-	tc.rootStore = rootStore
+func (tc *TuyaClient) SetAuthStore(authStore data.AuthStore) {
+	tc.authStore = authStore
 }
 
 // GetAPIKey returns the configured Tuya Open Platform API key.
@@ -109,14 +109,13 @@ func (tc *TuyaClient) Brand() string {
 }
 
 // checkAPI returns an error if the openAPI client is not initialized.
-// If openAPI is nil but a rootStore is available, it will attempt to load the token.
+// If openAPI is nil but an authStore is available, it will attempt to load the token.
 func (tc *TuyaClient) checkAPI() error {
 	if tc.openAPI == nil {
-		// Try to load token from rootStore if available
-		if tc.rootStore != nil {
-			tokenStore, err := NewTokenStore(tc.rootStore)
-			if err == nil && tokenStore.Exists() {
-				token, err := tokenStore.GetDecrypted()
+		// Try to load token from authStore if available
+		if tc.authStore != nil {
+			if tc.authStore.Exists("tuya_token") {
+				_, _, token, _, err := tc.authStore.GetDecryptedBrand("tuya_token")
 				if err == nil && token != "" {
 					// Token loaded successfully, initialize openAPI
 					tc.apiKey = token
@@ -125,7 +124,7 @@ func (tc *TuyaClient) checkAPI() error {
 				}
 			}
 		}
-		return errors.New("Must Confirm!API key not configured, please set API key via WithAPIKey")
+		return errors.New("API key not configured, please set API key via SetAPIKey")
 	}
 	return nil
 }

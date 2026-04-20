@@ -40,6 +40,7 @@ type CLITool struct {
 	spaceStore    data.SpaceStore
 	deviceStore   data.DeviceStore
 	deviceOpStore data.DeviceOpStore
+	authStore     data.AuthStore
 }
 
 // NewCLITool creates a CLITool with the given brand clients and data stores.
@@ -50,6 +51,7 @@ func NewCLITool(
 	spaceStore data.SpaceStore,
 	deviceStore data.DeviceStore,
 	deviceOpStore data.DeviceOpStore,
+	authStore data.AuthStore,
 ) *CLITool {
 	return &CLITool{
 		clients:       clients,
@@ -57,6 +59,7 @@ func NewCLITool(
 		spaceStore:    spaceStore,
 		deviceStore:   deviceStore,
 		deviceOpStore: deviceOpStore,
+		authStore:     authStore,
 	}
 }
 
@@ -122,6 +125,12 @@ func (t *CLITool) Execute(_ context.Context, args map[string]any) *tools.ToolRes
 		return t.execListDevicesWithoutOps(req.Params)
 	case "markNoAction":
 		return t.execMarkNoAction(req.Params)
+	case "saveAuth":
+		return t.execSaveAuth(req.Params)
+	case "deleteAuth":
+		return t.execDeleteAuth(req.Params)
+	case "getAuthStatus":
+		return t.execGetAuthStatus(req.Params)
 	}
 	if req.Brand == "" {
 		return &tools.ToolResult{ForLLM: "missing 'brand' in commandJson", IsError: true}
@@ -683,4 +692,128 @@ func (t *CLITool) execMarkNoAction(params map[string]any) *tools.ToolResult {
 	}
 
 	return &tools.ToolResult{ForLLM: fmt.Sprintf("device not found: from_id=%s, from=%s", fromID, from), IsError: true}
+}
+
+// execSaveAuth stores authentication credentials (token or password) for a brand using AuthStore.
+// Required params: brand, token (or password)
+// Optional params: region, userName, extra (JSON string or map)
+func (t *CLITool) execSaveAuth(params map[string]any) *tools.ToolResult {
+	if params == nil {
+		return &tools.ToolResult{ForLLM: "missing 'params' for saveAuth", IsError: true}
+	}
+
+	// Extract required brand parameter
+	brand, ok := params["brand"].(string)
+	if !ok || brand == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: brand", IsError: true}
+	}
+
+	// Extract token/password (can be stored in 'token' or 'password' field)
+	token, hasToken := params["token"].(string)
+	if !hasToken || token == "" {
+		// Try 'password' field as alternative
+		password, hasPassword := params["password"].(string)
+		if hasPassword && password != "" {
+			token = password
+		} else {
+			return &tools.ToolResult{ForLLM: "missing required parameter: token or password", IsError: true}
+		}
+	}
+
+	// Extract optional parameters
+	region, _ := params["region"].(string)
+	userName, _ := params["userName"].(string)
+
+	// Extract extra fields (accept both string JSON and map)
+	var extra map[string]string
+	if extraRaw, ok := params["extra"]; ok && extraRaw != nil {
+		if extraStr, ok := extraRaw.(string); ok && extraStr != "" {
+			// Parse JSON string
+			if err := json.Unmarshal([]byte(extraStr), &extra); err != nil {
+				return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to parse 'extra' JSON: %v", err), IsError: true}
+			}
+		} else if extraMap, ok := extraRaw.(map[string]any); ok && len(extraMap) > 0 {
+			// Convert map[string]any to map[string]string
+			extra = make(map[string]string, len(extraMap))
+			for k, v := range extraMap {
+				extra[k] = fmt.Sprintf("%v", v)
+			}
+		}
+	}
+
+	// Save to AuthStore
+	if err := t.authStore.SaveBrand(brand, region, userName, token, extra); err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to save auth for brand '%s': %v", brand, err), IsError: true}
+	}
+
+	return tools.NewToolResult(fmt.Sprintf("successfully saved auth credentials for brand '%s'", brand))
+}
+
+// execDeleteAuth removes authentication credentials for a brand using AuthStore.
+// Required params: brand
+func (t *CLITool) execDeleteAuth(params map[string]any) *tools.ToolResult {
+	if params == nil {
+		return &tools.ToolResult{ForLLM: "missing 'params' for deleteAuth", IsError: true}
+	}
+
+	// Extract required brand parameter
+	brand, ok := params["brand"].(string)
+	if !ok || brand == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: brand", IsError: true}
+	}
+
+	// Check if brand exists
+	if !t.authStore.Exists(brand) {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("no auth credentials found for brand '%s'", brand), IsError: true}
+	}
+
+	// Delete from AuthStore
+	if err := t.authStore.DeleteBrand(brand); err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to delete auth for brand '%s': %v", brand, err), IsError: true}
+	}
+
+	return tools.NewToolResult(fmt.Sprintf("successfully deleted auth credentials for brand '%s'", brand))
+}
+
+// execGetAuthStatus returns the authentication status for a brand.
+// Required params: brand
+// Returns: JSON with logged_in status and brand info
+func (t *CLITool) execGetAuthStatus(params map[string]any) *tools.ToolResult {
+	if params == nil {
+		return &tools.ToolResult{ForLLM: "missing 'params' for getAuthStatus", IsError: true}
+	}
+
+	// Extract required brand parameter
+	brand, ok := params["brand"].(string)
+	if !ok || brand == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: brand", IsError: true}
+	}
+
+	// Check if auth credentials exist
+	exists := t.authStore.Exists(brand)
+
+	// Build response
+	result := map[string]any{
+		"brand":     brand,
+		"logged_in": exists,
+	}
+
+	if exists {
+		// Get brand data (without decrypting token for security)
+		authData, err := t.authStore.GetBrand(brand)
+		if err == nil && authData != nil {
+			result["has_credentials"] = true
+			if authData.Region != "" {
+				result["region"] = authData.Region
+			}
+			if authData.UserName != "" {
+				result["username"] = authData.UserName
+			}
+		}
+	} else {
+		result["has_credentials"] = false
+	}
+
+	b, _ := json.Marshal(result)
+	return tools.NewToolResult(string(b))
 }

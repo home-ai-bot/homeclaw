@@ -2,30 +2,32 @@ package homeclaw
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"sync"
 
 	go2rtcTuya "github.com/AlexxIT/go2rtc/pkg/tuya"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/config"
-	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
+	hcd "github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third/tuya"
 	"github.com/sipeed/picoclaw/pkg/logger"
 )
 
 // TuyaManager handles Tuya API operations
 type TuyaManager struct {
-	mu         sync.Mutex
-	clients    map[string]*tuya.Client // keyed by region
-	store      *data.JSONStore
-	tokenStore tuya.TokenStore
+	mu            sync.Mutex
+	clients       map[string]*tuya.Client // keyed by region
+	store         *hcd.JSONStore
+	authStore     hcd.AuthStore // Lazy-initialized shared auth store
+	authStoreOnce sync.Once
 }
 
 // NewTuyaManager creates a new TuyaManager instance
 func NewTuyaManager() *TuyaManager {
 	// Create data directory for tuya
 	dataDir := filepath.Join(config.GetPicoclawHome(), "tuya")
-	store, err := data.NewJSONStore(dataDir)
+	store, err := hcd.NewJSONStore(dataDir)
 	if err != nil {
 		logger.ErrorC("tuya", "Failed to create Tuya data store: "+err.Error())
 		return &TuyaManager{
@@ -33,20 +35,41 @@ func NewTuyaManager() *TuyaManager {
 		}
 	}
 
-	tokenStore, err := tuya.NewTokenStore(store)
-	if err != nil {
-		logger.ErrorC("tuya", "Failed to create Tuya token store: "+err.Error())
-		return &TuyaManager{
-			clients: make(map[string]*tuya.Client),
-			store:   store,
-		}
-	}
-
 	return &TuyaManager{
-		clients:    make(map[string]*tuya.Client),
-		store:      store,
-		tokenStore: tokenStore,
+		clients: make(map[string]*tuya.Client),
+		store:   store,
 	}
+}
+
+// getAuthStore returns the shared AuthStore instance (lazy initialized)
+func (m *TuyaManager) getAuthStore() hcd.AuthStore {
+	m.authStoreOnce.Do(func() {
+		// Get workspace path from config
+		workspace := ""
+		if cfg, err := config.LoadConfig(); err == nil {
+			workspace = cfg.WorkspacePath()
+		}
+		if workspace == "" {
+			logger.WarnC("tuya", "Workspace path not configured, auth store will not be available")
+			return
+		}
+
+		authDir := filepath.Join(workspace, "auth")
+		authJSONStore, err := hcd.NewJSONStore(authDir)
+		if err != nil {
+			logger.ErrorC("tuya", "Failed to create auth store: "+err.Error())
+			return
+		}
+
+		authStore, err := hcd.NewAuthStore(authJSONStore)
+		if err != nil {
+			logger.ErrorC("tuya", "Failed to initialize auth store: "+err.Error())
+			return
+		}
+
+		m.authStore = authStore
+	})
+	return m.authStore
 }
 
 // RegisterRoutes binds Tuya API endpoints to the ServeMux
@@ -70,52 +93,19 @@ func (m *TuyaManager) handleGetRegions(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetStatus returns the current Tuya login status
+// Note: This now returns a placeholder. The actual status should be fetched
+// via WebSocket using hc_cli.getAuthStatus method.
 func (m *TuyaManager) handleGetStatus(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 
-	// Check token-based auth first
-	if m.tokenStore != nil && m.tokenStore.Exists() {
-		json.NewEncoder(w).Encode(map[string]any{
-			"logged_in": true,
-			"auth_type": "token",
-		})
-		return
-	}
-
-	// Fall back to credential-based auth
-	client, err := tuya.NewClient(m.store)
-	if err != nil {
-		json.NewEncoder(w).Encode(map[string]any{
-			"logged_in": false,
-			"error":     err.Error(),
-		})
-		return
-	}
-
-	if !client.HasStoredCredentials() {
-		json.NewEncoder(w).Encode(map[string]any{
-			"logged_in": false,
-		})
-		return
-	}
-
-	secretData, err := client.GetStoredCredentials()
-	if err != nil {
-		json.NewEncoder(w).Encode(map[string]any{
-			"logged_in": false,
-			"error":     err.Error(),
-		})
-		return
-	}
-
+	// Return placeholder - frontend should use WebSocket to get actual status
+	// via hc_cli.getAuthStatus method
 	json.NewEncoder(w).Encode(map[string]any{
-		"logged_in": true,
-		"auth_type": "credentials",
-		"region":    secretData.Region,
-		"username":  secretData.UserName,
+		"logged_in": false,
+		"message":   "Use WebSocket hc_cli.getAuthStatus to check authentication status",
 	})
 }
 
@@ -150,7 +140,13 @@ func (m *TuyaManager) handleLogin(w http.ResponseWriter, r *http.Request) {
 	defer m.mu.Unlock()
 
 	// Create client with credentials
-	client, err := tuya.NewClient(m.store,
+	authStore := m.getAuthStore()
+	if authStore == nil {
+		http.Error(w, "auth store not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	client, err := tuya.NewClient(authStore,
 		tuya.WithCredentials(req.Region, req.Username, req.Password),
 	)
 	if err != nil {
@@ -218,7 +214,13 @@ func (m *TuyaManager) handleDeleteCredentials(w http.ResponseWriter, r *http.Req
 	m.clients = make(map[string]*tuya.Client)
 
 	// Create a client to access the secret store
-	client, err := tuya.NewClient(m.store)
+	authStore := m.getAuthStore()
+	if authStore == nil {
+		http.Error(w, "auth store not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	client, err := tuya.NewClient(authStore)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -242,52 +244,24 @@ type SaveTokenRequest struct {
 }
 
 // handleSaveToken saves a Tuya Open Platform API token
+// Note: This is deprecated. Use WebSocket hc_cli.saveAuth instead.
 func (m *TuyaManager) handleSaveToken(w http.ResponseWriter, r *http.Request) {
-	var req SaveTokenRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	if req.Token == "" {
-		http.Error(w, "token is required", http.StatusBadRequest)
-		return
-	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.tokenStore == nil {
-		http.Error(w, "token store not initialized", http.StatusInternalServerError)
-		return
-	}
-
-	if err := m.tokenStore.Save(req.Token); err != nil {
-		logger.ErrorC("tuya", "Failed to save token: "+err.Error())
-		http.Error(w, "Failed to save token: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusGone)
 	json.NewEncoder(w).Encode(map[string]any{
-		"success": true,
+		"error":   "Deprecated: Use WebSocket hc_cli.saveAuth method instead",
+		"message": "Please use callTool with hc_cli.saveAuth to save tokens",
 	})
 }
 
 // handleDeleteToken removes the stored API token
+// Note: This is deprecated. Use WebSocket hc_cli.deleteAuth instead.
 func (m *TuyaManager) handleDeleteToken(w http.ResponseWriter, r *http.Request) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.tokenStore != nil {
-		if err := m.tokenStore.Delete(); err != nil {
-			logger.ErrorC("tuya", "Failed to delete token: "+err.Error())
-		}
-	}
-
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusGone)
 	json.NewEncoder(w).Encode(map[string]any{
-		"success": true,
+		"error":   "Deprecated: Use WebSocket hc_cli.deleteAuth method instead",
+		"message": "Please use callTool with hc_cli.deleteAuth to delete tokens",
 	})
 }
 
@@ -303,7 +277,12 @@ func (m *TuyaManager) GetClient(region string) (*tuya.Client, error) {
 	}
 
 	// Try to load credentials and create client
-	client, err := tuya.NewClient(m.store)
+	authStore := m.getAuthStore()
+	if authStore == nil {
+		return nil, fmt.Errorf("auth store not initialized")
+	}
+
+	client, err := tuya.NewClient(authStore)
 	if err != nil {
 		return nil, err
 	}

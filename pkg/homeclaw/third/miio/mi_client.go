@@ -34,7 +34,7 @@ const (
 	homeDeviceLimit = 300
 
 	// Spec cache settings
-	specInstanceURL      = "https://miot-spec.org/miot-spec-v2/instance"
+	specInstanceURL        = "https://miot-spec.org/miot-spec-v2/instance"
 	specCacheEffectiveTime = 3600 * 24 * 14 * time.Second
 )
 
