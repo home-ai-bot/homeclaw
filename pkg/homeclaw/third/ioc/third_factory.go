@@ -34,7 +34,6 @@ type ThirdFactory struct {
 	miHomeStore     miio.MiHomeStore
 	cloud           *xiaomi.Cloud
 	miClient        *miio.MiClient
-	specFetcher     *miio.SpecFetcher
 	tuyaTokenStore  tuya.TokenStore
 	tuyaSecretStore tuya.SecretStore
 	tuyaClient      *tuya.TuyaClient
@@ -145,19 +144,6 @@ func (f *ThirdFactory) GetCloud(sid string) *xiaomi.Cloud {
 	return f.cloud
 }
 
-// GetSpecFetcher returns the singleton SpecFetcher instance (lazy initialized).
-func (f *ThirdFactory) GetSpecFetcher() (*miio.SpecFetcher, error) {
-	if f.specFetcher != nil {
-		return f.specFetcher, nil
-	}
-	fetcher, err := miio.NewSpecFetcher(filepath.Join(f.Workspace, "third"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create spec fetcher: %w", err)
-	}
-	f.specFetcher = fetcher
-	return f.specFetcher, nil
-}
-
 // GetMiClient returns the singleton MiClient instance (lazy initialized).
 //
 // Parameters:
@@ -179,12 +165,7 @@ func (f *ThirdFactory) GetMiClient(country string) (*miio.MiClient, error) {
 		return nil, fmt.Errorf("get mi home store: %w", err)
 	}
 
-	specFetcher, err := f.GetSpecFetcher()
-	if err != nil {
-		return nil, fmt.Errorf("get spec fetcher: %w", err)
-	}
-
-	f.miClient = miio.NewMiClient(cloud, country, f.Workspace, deviceStore, homeStore, specFetcher)
+	f.miClient = miio.NewMiClient(cloud, country, f.Workspace, deviceStore, homeStore)
 	return f.miClient, nil
 }
 
