@@ -29,7 +29,6 @@ type ThirdFactory struct {
 	factory   *ioc.Factory
 	// Singleton instances - lazy loaded
 	jsonStore     *hcd.JSONStore
-	rootJSONStore *hcd.JSONStore
 	authStore     hcd.AuthStore
 	miDeviceStore miio.MiDeviceStore
 	miHomeStore   miio.MiHomeStore
@@ -42,8 +41,6 @@ type ThirdFactory struct {
 	// Initialization tracking
 	storeOnce      sync.Once
 	storeErr       error
-	rootStoreOnce  sync.Once
-	rootStoreErr   error
 	authOnce       sync.Once
 	authErr        error
 	tuyaClientOnce sync.Once
@@ -67,15 +64,6 @@ func (f *ThirdFactory) GetJSONStore() (*hcd.JSONStore, error) {
 		f.jsonStore, f.storeErr = hcd.NewJSONStore(filepath.Join(f.Workspace, "third"))
 	})
 	return f.jsonStore, f.storeErr
-}
-
-// GetRootJSONStore returns the singleton root JSONStore instance (lazy initialized).
-// It points to picoclawHome/tuya, which is the same directory used by the web backend TuyaManager.
-func (f *ThirdFactory) GetRootJSONStore() (*hcd.JSONStore, error) {
-	f.rootStoreOnce.Do(func() {
-		f.rootJSONStore, f.rootStoreErr = hcd.NewJSONStore(filepath.Join(hcc.GetPicoclawHome(), "tuya"))
-	})
-	return f.rootJSONStore, f.rootStoreErr
 }
 
 // GetAuthStore returns the singleton AuthStore instance (lazy initialized).
@@ -188,7 +176,13 @@ func (f *ThirdFactory) GetMiClient(country string) (*miio.MiClient, error) {
 		return nil, fmt.Errorf("get mi home store: %w", err)
 	}
 
-	f.miClient = miio.NewMiClient(cloud, country, f.Workspace, deviceStore, homeStore)
+	// Use workspace/third path for xiao-spec cache (consistent with homekit-spec)
+	cacheBase := ""
+	if f.Workspace != "" {
+		cacheBase = filepath.Join(f.Workspace, "third")
+	}
+
+	f.miClient = miio.NewMiClient(cloud, country, cacheBase, deviceStore, homeStore)
 	return f.miClient, nil
 }
 

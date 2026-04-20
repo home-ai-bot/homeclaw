@@ -264,26 +264,14 @@ func (c *TuyaClient) Close() {
 type TuyaManager struct {
 	mu            sync.Mutex
 	clients       map[string]*TuyaClient // keyed by region
-	store         *hcd.JSONStore
-	authStore     hcd.AuthStore // Lazy-initialized shared auth store
+	authStore     hcd.AuthStore          // Lazy-initialized shared auth store
 	authStoreOnce sync.Once
 }
 
 // NewTuyaManager creates a new TuyaManager instance
 func NewTuyaManager() *TuyaManager {
-	// Create data directory for tuya
-	dataDir := filepath.Join(config.GetPicoclawHome(), "tuya")
-	store, err := hcd.NewJSONStore(dataDir)
-	if err != nil {
-		logger.ErrorC("tuya", "Failed to create Tuya data store: "+err.Error())
-		return &TuyaManager{
-			clients: make(map[string]*TuyaClient),
-		}
-	}
-
 	return &TuyaManager{
 		clients: make(map[string]*TuyaClient),
-		store:   store,
 	}
 }
 

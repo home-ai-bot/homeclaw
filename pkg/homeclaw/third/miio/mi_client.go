@@ -66,15 +66,24 @@ type specFetcher struct {
 
 // newSpecFetcher creates a specFetcher
 func newSpecFetcher(basePath string) (*specFetcher, error) {
-	cacheDir := filepath.Join(basePath, "xiao-spec")
+	// Create xiao-spec cache directory under basePath/third/xiao-spec
+	// This is consistent with homekit which uses basePath/third/homekit-spec
+	cacheDir := ""
+	if basePath != "" {
+		cacheDir = filepath.Join(basePath, "xiao-spec")
+	}
 
-	fileCache, err := data.NewFileCache(data.FileCacheConfig{
-		CacheDir:  cacheDir,
-		TTL:       specCacheEffectiveTime,
-		EncodeKey: true,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create file cache: %w", err)
+	var fileCache *data.FileCache
+	var err error
+	if cacheDir != "" {
+		fileCache, err = data.NewFileCache(data.FileCacheConfig{
+			CacheDir:  cacheDir,
+			TTL:       specCacheEffectiveTime,
+			EncodeKey: true,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create file cache: %w", err)
+		}
 	}
 
 	return &specFetcher{
@@ -89,9 +98,11 @@ func (f *specFetcher) getSpec(urn string) (string, error) {
 		return "", fmt.Errorf("urn is empty")
 	}
 
-	// Check cache first
-	if data, err := f.fileCache.GetAsString(urn); err == nil && data != "" {
-		return data, nil
+	// Check cache first (if cache is available)
+	if f.fileCache != nil {
+		if data, err := f.fileCache.GetAsString(urn); err == nil && data != "" {
+			return data, nil
+		}
 	}
 
 	// Fetch from cloud
@@ -111,8 +122,10 @@ func (f *specFetcher) getSpec(urn string) (string, error) {
 		return "", err
 	}
 
-	// Save to cache
-	_ = f.fileCache.SetString(urn, string(data))
+	// Save to cache (if cache is available)
+	if f.fileCache != nil {
+		_ = f.fileCache.SetString(urn, string(data))
+	}
 
 	return string(data), nil
 }
@@ -121,6 +134,9 @@ func (f *specFetcher) getSpec(urn string) (string, error) {
 func (f *specFetcher) saveProcessedSpec(urn string, mode string, processedJSON string) error {
 	if urn == "" {
 		return fmt.Errorf("urn is empty")
+	}
+	if f.fileCache == nil {
+		return nil // No cache available, skip silently
 	}
 	return f.fileCache.SetString(urn+"_"+mode+"_new", processedJSON)
 }
