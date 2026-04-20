@@ -6,19 +6,17 @@ import (
 	"sync"
 
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
-	"github.com/sipeed/picoclaw/pkg/homeclaw/service"
 	"github.com/sipeed/picoclaw/pkg/logger"
 )
 
 // DeviceOpsManager handles device operations API
 type DeviceOpsManager struct {
-	mu               sync.Mutex
-	deviceOpsService *service.DeviceOpsService
-	deviceStore      data.DeviceStore
-	deviceOpStore    data.DeviceOpStore
-	workspacePath    string
-	initialized      bool
-	initErr          error
+	mu            sync.Mutex
+	deviceStore   data.DeviceStore
+	deviceOpStore data.DeviceOpStore
+	workspacePath string
+	initialized   bool
+	initErr       error
 }
 
 // NewDeviceOpsManager creates a new DeviceOpsManager instance
@@ -62,8 +60,6 @@ func (m *DeviceOpsManager) Initialize(workspacePath string) error {
 		return err
 	}
 
-	// Initialize DeviceOpsService
-	m.deviceOpsService = service.NewDeviceOpsService(m.deviceStore, m.deviceOpStore)
 	m.initialized = true
 
 	logger.InfoC("device-ops", "DeviceOpsManager initialized successfully")
