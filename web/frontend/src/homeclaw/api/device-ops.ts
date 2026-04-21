@@ -66,7 +66,7 @@ export async function listDevices(): Promise<Device[]> {
         const d = data as Record<string, unknown>
         return d.type === "message.create"
       },
-      30000,
+      5000,
     )
 
     const payload = (response as Record<string, unknown>)?.payload as Record<string, unknown> | undefined

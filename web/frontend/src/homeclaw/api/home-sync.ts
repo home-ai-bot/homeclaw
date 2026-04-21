@@ -44,7 +44,7 @@ export async function syncHomesViaWS(brand: string): Promise<SyncHomesResponse> 
         const d = data as Record<string, unknown>
         return d.type === "message.create"
       },
-      30000,
+      5000,
     )
 
     const payload = (response as Record<string, unknown>)?.payload as Record<string, unknown> | undefined
@@ -101,7 +101,7 @@ export async function setCurrentHomeViaWS(
         const d = data as Record<string, unknown>
         return d.type === "message.create"
       },
-      30000,
+      5000,
     )
 
     const payload = (response as Record<string, unknown>)?.payload as Record<string, unknown> | undefined
@@ -148,7 +148,7 @@ export async function syncDevicesViaWS(
         const d = data as Record<string, unknown>
         return d.type === "message.create"
       },
-      30000,
+      5000,
     )
 
     const payload = (response as Record<string, unknown>)?.payload as Record<string, unknown> | undefined
@@ -212,7 +212,7 @@ export async function loadHomesFromBackend(): Promise<HomeInfoWithBrand[]> {
         const d = data as Record<string, unknown>
         return d.type === "message.create"
       },
-      30000,
+      5000,
     )
 
     const payload = (response as Record<string, unknown>)?.payload as Record<string, unknown> | undefined

@@ -172,14 +172,8 @@ func (hc *HomeClaw) RegisterTools(toolRegistry *tools.ToolRegistry) {
 	// Common tools
 	registerTool(toolRegistry, f.GetCommonTool)
 
-	//Third
-	thirdf := hc.thirdf
-
-	// registerTool(toolRegistry, thirdf.GetSyncDevicesTool)
-	// registerTool(toolRegistry, thirdf.GetExecuteActionTool)
-	// registerTool(toolRegistry, thirdf.GetSpecCommandsTool)
-	// registerTool(toolRegistry, thirdf.GetSyncHomesTool)
-	registerTool(toolRegistry, thirdf.GetCLITool)
+	// CLI tool for device control
+	registerTool(toolRegistry, f.GetCLITool)
 }
 
 // SetMediaStore sets the media store for HomeClaw tools that need to send images to channels.
@@ -188,6 +182,15 @@ func (hc *HomeClaw) SetMediaStore(store media.MediaStore) {
 		return
 	}
 	hc.f.SetMediaStore(store)
+}
+
+// SetClients initializes and registers all third-party brand clients (Xiaomi, Tuya, etc.)
+// and injects them into the CLI and LLM tools.
+func (hc *HomeClaw) SetClients() error {
+	if hc == nil || hc.thirdf == nil {
+		return nil
+	}
+	return hc.thirdf.SetClients()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

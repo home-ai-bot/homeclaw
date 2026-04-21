@@ -25,7 +25,6 @@ import {
   type OperationLog,
 } from "@/homeclaw/store/device-ops"
 import { callTool } from "@/homeclaw/api/device-command-executor"
-import { useDeviceControl } from "@/homeclaw/context/device-control-context"
 import { SmartHomeLayout } from "@/homeclaw/components/smart-home-layout"
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -51,11 +50,6 @@ export function DeviceControlPage() {
   const [state, setState] = useState(store.get(deviceOpsAtom))
   const [executingOps, setExecutingOps] = useState<Set<string>>(new Set())
   const [processingDevices, setProcessingDevices] = useState<Set<string>>(new Set())
-
-  // Use shared smart home WebSocket hook
-  const {
-    sendWebSocketMessage,
-  } = useDeviceControl()
 
   // Local log management for device operations
   const appendLog = (entry: OperationLog) => {
@@ -225,27 +219,41 @@ export function DeviceControlPage() {
       deviceName,
       opsName: "生成操作",
       status: "pending",
-      message: "已发送请求，等待 Agent 生成...",
+      message: "正在生成设备操作...",
     })
 
     try {
-      const messageId = `generate-ops-${Date.now()}`
-      const content = `使用device-spec-analyze skill 生成{brand:${from},from_id:${fromId},device_name:${deviceName}}的操作`
+      // Call hc_llm analyzeDeviceOpsAsync to generate operations for a single device
+      // Async method starts analysis in background and returns immediately
+      const result = await callTool(
+        {
+          toolName: "hc_llm",
+          method: "analyzeDeviceOpsAsync",
+          brand: from,
+          params: {
+            brand: from,
+            from_id: fromId,
+          },
+        },
+        {
+          timeout: 10000, // 10 seconds is enough since it returns immediately
+          successMessage: `${deviceName} 操作分析已启动，请耐心等待分析完成`,
+        }
+      )
 
-      // Fire-and-forget via shared smart home WS.
-      // The agent response will arrive as a message.create and be shown in the log.
-      sendWebSocketMessage({
-        type: "message.send",
-        id: messageId,
-        session_id: "device-control",
-        payload: { content, media: [] },
+      updateLog(logId, {
+        status: result.success ? "success" : "failed",
+        message: result.success
+          ? result.message || "操作分析已启动"
+          : result.error || "未知错误",
       })
 
-      updateLog(logId, { status: "success", message: "请求已发送，结果将在日志中显示" })
+      // Note: Device list will need to be manually refreshed after analysis completes
+      // since the analysis runs in background
     } catch (error) {
       updateLog(logId, {
         status: "failed",
-        message: error instanceof Error ? error.message : "发送失败",
+        message: error instanceof Error ? error.message : "未知错误",
       })
     } finally {
       setProcessingDevices((prev) => {

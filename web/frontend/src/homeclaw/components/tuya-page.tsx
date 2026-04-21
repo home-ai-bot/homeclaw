@@ -36,11 +36,12 @@ import { HomeSection } from "@/homeclaw/components/home-section"
 import { DeviceListSection } from "@/homeclaw/components/device-list-section"
 import { VideoSettingsSection } from "@/homeclaw/components/video-settings-section"
 import { useDeviceControl } from "@/homeclaw/context/device-control-context"
+import { callTool } from "@/homeclaw/api/device-command-executor"
 
 export function TuyaPage() {
   const { t } = useTranslation("homeclaw")
   const store = useStore()
-  const { wsStatus, sendWebSocketMessage } = useDeviceControl()
+  const { wsStatus } = useDeviceControl()
 
   const [state, setState] = useState(store.get(tuyaAtom))
   const [initialized, setInitialized] = useState(false)
@@ -94,9 +95,8 @@ export function TuyaPage() {
         selectedHomeId: currentHome?.id || null,
       }))
 
-      // Load devices if logged in
-      const currentState = store.get(tuyaAtom)
-      if (currentState.isLoggedIn) {
+      // Load devices if a home is selected (don't wait for isLoggedIn state)
+      if (currentHome) {
         const devices = await loadTuyaDevices()
         store.set(tuyaAtom, (prev) => ({
           ...prev,
@@ -201,6 +201,11 @@ export function TuyaPage() {
       selectedHomeId: currentHome?.id || null,
       error: result.error || null,
     }))
+    // Load devices after home sync
+    if (currentHome) {
+      const devices = await loadTuyaDevices()
+      store.set(tuyaAtom, (prev) => ({ ...prev, devices }))
+    }
   }
 
   const handleSelectHome = async (homeId: string) => {
@@ -232,16 +237,24 @@ export function TuyaPage() {
     if (!state.selectedHomeId) return
     setIsGeneratingOps(true)
     try {
-      // Trigger device-spec-analyze skill workflow 2 (batch all devices)
-      const messageId = `generate-ops-batch-${Date.now()}`
-      const content = "使用device-spec-analyze skill批量生成所有未配置设备操作"
+      // Call hc_llm batchAnalyzeDevicesAsync to generate operations for all devices without ops
+      // Async method starts analysis in background and returns immediately
+      const result = await callTool(
+        {
+          toolName: "hc_llm",
+          method: "batchAnalyzeDevicesAsync",
+          brand: "tuya",
+          params: {},
+        },
+        {
+          timeout: 10000, // 10 seconds is enough since it returns immediately
+          successMessage: "设备操作分析已启动，请耐心等待分析完成",
+        }
+      )
 
-      sendWebSocketMessage({
-        type: "message.send",
-        id: messageId,
-        session_id: "device-control",
-        payload: { content, media: [] },
-      })
+      if (!result.success) {
+        console.error("[TuyaPage] Failed to start batch analyze devices:", result.error)
+      }
     } finally {
       setIsGeneratingOps(false)
     }
@@ -391,8 +404,8 @@ export function TuyaPage() {
         />
       )}
 
-      {/* Section 3: Device List (always show when logged in) */}
-      {state.isLoggedIn && (
+      {/* Section 3: Device List (show when a home is selected) */}
+      {state.selectedHomeId && (
         <DeviceListSection
           devices={state.devices}
           isSyncing={state.isSyncingDevices}

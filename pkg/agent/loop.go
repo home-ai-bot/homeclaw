@@ -178,6 +178,11 @@ func initHomeClaw(al *AgentLoop, workspace string, cfg *config.Config, msgBus *b
 			map[string]any{"error": err.Error()})
 		return
 	}
+	// Initialize and register all third-party brand clients (Xiaomi, Tuya, etc.)
+	if err := hc.SetClients(); err != nil {
+		logger.WarnCF("homeclaw", "Failed to set third-party clients",
+			map[string]any{"error": err.Error()})
+	}
 	hc.RegisterTools(registry.GetDefaultAgent().Tools)
 	al.homeclaw = hc
 	logger.InfoCF("homeclaw", "HomeClaw initialised", nil)

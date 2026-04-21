@@ -15,7 +15,6 @@ import (
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third/tuya"
-	homeclawtool "github.com/sipeed/picoclaw/pkg/homeclaw/tool"
 	"github.com/sipeed/picoclaw/pkg/logger"
 )
 
@@ -29,20 +28,17 @@ type ThirdFactory struct {
 	factory   *ioc.Factory
 	// Singleton instances - lazy loaded
 	jsonStore     *hcd.JSONStore
-	authStore     hcd.AuthStore
 	miDeviceStore miio.MiDeviceStore
 	miHomeStore   miio.MiHomeStore
 	cloud         *xiaomi.Cloud
 	miClient      *miio.MiClient
 	tuyaClient    *tuya.TuyaClient
-	cliTool       *homeclawtool.CLITool
-	cliToolMu     sync.Mutex
+	clients       map[string]third.Client
+	clientsMu     sync.Mutex
 
 	// Initialization tracking
 	storeOnce      sync.Once
 	storeErr       error
-	authOnce       sync.Once
-	authErr        error
 	tuyaClientOnce sync.Once
 	tuyaClientErr  error
 }
@@ -67,29 +63,9 @@ func (f *ThirdFactory) GetJSONStore() (*hcd.JSONStore, error) {
 }
 
 // GetAuthStore returns the singleton AuthStore instance (lazy initialized).
-// It points to workspace/auth, which stores credentials for all brands.
+// It delegates to the main factory's GetAuthStore.
 func (f *ThirdFactory) GetAuthStore() (hcd.AuthStore, error) {
-	f.authOnce.Do(func() {
-		// Get workspace path from config
-		workspace := ""
-		if f.cfg != nil {
-			workspace = f.cfg.WorkspacePath()
-		}
-		if workspace == "" {
-			f.authErr = fmt.Errorf("workspace path not configured")
-			return
-		}
-
-		authDir := filepath.Join(workspace, "auth")
-		store, err := hcd.NewJSONStore(authDir)
-		if err != nil {
-			f.authErr = fmt.Errorf("create auth json store: %w", err)
-			return
-		}
-
-		f.authStore, f.authErr = hcd.NewAuthStore(store)
-	})
-	return f.authStore, f.authErr
+	return f.factory.GetAuthStore()
 }
 
 // GetMiDeviceStore returns the singleton MiDeviceStore instance (lazy initialized).
@@ -236,47 +212,18 @@ func (f *ThirdFactory) GetTuyaClient() (*tuya.TuyaClient, error) {
 	return f.tuyaClient, f.tuyaClientErr
 }
 
-// GetCLITool returns the singleton CLITool instance (lazy initialized).
-// It registers all configured brand clients (xiaomi, tuya, …) into the tool.
-func (f *ThirdFactory) GetCLITool() (*homeclawtool.CLITool, error) {
-	f.cliToolMu.Lock()
-	defer f.cliToolMu.Unlock()
-	logger.Debug("begin init CLITool-------------------------------")
-	if f.cliTool != nil {
-		return f.cliTool, nil
-	}
-
-	homeStore, err := f.factory.GetHomeStore()
-	if err != nil {
-		return nil, fmt.Errorf("get home store: %w", err)
-	}
-
-	spaceStore, err := f.factory.GetSpaceStore()
-	if err != nil {
-		return nil, fmt.Errorf("get space store: %w", err)
-	}
-
-	deviceStore, err := f.factory.GetDeviceStore()
-	if err != nil {
-		return nil, fmt.Errorf("get device store: %w", err)
-	}
-
-	deviceOpStore, err := f.factory.GetDeviceOpStore()
-	if err != nil {
-		return nil, fmt.Errorf("get device op store: %w", err)
-	}
-
-	authStore, err := f.GetAuthStore()
-	if err != nil {
-		return nil, fmt.Errorf("get auth store: %w", err)
-	}
+// SetClients builds and sets brand clients (xiaomi, tuya, …) for CLI and LLM tools.
+// This method initializes all available brand clients and injects them into the tools.
+func (f *ThirdFactory) SetClients() error {
+	f.clientsMu.Lock()
+	defer f.clientsMu.Unlock()
 
 	clients := make(map[string]third.Client)
 
 	// Register Xiaomi client if available
 	miClient, miErr := f.GetMiClient("cn")
 	if miErr == nil && miClient != nil {
-		logger.Debug("set xiaomi to CLITool-------------------------------")
+		logger.Debug("set xiaomi client-------------------------------")
 		clients[miClient.Brand()] = miClient
 	}
 
@@ -290,14 +237,29 @@ func (f *ThirdFactory) GetCLITool() (*homeclawtool.CLITool, error) {
 		logger.Debug("tuya client created without token (not yet configured), registered for later use-------------------------------")
 		clients[tuyaClient.Brand()] = tuyaClient
 	} else {
-		logger.Debug("set tuya to CLITool-------------------------------")
+		logger.Debug("set tuya client-------------------------------")
 		clients[tuyaClient.Brand()] = tuyaClient
 	}
 
 	if len(clients) == 0 {
-		// No brand configured yet; still create the tool so it can be populated later
+		logger.Debug("no brand clients configured-------------------------------")
 	}
 
-	f.cliTool = homeclawtool.NewCLITool(clients, homeStore, spaceStore, deviceStore, deviceOpStore, authStore)
-	return f.cliTool, nil
+	f.clients = clients
+
+	// Inject clients into CLI tool and LLM tool
+	f.factory.SetCLIToolClients(clients)
+
+	if llmTool, err := f.factory.GetLLMTool(); err == nil && llmTool != nil {
+		llmTool.SetClients(clients)
+	}
+
+	return nil
+}
+
+// GetClients returns the map of brand clients.
+func (f *ThirdFactory) GetClients() map[string]third.Client {
+	f.clientsMu.Lock()
+	defer f.clientsMu.Unlock()
+	return f.clients
 }

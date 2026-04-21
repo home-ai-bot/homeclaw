@@ -46,7 +46,6 @@ type CLITool struct {
 // NewCLITool creates a CLITool with the given brand clients and data stores.
 // clients maps brand name (e.g. "xiaomi", "tuya") to its third.Client.
 func NewCLITool(
-	clients map[string]third.Client,
 	homeStore data.HomeStore,
 	spaceStore data.SpaceStore,
 	deviceStore data.DeviceStore,
@@ -54,7 +53,6 @@ func NewCLITool(
 	authStore data.AuthStore,
 ) *CLITool {
 	return &CLITool{
-		clients:       clients,
 		homeStore:     homeStore,
 		spaceStore:    spaceStore,
 		deviceStore:   deviceStore,
@@ -69,6 +67,17 @@ func (t *CLITool) RegisterClient(client third.Client) {
 		t.clients = make(map[string]third.Client)
 	}
 	t.clients[client.Brand()] = client
+}
+
+// SetClients sets the brand clients for device spec analysis.
+// This can be called after construction to enable the analyzeAndSaveDeviceOps method.
+func (t *CLITool) SetClients(clients map[string]third.Client) {
+	t.clients = clients
+}
+
+// GetClients returns the map of brand clients.
+func (t *CLITool) GetClients() map[string]third.Client {
+	return t.clients
 }
 
 func (t *CLITool) Name() string { return "hc_cli" }

@@ -18,7 +18,7 @@ import {
   type HomeInfo,
   type DeviceInfo,
 } from "@/homeclaw/api/home-sync"
-import { listDevices, type Device } from "@/homeclaw/api/device-ops"
+import { listDevices } from "@/homeclaw/api/device-ops"
 
 export interface TuyaStoreState {
   isLoggedIn: boolean
@@ -246,31 +246,16 @@ export async function loadTuyaDevices(): Promise<DeviceInfo[]> {
     // Fetch flat list of devices
     const devices = await listDevices()
 
-    // Group by room and filter Tuya devices
-    const roomMap = new Map<string, Device[]>()
-    for (const device of devices) {
-      if (device.from !== "tuya") continue
-
-      const roomName = device.space_name || "Unassigned"
-      if (!roomMap.has(roomName)) {
-        roomMap.set(roomName, [])
-      }
-      roomMap.get(roomName)!.push(device)
-    }
-
-    // Convert to DeviceInfo format
-    const tuyaDevices: DeviceInfo[] = []
-    for (const [roomName, roomDevices] of roomMap.entries()) {
-      for (const device of roomDevices) {
-        tuyaDevices.push({
-          from_id: device.from_id,
-          name: device.name,
-          type: device.type,
-          space_name: roomName !== "Unassigned" ? roomName : undefined,
-          online: true,
-        })
-      }
-    }
+    // Filter Tuya devices and convert to DeviceInfo format
+    const tuyaDevices: DeviceInfo[] = devices
+      .filter((device) => device.from === "tuya")
+      .map((device) => ({
+        from_id: device.from_id,
+        name: device.name,
+        type: device.type,
+        space_name: device.space_name,
+        online: true,
+      }))
 
     return tuyaDevices
   } catch (error) {

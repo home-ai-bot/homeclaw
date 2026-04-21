@@ -15,6 +15,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/homeclaw/event"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/intent"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/llm"
+	"github.com/sipeed/picoclaw/pkg/homeclaw/third"
 	homeclawtool "github.com/sipeed/picoclaw/pkg/homeclaw/tool"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/workflow"
 	"github.com/sipeed/picoclaw/pkg/media"
@@ -69,6 +70,15 @@ type Factory struct {
 
 	// Common tool singleton - lazy loaded
 	commonTool *homeclawtool.CommonTool
+
+	// CLI tool singleton - lazy loaded
+	cliTool   *homeclawtool.CLITool
+	cliToolMu sync.Mutex
+
+	// Auth store - lazy loaded
+	authStore data.AuthStore
+	authOnce  sync.Once
+	authErr   error
 
 	// Media store for sending images to channels
 	mediaStore media.MediaStore
@@ -201,6 +211,32 @@ func (f *Factory) GetDeviceOpStore() (data.DeviceOpStore, error) {
 		return nil, fmt.Errorf("device op store init failed: %w", err)
 	}
 	return f.deviceOpStore, nil
+}
+
+// GetAuthStore returns the singleton AuthStore instance (lazy initialized).
+// It points to workspace/auth, which stores credentials for all brands.
+func (f *Factory) GetAuthStore() (data.AuthStore, error) {
+	f.authOnce.Do(func() {
+		// Get workspace path from config
+		workspace := ""
+		if f.Cfg != nil {
+			workspace = f.Cfg.WorkspacePath()
+		}
+		if workspace == "" {
+			f.authErr = fmt.Errorf("workspace path not configured")
+			return
+		}
+
+		authDir := filepath.Join(workspace, "auth")
+		store, err := data.NewJSONStore(authDir)
+		if err != nil {
+			f.authErr = fmt.Errorf("create auth json store: %w", err)
+			return
+		}
+
+		f.authStore, f.authErr = data.NewAuthStore(store)
+	})
+	return f.authStore, f.authErr
 }
 
 // GetEventCenter returns the singleton EventCenter instance
@@ -493,7 +529,7 @@ func (f *Factory) SetMediaStore(store media.MediaStore) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // GetLLMTool returns the singleton LLMTool instance (lazy initialized).
-// It provides unified LLM operations: image analysis, text processing.
+// It provides unified LLM operations: image analysis, text processing, device spec analysis.
 func (f *Factory) GetLLMTool() (*homeclawtool.LLMTool, error) {
 	if f.llmTool != nil {
 		return f.llmTool, nil
@@ -505,7 +541,23 @@ func (f *Factory) GetLLMTool() (*homeclawtool.LLMTool, error) {
 		return nil, fmt.Errorf("failed to get small LLM for LLMTool: %w", err)
 	}
 
-	f.llmTool = homeclawtool.NewLLMTool(smallLLM)
+	// Get device operation store
+	deviceOpStore, err := f.GetDeviceOpStore()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get device op store for LLMTool: %w", err)
+	}
+
+	// Get device store
+	deviceStore, err := f.GetDeviceStore()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get device store for LLMTool: %w", err)
+	}
+
+	f.llmTool = homeclawtool.NewLLMToolWithStores(smallLLM, f.Workspace, deviceOpStore, deviceStore)
+
+	// Note: clients will be injected later by the caller if needed for device spec analysis
+	// This avoids import cycle between pkg/homeclaw/ioc and pkg/homeclaw/third/ioc
+
 	return f.llmTool, nil
 }
 
@@ -528,4 +580,56 @@ func (f *Factory) GetCommonTool() (*homeclawtool.CommonTool, error) {
 
 	f.commonTool = homeclawtool.NewCommonTool(deviceStore, homeStore)
 	return f.commonTool, nil
+}
+
+// GetCLITool returns the singleton CLITool instance (lazy initialized).
+// It creates the tool with all required stores; clients and authStore are set separately.
+func (f *Factory) GetCLITool() (*homeclawtool.CLITool, error) {
+	f.cliToolMu.Lock()
+	defer f.cliToolMu.Unlock()
+
+	if f.cliTool != nil {
+		return f.cliTool, nil
+	}
+
+	homeStore, err := f.GetHomeStore()
+	if err != nil {
+		return nil, fmt.Errorf("get home store: %w", err)
+	}
+
+	spaceStore, err := f.GetSpaceStore()
+	if err != nil {
+		return nil, fmt.Errorf("get space store: %w", err)
+	}
+
+	deviceStore, err := f.GetDeviceStore()
+	if err != nil {
+		return nil, fmt.Errorf("get device store: %w", err)
+	}
+
+	deviceOpStore, err := f.GetDeviceOpStore()
+	if err != nil {
+		return nil, fmt.Errorf("get device op store: %w", err)
+	}
+
+	authStore, err := f.GetAuthStore()
+	if err != nil {
+		// Log warning but continue without authStore
+		// Auth operations won't work but device control will
+		authStore = nil
+	}
+
+	f.cliTool = homeclawtool.NewCLITool(homeStore, spaceStore, deviceStore, deviceOpStore, authStore)
+	return f.cliTool, nil
+}
+
+// SetCLIToolClients sets the brand clients for the CLI tool.
+// This should be called after GetCLITool to enable device control operations.
+func (f *Factory) SetCLIToolClients(clients map[string]third.Client) {
+	f.cliToolMu.Lock()
+	defer f.cliToolMu.Unlock()
+
+	if f.cliTool != nil {
+		f.cliTool.SetClients(clients)
+	}
 }

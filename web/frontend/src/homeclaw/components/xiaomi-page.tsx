@@ -33,6 +33,7 @@ import { SmartHomeLayout } from "@/homeclaw/components/smart-home-layout"
 import { HomeSection } from "@/homeclaw/components/home-section"
 import { DeviceListSection } from "@/homeclaw/components/device-list-section"
 import { VideoSettingsSection } from "@/homeclaw/components/video-settings-section"
+import { callTool } from "@/homeclaw/api/device-command-executor"
 
 export function XiaomiPage() {
   const { t } = useTranslation("homeclaw")
@@ -49,7 +50,6 @@ export function XiaomiPage() {
 
   const {
     wsStatus,
-    sendWebSocketMessage,
   } = useDeviceControl()
 
   useEffect(() => {
@@ -279,16 +279,24 @@ export function XiaomiPage() {
     if (!state.selectedHomeId) return
     setIsGeneratingOps(true)
     try {
-      // Trigger device-spec-analyze skill workflow 2 (batch all devices)
-      const messageId = `generate-ops-batch-${Date.now()}`
-      const content = "使用device-spec-analyze skill批量生成所有未配置设备操作"
+      // Call hc_llm batchAnalyzeDevicesAsync to generate operations for all devices without ops
+      // Async method starts analysis in background and returns immediately
+      const result = await callTool(
+        {
+          toolName: "hc_llm",
+          method: "batchAnalyzeDevicesAsync",
+          brand: "xiaomi",
+          params: {},
+        },
+        {
+          timeout: 10000, // 10 seconds is enough since it returns immediately
+          successMessage: "设备操作分析已启动，请耐心等待分析完成",
+        }
+      )
 
-      sendWebSocketMessage({
-        type: "message.send",
-        id: messageId,
-        session_id: "device-control",
-        payload: { content, media: [] },
-      })
+      if (!result.success) {
+        console.error("[XiaomiPage] Failed to start batch analyze devices:", result.error)
+      }
     } finally {
       setIsGeneratingOps(false)
     }
