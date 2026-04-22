@@ -24,6 +24,10 @@ func (h *Handler) registerPicoRoutes(mux *http.ServeMux) {
 	// This allows the frontend to connect via the same port as the web UI,
 	// avoiding the need to expose extra ports for WebSocket communication.
 	mux.HandleFunc("GET /pico/ws", h.handleWebSocketProxy())
+
+	// WebSocket proxy for direct tool calls: forward /pico/ws-tool to gateway.
+	// Tool calls bypass the agent loop and execute directly for instant responses.
+	mux.HandleFunc("GET /pico/ws-tool", h.handleWebSocketProxy())
 }
 
 // createWsProxy creates a reverse proxy to the current gateway WebSocket endpoint.

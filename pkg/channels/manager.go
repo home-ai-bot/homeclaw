@@ -264,6 +264,13 @@ func NewManager(cfg *config.Config, messageBus *bus.MessageBus, store media.Medi
 	return m, nil
 }
 
+// ChannelByName returns the channel with the given name, or nil if not found.
+func (m *Manager) ChannelByName(name string) Channel {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.channels[name]
+}
+
 // GetStreamer implements bus.StreamDelegate.
 // It checks if the named channel supports streaming and returns a Streamer.
 func (m *Manager) GetStreamer(ctx context.Context, channelName, chatID string) (bus.Streamer, bool) {

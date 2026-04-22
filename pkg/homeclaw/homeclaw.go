@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
+	"github.com/sipeed/picoclaw/pkg/channels"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/intent"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/ioc"
@@ -31,6 +32,39 @@ var ErrDisabled = ioc.ErrDisabled
 type HomeClaw struct {
 	f      *ioc.Factory
 	thirdf *third.ThirdFactory
+}
+
+// InjectToolWSHandler creates a ToolWSHandler and injects it into PicoChannel
+// so that /pico/ws-tool requests can execute tools directly without the agent loop.
+func (hc *HomeClaw) InjectToolWSHandler(
+	cm *channels.Manager,
+	toolRegistry *tools.ToolRegistry,
+	picoCfg config.PicoConfig,
+) {
+	if cm == nil {
+		logger.Warnf("[HomeClaw.InjectToolWSHandler] channelManager is nil, skipping")
+		return
+	}
+
+	handler := NewToolWSHandler(hc, toolRegistry, picoCfg)
+	if handler == nil {
+		logger.Warnf("[HomeClaw.InjectToolWSHandler] NewToolWSHandler returned nil")
+		return
+	}
+
+	// Get PicoChannel and inject the handler directly
+	ch := cm.ChannelByName("pico")
+	if ch == nil {
+		logger.Warnf("[HomeClaw.InjectToolWSHandler] PicoChannel not found")
+		return
+	}
+
+	if setter, ok := ch.(channels.ToolHandlerSetter); ok {
+		setter.SetToolHandler(handler)
+		logger.InfoCF("homeclaw", "ToolWSHandler injected into PicoChannel", nil)
+	} else {
+		logger.Warnf("[HomeClaw.InjectToolWSHandler] PicoChannel does not implement ToolHandlerSetter")
+	}
 }
 
 // NewHomeClaw creates a HomeClaw instance from the given workspace directory,
@@ -191,6 +225,15 @@ func (hc *HomeClaw) SetClients() error {
 		return nil
 	}
 	return hc.thirdf.SetClients()
+}
+
+// NewToolWSHandler creates a ToolWSHandler for direct tool WebSocket execution.
+// Returns nil if HomeClaw is nil or not fully configured.
+func (hc *HomeClaw) NewToolWSHandler(toolRegistry *tools.ToolRegistry, picoConfig config.PicoConfig) ToolCallHandler {
+	if hc == nil || toolRegistry == nil {
+		return nil
+	}
+	return NewToolWSHandler(hc, toolRegistry, picoConfig)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

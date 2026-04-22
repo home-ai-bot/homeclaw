@@ -1003,6 +1003,22 @@ func (al *AgentLoop) SetChannelManager(cm *channels.Manager) {
 	al.channelManager = cm
 }
 
+// InjectToolWSHandler injects the ToolWSHandler into PicoChannel if all
+// required dependencies are available. This should be called after both
+// homeclaw and channelManager have been set up.
+func (al *AgentLoop) InjectToolWSHandler(cfg *config.Config) {
+	if al.homeclaw == nil || al.channelManager == nil || al.registry == nil {
+		logger.Warnf("[InjectToolWSHandler] missing dependencies, skipping")
+		return
+	}
+	defaultAgent := al.registry.GetDefaultAgent()
+	if defaultAgent == nil {
+		logger.Warnf("[InjectToolWSHandler] no default agent, skipping")
+		return
+	}
+	al.homeclaw.InjectToolWSHandler(al.channelManager, defaultAgent.Tools, cfg.Channels.Pico)
+}
+
 // ReloadProviderAndConfig atomically swaps the provider and config with proper synchronization.
 // It uses a context to allow timeout control from the caller.
 // Returns an error if the reload fails or context is canceled.
@@ -1083,6 +1099,9 @@ func (al *AgentLoop) ReloadProviderAndConfig(
 
 	al.hookRuntime.reset(al)
 	configureHookManagerFromConfig(al.hooks, cfg)
+
+	// Inject ToolWSHandler into PicoChannel with the new config
+	al.InjectToolWSHandler(cfg)
 
 	// Close old provider after releasing the lock
 	// This prevents blocking readers while closing

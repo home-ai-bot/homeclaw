@@ -1,7 +1,7 @@
 // Dedicated WebSocket manager for the device control page.
 // This is intentionally separate from the shared picoWS (chat) to avoid
 // session conflicts: the chat controller owns /pico/ws?session_id={chatId},
-// while device control always uses session_id=device-control.
+// while device control uses its own connection without session_id parameter.
 
 import { getPicoToken } from "@/api/pico"
 
@@ -14,7 +14,6 @@ export type DeviceControlWSStatus =
 export type MessageHandler = (data: unknown) => void
 export type StatusHandler = (status: DeviceControlWSStatus) => void
 
-const SESSION_ID = "device-control"
 const MAX_RECONNECT_ATTEMPTS = 10
 const BASE_RECONNECT_DELAY_MS = 1000
 const MAX_RECONNECT_DELAY_MS = 15000
@@ -172,11 +171,11 @@ export class DeviceControlWebSocket {
     }
 
     const scheme = window.location.protocol === "https:" ? "wss:" : "ws:"
-    const url = `${scheme}//${window.location.host}/pico/ws?session_id=${encodeURIComponent(SESSION_ID)}`
+    const url = `${scheme}//${window.location.host}/pico/ws-tool`
     const socket = new WebSocket(url, [`token.${token}`])
 
     socket.onopen = () => {
-      console.log("[DeviceControlWS] Connected (session=device-control)")
+      console.log("[DeviceControlWS] Connected to tool WebSocket")
       this.ws = socket
       this.reconnectAttempts = 0
       this.setStatus("connected")

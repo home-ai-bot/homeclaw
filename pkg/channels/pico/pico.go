@@ -77,6 +77,11 @@ type PicoChannel struct {
 	connsMu            sync.RWMutex
 	ctx                context.Context
 	cancel             context.CancelFunc
+
+	// toolHandler is the direct tool call handler (set by external code after creation).
+	// When set, /pico/ws-tool requests are delegated to this handler,
+	// bypassing the agent loop for instant tool execution.
+	toolHandler channels.ToolCallHandler
 }
 
 // NewPicoChannel creates a new Pico Protocol channel.
@@ -234,6 +239,11 @@ func (c *PicoChannel) Stop(ctx context.Context) error {
 	return nil
 }
 
+// SetToolHandler sets the handler for direct tool call WebSocket connections.
+func (c *PicoChannel) SetToolHandler(handler channels.ToolCallHandler) {
+	c.toolHandler = handler
+}
+
 // WebhookPath implements channels.WebhookHandler.
 func (c *PicoChannel) WebhookPath() string { return "/pico/" }
 
@@ -244,9 +254,28 @@ func (c *PicoChannel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch path {
 	case "/ws", "/ws/":
 		c.handleWebSocket(w, r)
+	case "/ws-tool", "/ws-tool/":
+		c.handleToolWebSocket(w, r)
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// handleToolWebSocket delegates to the tool handler if available.
+// This provides direct tool execution bypassing the agent loop.
+func (c *PicoChannel) handleToolWebSocket(w http.ResponseWriter, r *http.Request) {
+	if c.toolHandler == nil {
+		http.Error(w, "tool handler not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Authenticate (reuse existing auth logic)
+	if !c.authenticate(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	c.toolHandler.HandleToolWebSocket(w, r)
 }
 
 // Send implements Channel — sends a message to the appropriate WebSocket connection.

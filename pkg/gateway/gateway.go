@@ -375,6 +375,9 @@ func setupAndStartServices(
 	agentLoop.SetChannelManager(runningServices.ChannelManager)
 	agentLoop.SetMediaStore(runningServices.MediaStore)
 
+	// Inject ToolWSHandler into PicoChannel now that both homeclaw and channelManager are available
+	agentLoop.InjectToolWSHandler(cfg)
+
 	transcriber := asr.DetectTranscriber(cfg)
 	if transcriber != nil {
 		agentLoop.SetTranscriber(transcriber)

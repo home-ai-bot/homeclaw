@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -53,6 +54,19 @@ type Channel interface {
 	IsAllowed(senderID string) bool
 	IsAllowedSender(sender bus.SenderInfo) bool
 	ReasoningChannelID() string
+}
+
+// ToolCallHandler handles direct tool call WebSocket connections.
+// Implemented by homeclaw.ToolWSHandler. Defined in the channels package
+// so that both Manager and PicoChannel can reference the same type.
+type ToolCallHandler interface {
+	HandleToolWebSocket(w http.ResponseWriter, r *http.Request)
+}
+
+// ToolHandlerSetter is an opt-in interface for channels that accept
+// a ToolCallHandler (e.g. PicoChannel for /ws-tool endpoint).
+type ToolHandlerSetter interface {
+	SetToolHandler(handler ToolCallHandler)
 }
 
 // BaseChannelOption is a functional option for configuring a BaseChannel.
