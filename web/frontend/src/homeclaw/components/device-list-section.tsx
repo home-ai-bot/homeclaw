@@ -20,6 +20,7 @@ export interface DeviceInfo {
 interface DeviceListSectionProps {
   devices: DeviceInfo[]
   isSyncing: boolean
+  isLoading?: boolean
   onSync: () => void
   onGenerateOps?: () => void
   isGeneratingOps?: boolean
@@ -29,6 +30,7 @@ interface DeviceListSectionProps {
 export function DeviceListSection({
   devices,
   isSyncing,
+  isLoading = false,
   onSync,
   onGenerateOps,
   isGeneratingOps,
@@ -97,7 +99,12 @@ export function DeviceListSection({
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-4">
-        {disabled ? (
+        {isLoading ? (
+          <div className="text-muted-foreground flex items-center justify-center gap-2 py-4 text-sm">
+            <IconLoader2 className="size-4 animate-spin" />
+            {t("labels.loading")}
+          </div>
+        ) : disabled ? (
           <div className="text-muted-foreground py-4 text-center text-sm">
             {t("device_section.selectHomeFirst")}
           </div>

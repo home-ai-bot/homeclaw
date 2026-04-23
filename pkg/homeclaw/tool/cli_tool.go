@@ -35,12 +35,13 @@ import (
 // setProps    – write device properties; params are brand-specific.
 // execute     – send an action command to a device; params are brand-specific.
 type CLITool struct {
-	clients       map[string]third.Client
-	homeStore     data.HomeStore
-	spaceStore    data.SpaceStore
-	deviceStore   data.DeviceStore
-	deviceOpStore data.DeviceOpStore
-	authStore     data.AuthStore
+	clients        map[string]third.Client
+	homeStore      data.HomeStore
+	spaceStore     data.SpaceStore
+	deviceStore    data.DeviceStore
+	deviceOpStore  data.DeviceOpStore
+	authStore      data.AuthStore
+	refreshClients func() error // Optional callback to refresh brand clients after auth changes
 }
 
 // NewCLITool creates a CLITool with the given brand clients and data stores.
@@ -78,6 +79,12 @@ func (t *CLITool) SetClients(clients map[string]third.Client) {
 // GetClients returns the map of brand clients.
 func (t *CLITool) GetClients() map[string]third.Client {
 	return t.clients
+}
+
+// SetRefreshClients sets the callback function used to refresh brand clients
+// after authentication credentials are saved or deleted.
+func (t *CLITool) SetRefreshClients(fn func() error) {
+	t.refreshClients = fn
 }
 
 func (t *CLITool) Name() string { return "hc_cli" }
@@ -755,6 +762,14 @@ func (t *CLITool) execSaveAuth(params map[string]any) *tools.ToolResult {
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to save auth for brand '%s': %v", brand, err), IsError: true}
 	}
 
+	// Refresh brand clients to pick up the new credentials
+	if t.refreshClients != nil {
+		if err := t.refreshClients(); err != nil {
+			// Log the error but don't fail the operation - credentials are saved
+			// The Tuya client supports lazy token loading, so it will work on next use
+		}
+	}
+
 	return tools.NewToolResult(fmt.Sprintf("successfully saved auth credentials for brand '%s'", brand))
 }
 
@@ -779,6 +794,13 @@ func (t *CLITool) execDeleteAuth(params map[string]any) *tools.ToolResult {
 	// Delete from AuthStore
 	if err := t.authStore.DeleteBrand(brand); err != nil {
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to delete auth for brand '%s': %v", brand, err), IsError: true}
+	}
+
+	// Refresh brand clients to reflect the deletion
+	if t.refreshClients != nil {
+		if err := t.refreshClients(); err != nil {
+			// Log the error but don't fail the operation
+		}
 	}
 
 	return tools.NewToolResult(fmt.Sprintf("successfully deleted auth credentials for brand '%s'", brand))

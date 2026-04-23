@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/llm"
@@ -362,13 +363,15 @@ Return ONLY a valid JSON array. Do not include any explanation or markdown forma
 
 	logger.Infof("[DeviceOps] Calling LLM to analyze device %s (prompt length: %d chars)", fromID, len(prompt))
 	// Call LLM to analyze spec
+	startTime := time.Now()
 	result, err := llmInst.Chat(ctx, "You are a smart home device specification analyzer.", prompt)
+	elapsed := time.Since(startTime)
 	if err != nil {
-		logger.Errorf("[DeviceOps] LLM analysis failed for device %s: %v", fromID, err)
+		logger.Errorf("[DeviceOps] LLM analysis failed for device %s after %v: %v", fromID, elapsed, err)
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to analyze device spec: %v", err), IsError: true}
 	}
 
-	logger.Infof("[DeviceOps] LLM analysis completed for device %s (result length: %d chars)", fromID, len(result))
+	logger.Infof("[DeviceOps] LLM analysis completed for device %s in %v (result length: %d chars)", fromID, elapsed, len(result))
 
 	// Parse the JSON array from LLM response
 	logger.Infof("[DeviceOps] Parsing operations array from LLM result")

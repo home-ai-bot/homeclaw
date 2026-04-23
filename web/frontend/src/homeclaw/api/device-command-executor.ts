@@ -121,17 +121,23 @@ export async function callTool(
       message,
       (data) => {
         const d = data as Record<string, unknown>
-        const payload = d.payload as Record<string, unknown> | undefined
-        return (
-          d.id === messageId ||
-          (d.type === "message.create" && typeof payload?.content === "string")
-        )
+        
+        // The backend responds with ID = "tool-response-{originalMsgID}"
+        // We need to match this specific response
+        const expectedResponseId = 'tool-response-' + messageId
+        return d.id === expectedResponseId
       },
       timeout,
     )
 
     const d = response as Record<string, unknown>
     const payload = d.payload as Record<string, unknown> | undefined
+
+    console.log('[ToolCall] Response received:', {
+      id: d.id,
+      type: d.type,
+      contentPreview: typeof payload?.content === 'string' ? (payload.content as string).substring(0, 100) : null,
+    })
 
     if (d.type === "error") {
       const errorMsg = (payload?.message as string) || "Unknown error from gateway"

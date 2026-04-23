@@ -212,11 +212,22 @@ func (f *ThirdFactory) GetTuyaClient() (*tuya.TuyaClient, error) {
 	return f.tuyaClient, f.tuyaClientErr
 }
 
+// ResetTuyaClient clears the cached Tuya client so it can be recreated with fresh credentials.
+// This should be called after saving or deleting Tuya authentication.
+func (f *ThirdFactory) ResetTuyaClient() {
+	f.tuyaClientOnce = sync.Once{}
+	f.tuyaClient = nil
+	f.tuyaClientErr = nil
+}
+
 // SetClients builds and sets brand clients (xiaomi, tuya, …) for CLI and LLM tools.
 // This method initializes all available brand clients and injects them into the tools.
 func (f *ThirdFactory) SetClients() error {
 	f.clientsMu.Lock()
 	defer f.clientsMu.Unlock()
+
+	// Reset Tuya client to allow re-initialization with fresh credentials
+	f.ResetTuyaClient()
 
 	clients := make(map[string]third.Client)
 

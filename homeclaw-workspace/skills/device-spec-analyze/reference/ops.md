@@ -10,16 +10,8 @@
   "water_heater": ["turn_on", "turn_off", "get_state", "set_temperature", "set_operation_mode"],
   "tv": ["turn_on", "turn_off", "get_state", "play", "pause", "stop", "set_volume", "mute", "select_source"],
   "tvbox": ["turn_on", "turn_off", "get_state", "play", "pause", "stop", "set_volume", "mute", "select_source"],
-  "speaker": ["turn_on", "turn_off", "get_state", "play", "pause", "stop", "next_track", "previous_track", "set_volume", "mute", "play_text", "execute_text_directive", "wake_up", "ir_turn_on", "ir_turn_off", "ir_set_volume", "ir_send_command"],
+  "speaker": ["turn_on", "turn_off", "get_state", "play", "pause", "stop", "next_track", "previous_track", "set_volume", "mute", "play_text", "execute_text_directive"],
   "lock": ["lock", "unlock", "get_state"],
   "doorbell": ["get_state"],
-  "sensor_motion": ["get_state"],
-  "sensor_temperature": ["get_state"],
-  "sensor_humidity": ["get_state"],
-  "sensor_smoke": ["get_state"],
-  "sensor_gas": ["get_state"],
-  "sensor_door": ["get_state"],
-  "sensor_water_leak": ["get_state"],
-  "sensor_illuminance": ["get_state"],
-  "sensor_air_quality": ["get_state"]
+  "sensor": ["get_state"],
 }

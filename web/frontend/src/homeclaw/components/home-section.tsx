@@ -21,6 +21,7 @@ interface HomeSectionProps {
   homes: HomeInfo[]
   selectedHomeId: string | null
   isSyncing: boolean
+  isLoading?: boolean
   onSync: () => void
   onSelect: (homeId: string) => void
 }
@@ -29,6 +30,7 @@ export function HomeSection({
   homes,
   selectedHomeId,
   isSyncing,
+  isLoading = false,
   onSync,
   onSelect,
 }: HomeSectionProps) {
@@ -92,7 +94,12 @@ export function HomeSection({
         )}
       </CardHeader>
       <CardContent className="px-4 pb-4">
-        {homes.length === 0 ? (
+        {isLoading ? (
+          <div className="text-muted-foreground flex items-center justify-center gap-2 py-4 text-sm">
+            <IconLoader2 className="size-4 animate-spin" />
+            {t("labels.loading")}
+          </div>
+        ) : homes.length === 0 ? (
           <div className="text-muted-foreground py-4 text-center text-sm">
             {t("home_section.noHomes")}
           </div>

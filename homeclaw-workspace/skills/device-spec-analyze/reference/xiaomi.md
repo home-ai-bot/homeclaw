@@ -27,9 +27,9 @@ Xiaomi MIoT specs are returned as a flat array of operation definitions:
 
 For each JSON object in the input spec array, parse it according to these rules:
 
-1. **method**: Extract directly from `specjson.method`
-2. **ops**: Use the `specjson.method` and `specjson.desc` to choose one matching operation from ## Supported Operations Reference:
-3. **param**: Extract from `specjson.param` with the following modifications:
+1. **method**: Extract directly from `method`
+2. **ops**: Use the `method` and `desc` to choose one matching operation from ## Supported Operations Reference:
+3. **param**: Extract from `param` with the following modifications:
    - Change `did` value to `<from_id>` (the target device ID)
    - Change `value` to the appropriate value based on `param_desc`
    - If `value` is not a single fixed value, keep it as `"$value$"`
@@ -42,11 +42,6 @@ For each JSON object in the input spec array, parse it according to these rules:
     "method": "SetProp",
     "ops": "turn_on",
     "param": {"did": "12345", "siid": 2, "piid": 1, "value": true, "param_desc": "bool"}
-  },
-  {
-    "method": "SetProp",
-    "ops": "turn_off",
-    "param": {"did": "12345", "siid": 2, "piid": 1, "value": false, "param_desc": "bool"}
   },
   {
     "method": "SetProp",

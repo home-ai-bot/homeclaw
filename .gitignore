@@ -80,3 +80,4 @@ pkg/homeclaw/third/tuya/tuya_client_test.go
 
 .omc/
 >>>>>>> upstream/main
+scripts/deploy.ps1

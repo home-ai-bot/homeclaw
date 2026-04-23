@@ -4,6 +4,8 @@
 // while device control uses its own connection without session_id parameter.
 
 import { getPicoToken } from "@/api/pico"
+import { getDefaultStore } from "jotai"
+import { gatewayAtom } from "@/store/gateway"
 
 export type DeviceControlWSStatus =
   | "disconnected"
@@ -26,6 +28,8 @@ export class DeviceControlWebSocket {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectAttempts = 0
   private shouldReconnect = false
+  private gatewayUnsubscribe: (() => void) | null = null
+  private lastGatewayStatus: string | null = null
 
   // ── Connection lifecycle ────────────────────────────────────────────────
 
@@ -38,6 +42,16 @@ export class DeviceControlWebSocket {
       return
     }
 
+    // Setup gateway status subscription
+    this.setupGatewaySubscription()
+
+    // Check if gateway is running before attempting connection
+    const store = getDefaultStore()
+    if (store.get(gatewayAtom).status !== "running") {
+      console.log("[DeviceControlWS] Gateway not running, skipping connection")
+      return
+    }
+
     this.shouldReconnect = true
     this.reconnectAttempts = 0
     await this.openConnection()
@@ -46,6 +60,7 @@ export class DeviceControlWebSocket {
   disconnect(): void {
     this.shouldReconnect = false
     this.clearReconnectTimer()
+    this.cleanupGatewaySubscription()
     if (this.ws) {
       this.ws.onclose = null // prevent auto-reconnect
       this.ws.close()
@@ -156,6 +171,14 @@ export class DeviceControlWebSocket {
   // ── Private helpers ─────────────────────────────────────────────────────
 
   private async openConnection(): Promise<void> {
+    // Check if gateway is still running before opening connection
+    const store = getDefaultStore()
+    if (store.get(gatewayAtom).status !== "running") {
+      console.log("[DeviceControlWS] Gateway not running, aborting connection")
+      this.setStatus("disconnected")
+      return
+    }
+
     this.setStatus("connecting")
 
     let token: string
@@ -213,6 +236,15 @@ export class DeviceControlWebSocket {
 
   private scheduleReconnect(): void {
     if (!this.shouldReconnect) return
+    
+    // Check if gateway is still running before scheduling reconnect
+    const store = getDefaultStore()
+    if (store.get(gatewayAtom).status !== "running") {
+      console.log("[DeviceControlWS] Gateway not running, skipping reconnect")
+      this.setStatus("disconnected")
+      return
+    }
+    
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       console.warn("[DeviceControlWS] Max reconnect attempts reached")
       this.setStatus("error")
@@ -245,6 +277,61 @@ export class DeviceControlWebSocket {
     if (this.status === status) return
     this.status = status
     this.statusHandlers.forEach((h) => h(status))
+  }
+
+  // ── Gateway status subscription ─────────────────────────────────────────
+
+  private setupGatewaySubscription(): void {
+    this.cleanupGatewaySubscription()
+    
+    const store = getDefaultStore()
+    const syncConnectionWithGateway = () => {
+      const gatewayStatus = store.get(gatewayAtom).status
+      
+      // Skip if status hasn't changed
+      if (gatewayStatus === this.lastGatewayStatus) {
+        return
+      }
+      this.lastGatewayStatus = gatewayStatus
+
+      // Gateway just started - try to connect
+      if (gatewayStatus === "running") {
+        console.log("[DeviceControlWS] Gateway started, attempting connection")
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+          this.shouldReconnect = true
+          this.reconnectAttempts = 0
+          void this.openConnection()
+        }
+        return
+      }
+
+      // Gateway stopped or errored - disconnect
+      if (gatewayStatus === "stopped" || gatewayStatus === "error") {
+        console.log(`[DeviceControlWS] Gateway ${gatewayStatus}, disconnecting`)
+        this.shouldReconnect = false
+        this.clearReconnectTimer()
+        if (this.ws) {
+          this.ws.onclose = null
+          this.ws.close()
+          this.ws = null
+        }
+        this.setStatus("disconnected")
+      }
+    }
+
+    // Subscribe to gateway status changes
+    this.gatewayUnsubscribe = store.sub(gatewayAtom, syncConnectionWithGateway)
+    
+    // Run immediately to sync with current status
+    syncConnectionWithGateway()
+  }
+
+  private cleanupGatewaySubscription(): void {
+    if (this.gatewayUnsubscribe) {
+      this.gatewayUnsubscribe()
+      this.gatewayUnsubscribe = null
+    }
+    this.lastGatewayStatus = null
   }
 }
 

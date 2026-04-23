@@ -224,6 +224,14 @@ func (hc *HomeClaw) SetClients() error {
 	if hc == nil || hc.thirdf == nil {
 		return nil
 	}
+
+	// Set the refresh callback on CLITool before initializing clients
+	if cliTool, err := hc.f.GetCLITool(); err == nil && cliTool != nil {
+		cliTool.SetRefreshClients(func() error {
+			return hc.thirdf.SetClients()
+		})
+	}
+
 	return hc.thirdf.SetClients()
 }
 

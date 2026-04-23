@@ -32,9 +32,11 @@ export interface TuyaStoreState {
   homes: HomeInfo[]
   selectedHomeId: string | null
   isSyncingHomes: boolean
+  isLoadingHomes: boolean
   // Device state
   devices: DeviceInfo[]
   isSyncingDevices: boolean
+  isLoadingDevices: boolean
 }
 
 const DEFAULT_TUYA_STATE: TuyaStoreState = {
@@ -48,8 +50,10 @@ const DEFAULT_TUYA_STATE: TuyaStoreState = {
   homes: [],
   selectedHomeId: null,
   isSyncingHomes: false,
+  isLoadingHomes: false,
   devices: [],
   isSyncingDevices: false,
+  isLoadingDevices: false,
 }
 
 export const tuyaAtom = atom<TuyaStoreState>(DEFAULT_TUYA_STATE)
@@ -82,13 +86,16 @@ export async function fetchTuyaStatus(): Promise<Partial<TuyaStoreState>> {
     if (result.success && result.message) {
       try {
         const statusData = JSON.parse(result.message)
-        return {
+        console.log('[fetchTuyaStatus] Raw auth status from backend:', statusData)
+        const authStatus: Partial<TuyaStoreState> = {
           isLoggedIn: statusData.logged_in || false,
-          authType: statusData.logged_in ? "token" : null,
+          authType: (statusData.logged_in ? "token" : null) as "token" | "credentials" | null,
           region: statusData.region || null,
           error: null,
           isLoading: false,
         }
+        console.log('[fetchTuyaStatus] Parsed auth status:', authStatus)
+        return authStatus
       } catch (parseError) {
         console.error("Failed to parse auth status:", parseError)
       }
