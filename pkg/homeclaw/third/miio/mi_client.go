@@ -141,6 +141,24 @@ func (f *specFetcher) saveProcessedSpec(urn string, mode string, processedJSON s
 	return f.fileCache.SetString(urn+"_"+mode+"_new", processedJSON)
 }
 
+// getProcessedSpec retrieves processed spec JSON from cache
+func (f *specFetcher) getProcessedSpec(urn string, mode string) (string, error) {
+	if urn == "" {
+		return "", fmt.Errorf("urn is empty")
+	}
+	if f.fileCache == nil {
+		return "", fmt.Errorf("file cache not available")
+	}
+	data, err := f.fileCache.GetAsString(urn + "_" + mode + "_new")
+	if err != nil {
+		return "", fmt.Errorf("processed spec not found in cache: %w", err)
+	}
+	if data == "" {
+		return "", fmt.Errorf("processed spec is empty")
+	}
+	return data, nil
+}
+
 // NewMiClient creates a new MiClient instance.
 func NewMiClient(cloud *xiaomi.Cloud, country, workspace string, deviceStore MiDeviceStore, homeStore MiHomeStore) *MiClient {
 	if country == "" {
@@ -528,6 +546,33 @@ func (c *MiClient) GetSpec(deviceID string) (*third.SpecInfo, error) {
 		Raw:      specJSON,
 		Extra: map[string]any{
 			"urn": info.SpecType,
+		},
+	}, nil
+}
+
+// GetProcessedSpec retrieves the processed spec (spec_new) from cache for a device.
+// mode can be "write" or "read"
+func (c *MiClient) GetProcessedSpec(deviceID string, mode string) (*third.SpecInfo, error) {
+	info, err := c.GetDeviceInfo(deviceID)
+	if err != nil {
+		return nil, fmt.Errorf("get processed spec: %w", err)
+	}
+	if info.SpecType == "" {
+		return nil, fmt.Errorf("get processed spec: device %s has no spec URN", deviceID)
+	}
+
+	processedJSON, err := c.specFetcher.getProcessedSpec(info.SpecType, mode)
+	if err != nil {
+		return nil, fmt.Errorf("get processed spec: %w", err)
+	}
+
+	return &third.SpecInfo{
+		DeviceID: deviceID,
+		Model:    info.Model,
+		Raw:      processedJSON,
+		Extra: map[string]any{
+			"urn":  info.SpecType,
+			"mode": mode,
 		},
 	}, nil
 }

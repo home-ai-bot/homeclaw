@@ -14,6 +14,8 @@ import (
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/llm"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third"
+	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio"
+	"github.com/sipeed/picoclaw/pkg/homeclaw/third/tuya"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/tools"
@@ -296,6 +298,16 @@ func (t *LLMTool) execAnalyzeDeviceOps(ctx context.Context, llmInst *llm.LLM, pa
 		}
 	}
 
+	// Special handling for Xiaomi - use processed spec_new
+	if brand == miio.BrandXiaomi {
+		return t.execAnalyzeXiaomiDeviceOps(ctx, llmInst, client, fromID)
+	}
+
+	// Special handling for Tuya - use Thing Model and analyze each property
+	if brand == tuya.BrandTuya {
+		return t.execAnalyzeTuyaDeviceOps(ctx, llmInst, client, fromID)
+	}
+
 	logger.Infof("[DeviceOps] Fetching spec for device %s from brand %s", fromID, brand)
 	// Fetch spec from client
 	specInfo, err := client.GetSpec(fromID)
@@ -392,6 +404,480 @@ Return ONLY a valid JSON array. Do not include any explanation or markdown forma
 	// Save operations
 	logger.Infof("[DeviceOps] Saving %d operations for device %s", len(opsArray), fromID)
 	return t.saveDeviceOperations(fromID, brand, opsArray)
+}
+
+// execAnalyzeXiaomiDeviceOps analyzes Xiaomi device spec using processed spec_new and LLM.
+// It loads the spec_new (processed commands), loops through each command,
+// sends desc + method + param_desc + ops.md to LLM to get ops and value,
+// then builds the final operations array locally.
+func (t *LLMTool) execAnalyzeXiaomiDeviceOps(ctx context.Context, llmInst *llm.LLM, client third.Client, fromID string) *tools.ToolResult {
+	logger.Infof("[DeviceOps] [Xiaomi] Starting processed spec analysis for device %s", fromID)
+
+	// Try to get processed spec (write mode) from cache
+	type processedSpecGetter interface {
+		GetProcessedSpec(deviceID string, mode string) (*third.SpecInfo, error)
+	}
+
+	if getter, ok := client.(processedSpecGetter); ok {
+		specInfo, err := getter.GetProcessedSpec(fromID, "write")
+		if err != nil {
+			logger.Warnf("[DeviceOps] [Xiaomi] Processed spec not available for device %s, falling back to raw spec: %v", fromID, err)
+			// Fall back to original logic by returning and letting the caller handle it
+			// This shouldn't happen as we already checked the brand
+		} else if specInfo != nil && specInfo.Raw != "" {
+			return t.processXiaomiSpecNew(ctx, llmInst, fromID, specInfo.Raw)
+		}
+	}
+
+	logger.Warnf("[DeviceOps] [Xiaomi] No processed spec found for device %s", fromID)
+	return &tools.ToolResult{ForLLM: fmt.Sprintf("no processed spec found for xiaomi device %s", fromID), IsError: true}
+}
+
+// execAnalyzeTuyaDeviceOps analyzes Tuya device spec using Thing Model and LLM.
+// It loads the Thing Model, loops through each property,
+// sends property info + ops.md to LLM to get ops, value, and method,
+// then saves operations immediately after each property analysis.
+func (t *LLMTool) execAnalyzeTuyaDeviceOps(ctx context.Context, llmInst *llm.LLM, client third.Client, fromID string) *tools.ToolResult {
+	logger.Infof("[DeviceOps] [Tuya] Starting Thing Model analysis for device %s", fromID)
+
+	// Check if device already has operations configured
+	if t.deviceOpStore != nil {
+		existingOps, err := t.deviceOpStore.GetOpsByDevice(fromID, tuya.BrandTuya)
+		if err == nil && len(existingOps) > 0 {
+			logger.Infof("[DeviceOps] [Tuya] Device %s already has %d operations configured, skipping analysis", fromID, len(existingOps))
+			return &tools.ToolResult{ForLLM: fmt.Sprintf("device %s already has %d operations configured: %v", fromID, len(existingOps), existingOps)}
+		}
+	}
+
+	// Fetch spec from client
+	specInfo, err := client.GetSpec(fromID)
+	if err != nil {
+		logger.Errorf("[DeviceOps] [Tuya] Failed to get spec for device %s: %v", fromID, err)
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get spec for device %s: %v", fromID, err), IsError: true}
+	}
+
+	// If spec is empty, mark device as NoAction
+	if specInfo == nil || specInfo.Raw == "" || specInfo.Raw == "{}" {
+		logger.Infof("[DeviceOps] [Tuya] Empty spec for device %s, marking as NoAction", fromID)
+		return t.markDeviceAsNoAction(fromID, tuya.BrandTuya)
+	}
+
+	logger.Infof("[DeviceOps] [Tuya] Processing Thing Model for device %s (length: %d bytes)", fromID, len(specInfo.Raw))
+
+	// Parse Thing Model JSON
+	type typeSpec struct {
+		Type   string   `json:"type"`
+		Range  []string `json:"range,omitempty"`
+		Max    int      `json:"max,omitempty"`
+		Min    int      `json:"min,omitempty"`
+		Step   int      `json:"step,omitempty"`
+		Unit   string   `json:"unit,omitempty"`
+		Maxlen int      `json:"maxlen,omitempty"`
+	}
+
+	type property struct {
+		AbilityID   int      `json:"abilityId"`
+		Code        string   `json:"code"`
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		AccessMode  string   `json:"accessMode"`
+		TypeSpec    typeSpec `json:"typeSpec"`
+	}
+
+	type service struct {
+		Code        string     `json:"code"`
+		Name        string     `json:"name"`
+		Description string     `json:"description"`
+		Properties  []property `json:"properties"`
+	}
+
+	type thingModel struct {
+		ModelID  string    `json:"modelId"`
+		Services []service `json:"services"`
+	}
+
+	var model thingModel
+	if err := json.Unmarshal([]byte(specInfo.Raw), &model); err != nil {
+		logger.Errorf("[DeviceOps] [Tuya] Failed to parse Thing Model JSON: %v", err)
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to parse Thing Model: %v", err), IsError: true}
+	}
+
+	// Collect all properties from all services
+	var allProps []property
+	for _, svc := range model.Services {
+		allProps = append(allProps, svc.Properties...)
+	}
+
+	logger.Infof("[DeviceOps] [Tuya] Parsed %d properties from %d services", len(allProps), len(model.Services))
+
+	if len(allProps) == 0 {
+		logger.Infof("[DeviceOps] [Tuya] No properties in Thing Model for device %s, marking as NoAction", fromID)
+		return t.markDeviceAsNoAction(fromID, tuya.BrandTuya)
+	}
+
+	// Load ops reference
+	opsReference, err := t.loadOpsReference()
+	if err != nil {
+		logger.Warnf("[DeviceOps] [Tuya] Failed to load ops reference: %v", err)
+		opsReference = ""
+	}
+
+	// Build compressed batch input: index|code|name|desc|type|type_desc|access_mode (pipe-separated)
+	var batchLines []string
+	for i, prop := range allProps {
+		typeDesc := prop.TypeSpec.Type
+		if len(prop.TypeSpec.Range) > 0 {
+			typeDesc += fmt.Sprintf(" [%s]", strings.Join(prop.TypeSpec.Range, ","))
+		} else if prop.TypeSpec.Max > 0 {
+			typeDesc += fmt.Sprintf(" [%d-%d]", prop.TypeSpec.Min, prop.TypeSpec.Max)
+		}
+		if prop.TypeSpec.Unit != "" {
+			typeDesc += fmt.Sprintf(" (unit: %s)", prop.TypeSpec.Unit)
+		}
+
+		// Format: index|code|name|desc|type|type_desc|access_mode
+		batchLines = append(batchLines, fmt.Sprintf("%d|%s|%s|%s|%s|%s|%s",
+			i, prop.Code, prop.Name, prop.Description, prop.TypeSpec.Type, typeDesc, prop.AccessMode))
+	}
+
+	// Join with newlines
+	batchInput := strings.Join(batchLines, "\n")
+
+	// Build prompt for batch LLM analysis
+	prompt := fmt.Sprintf(`You are analyzing Tuya smart home device properties. For EACH property in the input list, choose ALL matching operations from the supported operations reference.
+
+## Supported Operations Reference:
+%s
+
+## Properties to Analyze (format: index|code|name|desc|type|type_desc|access_mode):
+%s
+
+## Task:
+For EACH property in the input list, choose ALL operations (ops) from the reference that match.
+Return a JSON array with the same number of elements as the input list.
+Each element should be an array of operation objects with three fields:
+- "ops": the operation name from the reference
+- "value": the value to use (true/false for bool, specific value, or "$value$" for ranges). Use null for get operations.
+- "method": "setProps" for set operations, "getProps" for get operations
+
+Example input:
+0|switch|Switch||bool|bool|rw
+
+Example output:
+[[{"ops":"turn_on","value":true,"method":"setProps"},{"ops":"turn_off","value":false,"method":"setProps"},{"ops":"get_state","value":null,"method":"getProps"}]]
+
+Rules:
+- If access_mode is "ro", only generate get operations (method: "getProps")
+- If access_mode is "wr", only generate set operations (method: "setProps")
+- If access_mode is "rw", generate both get and set operations
+- For boolean properties: use true/false for set operations
+- For enum properties: use "$value$" placeholder
+- For value/integer properties: use "$value$" placeholder
+- Get operations should have value: null
+- Return an empty array [] for properties that don't match any operation
+- Maintain the same order as input properties
+- Do not include any explanation or markdown formatting
+`, opsReference, batchInput)
+
+	logger.Infof("[DeviceOps] [Tuya] Calling LLM for batch analysis of %d properties", len(allProps))
+
+	// Call LLM once for all properties
+	result, err := llmInst.Chat(ctx, "You are a smart home command analyzer.", prompt)
+	if err != nil {
+		logger.Errorf("[DeviceOps] [Tuya] LLM batch analysis failed: %v", err)
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("LLM batch analysis failed: %v", err), IsError: true}
+	}
+
+	// Parse LLM result - expect array of arrays
+	type llmResultItem struct {
+		Ops    string `json:"ops"`
+		Value  any    `json:"value"`
+		Method string `json:"method"`
+	}
+
+	var batchResults [][]llmResultItem
+	result = strings.TrimSpace(result)
+
+	// Try to parse as array of arrays
+	if err := json.Unmarshal([]byte(result), &batchResults); err != nil {
+		// Try to extract JSON array from result
+		if idx := strings.Index(result, "["); idx != -1 {
+			endIdx := strings.LastIndex(result, "]")
+			if endIdx > idx {
+				jsonStr := result[idx : endIdx+1]
+				if err2 := json.Unmarshal([]byte(jsonStr), &batchResults); err2 != nil {
+					logger.Errorf("[DeviceOps] [Tuya] Failed to parse batch LLM result: %v (result: %s)", err2, result)
+					return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to parse batch LLM result: %v", err2), IsError: true}
+				}
+			}
+		} else {
+			logger.Errorf("[DeviceOps] [Tuya] Failed to parse batch LLM result: %v (result: %s)", err, result)
+			return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to parse batch LLM result: %v", err), IsError: true}
+		}
+	}
+
+	logger.Infof("[DeviceOps] [Tuya] LLM returned results for %d properties", len(batchResults))
+
+	// Process results and save immediately
+	totalOpsSaved := 0
+	for i, propOps := range batchResults {
+		if i >= len(allProps) {
+			logger.Warnf("[DeviceOps] [Tuya] LLM returned more results than properties, ignoring extra")
+			break
+		}
+
+		prop := allProps[i]
+		logger.Infof("[DeviceOps] [Tuya] Processing property %d/%d: %s (%d ops from LLM)", i+1, len(allProps), prop.Code, len(propOps))
+
+		if len(propOps) == 0 {
+			logger.Infof("[DeviceOps] [Tuya] No operations for property '%s', skipping", prop.Code)
+			continue
+		}
+
+		// Build operations for this property
+		var propertyOps []map[string]any
+		for _, parsed := range propOps {
+			if parsed.Ops == "" {
+				continue
+			}
+
+			// Create param based on method
+			var param map[string]any
+			if parsed.Method == "setProps" {
+				param = map[string]any{
+					"device_id": fromID,
+					prop.Code:   parsed.Value,
+				}
+			} else if parsed.Method == "getProps" {
+				param = map[string]any{
+					"device_id": fromID,
+				}
+			} else {
+				logger.Warnf("[DeviceOps] [Tuya] Unknown method '%s' for property %d, skipping", parsed.Method, i+1)
+				continue
+			}
+
+			propertyOps = append(propertyOps, map[string]any{
+				"method": parsed.Method,
+				"ops":    parsed.Ops,
+				"param":  param,
+			})
+		}
+
+		// Save operations for this property immediately
+		if len(propertyOps) > 0 {
+			logger.Infof("[DeviceOps] [Tuya] Saving %d operations for property '%s' immediately", len(propertyOps), prop.Code)
+			saveResult := t.saveDeviceOperations(fromID, tuya.BrandTuya, propertyOps)
+			if saveResult.IsError {
+				logger.Errorf("[DeviceOps] [Tuya] Failed to save operations for property '%s': %s", prop.Code, saveResult.ForLLM)
+			} else {
+				totalOpsSaved += len(propertyOps)
+				logger.Infof("[DeviceOps] [Tuya] Successfully saved operations for property '%s' (total saved so far: %d)", prop.Code, totalOpsSaved)
+			}
+		}
+	}
+
+	logger.Infof("[DeviceOps] [Tuya] Analysis complete for device %s: total %d operations saved", fromID, totalOpsSaved)
+
+	if totalOpsSaved == 0 {
+		logger.Infof("[DeviceOps] [Tuya] No operations generated for device %s, marking as NoAction", fromID)
+		return t.markDeviceAsNoAction(fromID, tuya.BrandTuya)
+	}
+
+	return &tools.ToolResult{ForLLM: fmt.Sprintf("successfully analyzed and saved %d operations for device %s", totalOpsSaved, fromID)}
+}
+
+// processXiaomiSpecNew processes the Xiaomi spec_new JSON and generates operations.
+func (t *LLMTool) processXiaomiSpecNew(ctx context.Context, llmInst *llm.LLM, fromID string, specNewRaw string) *tools.ToolResult {
+	logger.Infof("[DeviceOps] [Xiaomi] Processing spec_new for device %s (length: %d bytes)", fromID, len(specNewRaw))
+
+	// Check if device already has operations configured
+	if t.deviceOpStore != nil {
+		existingOps, err := t.deviceOpStore.GetOpsByDevice(fromID, miio.BrandXiaomi)
+		if err == nil && len(existingOps) > 0 {
+			logger.Infof("[DeviceOps] [Xiaomi] Device %s already has %d operations configured, skipping analysis", fromID, len(existingOps))
+			return &tools.ToolResult{ForLLM: fmt.Sprintf("device %s already has %d operations configured: %v", fromID, len(existingOps), existingOps)}
+		}
+	}
+
+	// Parse spec_new as JSON array of DeviceCommand
+	type deviceCommand struct {
+		Desc   string `json:"desc"`
+		Method string `json:"method"`
+		Param  any    `json:"param"`
+	}
+
+	var commands []deviceCommand
+	if err := json.Unmarshal([]byte(specNewRaw), &commands); err != nil {
+		logger.Errorf("[DeviceOps] [Xiaomi] Failed to parse spec_new JSON: %v", err)
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to parse spec_new: %v", err), IsError: true}
+	}
+
+	logger.Infof("[DeviceOps] [Xiaomi] Parsed %d commands from spec_new", len(commands))
+
+	if len(commands) == 0 {
+		logger.Infof("[DeviceOps] [Xiaomi] No commands in spec_new for device %s, marking as NoAction", fromID)
+		return t.markDeviceAsNoAction(fromID, miio.BrandXiaomi)
+	}
+
+	// Load ops reference
+	opsReference, err := t.loadOpsReference()
+	if err != nil {
+		logger.Warnf("[DeviceOps] [Xiaomi] Failed to load ops reference: %v", err)
+		opsReference = ""
+	}
+
+	// Build compressed batch input: index|desc|method|param_desc (pipe-separated)
+	var batchLines []string
+	for i, cmd := range commands {
+		paramDesc := ""
+		if cmd.Param != nil {
+			if paramMap, ok := cmd.Param.(map[string]any); ok {
+				if pd, ok := paramMap["param_desc"].(string); ok {
+					paramDesc = pd
+				}
+			}
+		}
+		// Format: index|desc|method|param_desc
+		batchLines = append(batchLines, fmt.Sprintf("%d|%s|%s|%s", i, cmd.Desc, cmd.Method, paramDesc))
+	}
+
+	// Join with newlines
+	batchInput := strings.Join(batchLines, "\n")
+
+	// Build prompt for batch LLM analysis
+	prompt := fmt.Sprintf(`You are analyzing Xiaomi smart home device commands. For EACH command in the input list, choose ALL matching operations from the supported operations reference.
+
+## Supported Operations Reference:
+%s
+
+## Commands to Analyze (format: index|desc|method|param_desc):
+%s
+
+## Task:
+For EACH command in the input list, choose ALL operations (ops) from the reference that match.
+Return a JSON array with the same number of elements as the input list.
+Each element should be an array of operation objects with two fields:
+- "ops": the operation name from the reference
+- "value": the value to use (true/false for bool, specific value, or "$value$" for ranges)
+
+Example input:
+0|Switch Status|SetProp|bool
+
+Example output:
+[[{"ops":"turn_on","value":true},{"ops":"turn_off","value":false}]]
+
+Rules:
+- Return an empty array [] for commands that don't match any operation
+- Maintain the same order as input commands
+- Do not include any explanation or markdown formatting
+`, opsReference, batchInput)
+
+	logger.Infof("[DeviceOps] [Xiaomi] Calling LLM for batch analysis of %d commands", len(commands))
+
+	// Call LLM once for all commands
+	result, err := llmInst.Chat(ctx, "You are a smart home command analyzer.", prompt)
+	if err != nil {
+		logger.Errorf("[DeviceOps] [Xiaomi] LLM batch analysis failed: %v", err)
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("LLM batch analysis failed: %v", err), IsError: true}
+	}
+
+	// Parse LLM result - expect array of arrays
+	type llmResultItem struct {
+		Ops   string `json:"ops"`
+		Value any    `json:"value"`
+	}
+
+	var batchResults [][]llmResultItem
+	result = strings.TrimSpace(result)
+
+	// Try to parse as array of arrays
+	if err := json.Unmarshal([]byte(result), &batchResults); err != nil {
+		// Try to extract JSON array from result
+		if idx := strings.Index(result, "["); idx != -1 {
+			endIdx := strings.LastIndex(result, "]")
+			if endIdx > idx {
+				jsonStr := result[idx : endIdx+1]
+				if err2 := json.Unmarshal([]byte(jsonStr), &batchResults); err2 != nil {
+					logger.Errorf("[DeviceOps] [Xiaomi] Failed to parse batch LLM result: %v (result: %s)", err2, result)
+					return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to parse batch LLM result: %v", err2), IsError: true}
+				}
+			}
+		} else {
+			logger.Errorf("[DeviceOps] [Xiaomi] Failed to parse batch LLM result: %v (result: %s)", err, result)
+			return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to parse batch LLM result: %v", err), IsError: true}
+		}
+	}
+
+	logger.Infof("[DeviceOps] [Xiaomi] LLM returned results for %d commands", len(batchResults))
+
+	// Process results and save immediately
+	totalOpsSaved := 0
+	for i, cmdOps := range batchResults {
+		if i >= len(commands) {
+			logger.Warnf("[DeviceOps] [Xiaomi] LLM returned more results than commands, ignoring extra")
+			break
+		}
+
+		cmd := commands[i]
+		logger.Infof("[DeviceOps] [Xiaomi] Processing command %d/%d: %s (%d ops from LLM)", i+1, len(commands), cmd.Desc, len(cmdOps))
+
+		if len(cmdOps) == 0 {
+			logger.Infof("[DeviceOps] [Xiaomi] No operations for command '%s', skipping", cmd.Desc)
+			continue
+		}
+
+		// Build operations for this command
+		var commandOps []map[string]any
+		if cmd.Param != nil {
+			if paramMap, ok := cmd.Param.(map[string]any); ok {
+				for _, parsed := range cmdOps {
+					if parsed.Ops == "" {
+						continue
+					}
+
+					// Create a copy of the param
+					newParam := make(map[string]any)
+					for k, v := range paramMap {
+						newParam[k] = v
+					}
+
+					// Replace did with from_id
+					newParam["did"] = fromID
+
+					// Replace value with LLM result
+					newParam["value"] = parsed.Value
+
+					commandOps = append(commandOps, map[string]any{
+						"method": cmd.Method,
+						"ops":    parsed.Ops,
+						"param":  newParam,
+					})
+				}
+			}
+		}
+
+		// Save operations for this command immediately
+		if len(commandOps) > 0 {
+			logger.Infof("[DeviceOps] [Xiaomi] Saving %d operations for command '%s' immediately", len(commandOps), cmd.Desc)
+			saveResult := t.saveDeviceOperations(fromID, miio.BrandXiaomi, commandOps)
+			if saveResult.IsError {
+				logger.Errorf("[DeviceOps] [Xiaomi] Failed to save operations for command '%s': %s", cmd.Desc, saveResult.ForLLM)
+			} else {
+				totalOpsSaved += len(commandOps)
+				logger.Infof("[DeviceOps] [Xiaomi] Successfully saved operations for command '%s' (total saved so far: %d)", cmd.Desc, totalOpsSaved)
+			}
+		}
+	}
+
+	logger.Infof("[DeviceOps] [Xiaomi] Analysis complete for device %s: total %d operations saved", fromID, totalOpsSaved)
+
+	if totalOpsSaved == 0 {
+		logger.Infof("[DeviceOps] [Xiaomi] No operations generated for device %s, marking as NoAction", fromID)
+		return t.markDeviceAsNoAction(fromID, miio.BrandXiaomi)
+	}
+
+	return &tools.ToolResult{ForLLM: fmt.Sprintf("successfully analyzed and saved %d operations for device %s", totalOpsSaved, fromID)}
 }
 
 // loadBrandParsingRules loads the parsing rules for a specific brand.

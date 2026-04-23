@@ -4,96 +4,105 @@ This document contains the parsing rules for Tuya device specifications.
 
 ## Spec Structure
 
-Tuya specs are returned as a nested structure with services and properties:
+Tuya specs are Thing Models with a nested structure containing services and properties:
 
 ```json
 {
+  "modelId": "e1n49084",
   "services": [
     {
-      "code": "switch",
-      "name": "Switch",
+      "code": "",
+      "name": "",
+      "description": "",
       "properties": [
-        {"code": "switch", "type": "Boolean"},
-        {"code": "fan_speed", "type": "Integer", "range": "1-4"}
+        {
+          "abilityId": 1,
+          "code": "switch_1",
+          "name": "开关1",
+          "description": "",
+          "accessMode": "rw",
+          "typeSpec": {
+            "type": "bool"
+          }
+        },
+        {
+          "abilityId": 9,
+          "code": "countdown_1",
+          "name": "开关1倒计时",
+          "description": "",
+          "accessMode": "rw",
+          "typeSpec": {
+            "type": "value",
+            "max": 86400,
+            "step": 1,
+            "unit": "s"
+          }
+        }
       ]
     }
   ]
 }
 ```
 
-## Parsing Rules
+## Parsing Approach
 
-### 1. Navigate Service Structure
+Tuya device analysis uses **LLM-based property-by-property analysis** (similar to Xiaomi):
 
-Iterate through `services` array, then through each service's `properties` array.
+1. Parse the Thing Model JSON structure
+2. Extract all properties from all services
+3. For **each property**, send its information to the LLM individually
+4. LLM returns matching operations with values and methods
+5. Build final operations array locally from LLM responses
 
-### 2. Identify Property Types
+## Property Analysis
 
-Check the `type` field to determine value handling:
-- `Boolean` → true/false values (switches, states)
-- `Integer` → Numeric values with optional range (brightness, speed)
-- `Enum` → Predefined options (modes, states)
-- `String` → Text values (rare)
+For each property, the LLM receives:
+- **code**: Property code (e.g., "switch_1", "countdown_1")
+- **name**: Property name (e.g., "开关1", "开关1倒计时")
+- **description**: Property description
+- **type**: Property type from typeSpec (bool, value, enum, string)
+- **access_mode**: Access mode (ro=read-only, wr=write-only, rw=read-write)
+- **Supported Operations Reference** (ops.md)
 
-### 3. Extract Property Codes
+## LLM Output Format
 
-Use the `code` field directly in commands:
-- Property code becomes the key in the command JSON
-- Example: `{"device_id": "xxx", "switch": true}`
+For each property, LLM returns a JSON array:
+```json
+[
+  {"ops": "turn_on", "value": true, "method": "setProps"},
+  {"ops": "turn_off", "value": false, "method": "setProps"},
+  {"ops": "get_state", "value": null, "method": "getProps"}
+]
+```
 
-### 4. Parse Property Codes for Operation Mapping
+## Operation Generation Rules
 
-Map property codes to standard operations:
+### Based on Access Mode:
+- **ro** (read-only): Only generate get operations (method: "getProps")
+- **wr** (write-only): Only generate set operations (method: "setProps")
+- **rw** (read-write): Generate both get and set operations
 
-#### Switch/Power Operations
-- Property codes: "switch", "power", "on_off"
-- Map to: `turn_on`/`turn_off` (set), `get_state` (get)
-- Value: `true` for turn_on, `false` for turn_off
+### Based on Property Type:
+- **bool**: Use concrete values `true`/`false` for set operations
+- **value/integer**: Use `"$value$"` placeholder for set operations
+- **enum**: Use `"$value$"` placeholder for set operations
+- **string**: Use `"$value$"` placeholder for set operations
 
-#### Brightness Operations
-- Property codes: "bright_value", "brightness", "bright"
-- Map to: `set_brightness` (set), `get_brightness` (get)
-- Check `range` field for valid values (e.g., "0-100")
+### Command Structure:
 
-#### Color Temperature Operations
-- Property codes: "temp_value", "colour_temp", "color_temp"
-- Map to: `set_color_temp` (set), `get_color_temp` (get)
-
-#### Color/RGB Operations
-- Property codes: "colour_data", "color_data", "rgb"
-- Map to: `set_rgb_color` (set), `get_rgb_color` (get)
-
-#### Fan Speed Operations
-- Property codes: "fan_speed", "fan_speed_enum", "level"
-- Map to: `set_percentage` (set), `get_percentage` (get)
-- Check `range` field for valid values
-
-#### Temperature Operations
-- Property codes: "temp_set", "temperature", "temp"
-- Map to: `set_temperature` (set), `get_temperature` (get)
-
-#### Mode Operations
-- Property codes: "mode", "work_mode", "operation_mode"
-- Map to: `set_hvac_mode`, `set_preset_mode` (context dependent)
-- Check `range` or enum values for valid options
-
-### 5. Build Command Structure
-
-For each property, generate an operation object with three fields: `method`, `ops`, and `param`:
-
-#### For Set Property:
+#### For Set Property (setProps):
 ```json
 {
   "method": "setProps",
   "ops": "<operation_name>",
   "param": {
     "device_id": "<device_from_id>",
-    "<property_code>": <concrete_value_or_$value$>
+    "<property_code>": <value>
   }
 }
 ```
 
-#### For Get Property:
+#### For Get Property (getProps):
 ```json
 {
   "method": "getProps",
@@ -106,63 +115,54 @@ For each property, generate an operation object with three fields: `method`, `op
 
 **Note**: Tuya reads all properties at once, so get operations only need device_id.
 
-### 6. Value Handling
-
-- **Boolean properties**: Use concrete values `true`/`false`
-- **Integer properties**: Use `"$value$"` placeholder (check range if provided)
-- **Enum properties**: Use `"$value$"` placeholder or first enum value for examples
-- **String properties**: Use `"$value$"` placeholder with quotes
-
-### 7. Range Parsing
-
-If `range` field exists (e.g., "1-4", "0-100"):
-- Parse min and max values
-- Use for validation when generating operations
-- Include in operation metadata if needed
-
 ## Example Parsing
 
-Input spec:
+Input Thing Model for device "socket123":
 ```json
 {
+  "modelId": "e1n49084",
   "services": [
     {
-      "code": "switch",
-      "name": "Switch",
+      "code": "",
+      "name": "",
       "properties": [
-        {"code": "switch", "type": "Boolean"},
-        {"code": "fan_speed", "type": "Integer", "range": "1-4"}
+        {"code": "switch_1", "name": "开关1", "accessMode": "rw", "typeSpec": {"type": "bool"}},
+        {"code": "child_lock", "name": "童锁开关", "accessMode": "rw", "typeSpec": {"type": "bool"}}
       ]
     }
   ]
 }
 ```
 
-Parsed operations for device "fan789":
+Processing flow:
+1. Parse model, extract 2 properties
+2. For property "switch_1" (bool, rw):
+   - LLM returns: `[{"ops": "turn_on", "value": true, "method": "setProps"}, {"ops": "turn_off", "value": false, "method": "setProps"}, {"ops": "get_state", "value": null, "method": "getProps"}]`
+3. For property "child_lock" (bool, rw):
+   - LLM returns: `[{"ops": "turn_on", "value": true, "method": "setProps"}, {"ops": "turn_off", "value": false, "method": "setProps"}]` (if child_lock not in ops reference, returns empty)
+
+Final operations array:
 ```json
 [
   {
     "method": "setProps",
     "ops": "turn_on",
-    "param": {"device_id": "fan789", "switch": true}
+    "param": {"device_id": "socket123", "switch_1": true}
   },
   {
     "method": "setProps",
     "ops": "turn_off",
-    "param": {"device_id": "fan789", "switch": false}
+    "param": {"device_id": "socket123", "switch_1": false}
   },
   {
     "method": "getProps",
     "ops": "get_state",
-    "param": {"device_id": "fan789"}
-  },
-  {
-    "method": "setProps",
-    "ops": "set_percentage",
-    "param": {"device_id": "fan789", "fan_speed": "$value$"}
+    "param": {"device_id": "socket123"}
   }
 ]
 ```
+
+**Note**: If a property doesn't match any operation in the reference, the LLM will return an empty array, and no operations will be generated for that property.
 
 ## Service Code Patterns
 

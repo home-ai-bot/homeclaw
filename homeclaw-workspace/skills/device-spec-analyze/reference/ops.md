@@ -1,17 +1,1 @@
-{
-  "light": ["turn_on", "turn_off", "get_state", "get_brightness", "set_brightness", "get_color_temp", "set_color_temp", "get_rgb_color", "set_rgb_color", "get_effect", "set_effect"],
-  "switch": ["turn_on", "turn_off", "get_state"],
-  "camera": ["enable_motion_detection", "disable_motion_detection", "pan_left", "pan_right", "tilt_up", "tilt_down", "zoom_in", "zoom_out", "set_position", "get_position"],
-  "vacuum": ["start", "pause", "stop", "return_to_base",  "set_fan_speed", "get_state"],
-  "fan": ["turn_on", "turn_off", "get_state", "get_percentage", "set_percentage", "get_preset_mode", "set_preset_mode", "get_oscillate", "oscillate", "get_direction", "set_direction"],
-  "climate": ["turn_on", "turn_off", "get_state", "set_hvac_mode", "set_temperature", "set_humidity", "set_fan_mode", "set_swing_mode", "set_preset_mode"],
-  "cover": ["open", "close", "stop", "set_position", "get_state"],
-  "humidifier": ["turn_on", "turn_off", "get_state", "set_mode", "set_humidity"],
-  "water_heater": ["turn_on", "turn_off", "get_state", "set_temperature", "set_operation_mode"],
-  "tv": ["turn_on", "turn_off", "get_state", "play", "pause", "stop", "set_volume", "mute", "select_source"],
-  "tvbox": ["turn_on", "turn_off", "get_state", "play", "pause", "stop", "set_volume", "mute", "select_source"],
-  "speaker": ["turn_on", "turn_off", "get_state", "play", "pause", "stop", "next_track", "previous_track", "set_volume", "mute", "play_text", "execute_text_directive"],
-  "lock": ["lock", "unlock", "get_state"],
-  "doorbell": ["get_state"],
-  "sensor": ["get_state"],
-}
+["close", "disable_motion_detection", "enable_motion_detection", "execute_text_directive", "get_brightness", "get_color_temp", "get_direction", "get_effect", "get_oscillate", "get_percentage", "get_position", "get_preset_mode", "get_rgb_color", "get_state", "lock", "mute", "next_track", "open", "oscillate", "pan_left", "pan_right", "pause", "play", "play_text", "previous_track", "return_to_base", "select_source", "set_brightness", "set_color_temp", "set_direction", "set_effect", "set_fan_mode", "set_fan_speed", "set_humidity", "set_hvac_mode", "set_mode", "set_operation_mode", "set_percentage", "set_position", "set_preset_mode", "set_rgb_color", "set_swing_mode", "set_temperature", "set_volume", "start", "stop", "tilt_down", "tilt_up", "turn_off", "turn_on", "unlock", "zoom_in", "zoom_out"]
