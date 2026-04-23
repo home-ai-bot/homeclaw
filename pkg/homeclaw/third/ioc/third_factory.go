@@ -27,20 +27,23 @@ type ThirdFactory struct {
 	hcfg      *hcc.HomeclawConfig
 	factory   *ioc.Factory
 	// Singleton instances - lazy loaded
-	jsonStore     *hcd.JSONStore
-	miDeviceStore miio.MiDeviceStore
-	miHomeStore   miio.MiHomeStore
-	cloud         *xiaomi.Cloud
-	miClient      *miio.MiClient
-	tuyaClient    *tuya.TuyaClient
-	clients       map[string]third.Client
-	clientsMu     sync.Mutex
+	jsonStore      *hcd.JSONStore
+	tuyaModelStore *hcd.JSONStore
+	miDeviceStore  miio.MiDeviceStore
+	miHomeStore    miio.MiHomeStore
+	cloud          *xiaomi.Cloud
+	miClient       *miio.MiClient
+	tuyaClient     *tuya.TuyaClient
+	clients        map[string]third.Client
+	clientsMu      sync.Mutex
 
 	// Initialization tracking
-	storeOnce      sync.Once
-	storeErr       error
-	tuyaClientOnce sync.Once
-	tuyaClientErr  error
+	storeOnce          sync.Once
+	storeErr           error
+	tuyaModelStoreOnce sync.Once
+	tuyaModelStoreErr  error
+	tuyaClientOnce     sync.Once
+	tuyaClientErr      error
 }
 
 // NewThirdFactory creates a new ThirdFactory instance.
@@ -60,6 +63,14 @@ func (f *ThirdFactory) GetJSONStore() (*hcd.JSONStore, error) {
 		f.jsonStore, f.storeErr = hcd.NewJSONStore(filepath.Join(f.Workspace, "third"))
 	})
 	return f.jsonStore, f.storeErr
+}
+
+// GetTuyaModelStore returns the singleton JSONStore instance for Tuya model specs (lazy initialized).
+func (f *ThirdFactory) GetTuyaModelStore() (*hcd.JSONStore, error) {
+	f.tuyaModelStoreOnce.Do(func() {
+		f.tuyaModelStore, f.tuyaModelStoreErr = hcd.NewJSONStore(filepath.Join(f.Workspace, "third", "tuya-spec"))
+	})
+	return f.tuyaModelStore, f.tuyaModelStoreErr
 }
 
 // GetAuthStore returns the singleton AuthStore instance (lazy initialized).
@@ -201,7 +212,13 @@ func (f *ThirdFactory) GetTuyaClient() (*tuya.TuyaClient, error) {
 			return
 		}
 
-		f.tuyaClient, f.tuyaClientErr = tuya.NewTuyaClient(store, token, email, password, region)
+		modelStore, err := f.GetTuyaModelStore()
+		if err != nil {
+			f.tuyaClientErr = fmt.Errorf("get tuya model store: %w", err)
+			return
+		}
+
+		f.tuyaClient, f.tuyaClientErr = tuya.NewTuyaClient(store, modelStore, token, email, password, region)
 		if f.tuyaClientErr != nil {
 			return
 		}

@@ -36,8 +36,9 @@ type TuyaClient struct {
 	password string       // Tuya Smart App account password (for RTSP streams)
 	region   string       // Tuya region (for RTSP streams)
 
-	store     *data.JSONStore // Persistent cache store (workspace/third)
-	authStore data.AuthStore  // Auth store for credentials
+	store      *data.JSONStore // Persistent cache store (workspace/third)
+	modelStore *data.JSONStore // Model spec cache store (workspace/third/tuya-spec)
+	authStore  data.AuthStore  // Auth store for credentials
 }
 
 // NewTuyaClient creates a new TuyaClient instance with the given store and API key.
@@ -46,16 +47,20 @@ type TuyaClient struct {
 // via SetAPIKey. Any operation that requires the API key will return an error via
 // checkAPI() until SetAPIKey is called.
 // authStore is optional and used for loading credentials; if nil, lazy loading won't work.
-func NewTuyaClient(store *data.JSONStore, apiKey string, email string, password string, region string) (*TuyaClient, error) {
+func NewTuyaClient(store *data.JSONStore, modelStore *data.JSONStore, apiKey string, email string, password string, region string) (*TuyaClient, error) {
 	if store == nil {
 		return nil, errors.New("store cannot be nil")
 	}
+	if modelStore == nil {
+		return nil, errors.New("modelStore cannot be nil")
+	}
 	tc := &TuyaClient{
-		store:    store,
-		apiKey:   apiKey,
-		email:    email,
-		password: password,
-		region:   region,
+		store:      store,
+		modelStore: modelStore,
+		apiKey:     apiKey,
+		email:      email,
+		password:   password,
+		region:     region,
 	}
 	if apiKey != "" {
 		tc.openAPI = NewTuyaOpenAPI(apiKey)
@@ -243,7 +248,7 @@ func (tc *TuyaClient) GetSpec(deviceID string) (*third.SpecInfo, error) {
 
 	// Try cache
 	var cached ThingModel
-	if err := tc.store.Read(cacheKeyModel(deviceID), &cached); err == nil && cached.ModelID != "" {
+	if err := tc.modelStore.Read(cacheKeyModel(deviceID), &cached); err == nil && cached.ModelID != "" {
 		return modelToSpecInfo(deviceID, &cached), nil
 	}
 
@@ -253,7 +258,7 @@ func (tc *TuyaClient) GetSpec(deviceID string) (*third.SpecInfo, error) {
 	}
 
 	if model != nil {
-		_ = tc.store.Write(cacheKeyModel(deviceID), model)
+		_ = tc.modelStore.Write(cacheKeyModel(deviceID), model)
 	}
 
 	return modelToSpecInfo(deviceID, model), nil
@@ -426,7 +431,7 @@ func (tc *TuyaClient) GetDeviceModel(deviceID string) (*ThingModel, error) {
 
 	// Try cache
 	var cached ThingModel
-	if err := tc.store.Read(cacheKeyModel(deviceID), &cached); err == nil && cached.ModelID != "" {
+	if err := tc.modelStore.Read(cacheKeyModel(deviceID), &cached); err == nil && cached.ModelID != "" {
 		return &cached, nil
 	}
 
@@ -436,7 +441,7 @@ func (tc *TuyaClient) GetDeviceModel(deviceID string) (*ThingModel, error) {
 	}
 
 	if model != nil {
-		_ = tc.store.Write(cacheKeyModel(deviceID), model)
+		_ = tc.modelStore.Write(cacheKeyModel(deviceID), model)
 	}
 
 	return model, nil
