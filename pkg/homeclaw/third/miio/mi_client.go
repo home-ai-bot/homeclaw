@@ -8,15 +8,12 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/AlexxIT/go2rtc/pkg/xiaomi"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third"
-	"github.com/sipeed/picoclaw/pkg/homeclaw/third/miio/util"
 )
 
 const (
@@ -33,9 +30,8 @@ const (
 	// Pagination settings
 	homeDeviceLimit = 300
 
-	// Spec cache settings
-	specInstanceURL        = "https://miot-spec.org/miot-spec-v2/instance"
-	specCacheEffectiveTime = 3600 * 24 * 14 * time.Second
+	// Spec URL
+	specInstanceURL = "https://miot-spec.org/miot-spec-v2/instance"
 )
 
 // getBaseURL returns the API base URL for the given country/region.
@@ -50,133 +46,21 @@ func getBaseURL(country string) string {
 
 // MiClient implements std.Client for Xiaomi/Mi Home platform.
 type MiClient struct {
-	cloud       *xiaomi.Cloud
-	specFetcher *specFetcher
-	deviceStore MiDeviceStore
-	homeStore   MiHomeStore
-	baseURL     string
-	country     string // region code (cn, de, ru, sg, i2, us, etc.)
-}
-
-// specFetcher handles MIoT Spec retrieval and caching
-type specFetcher struct {
-	fileCache  *data.FileCache
-	httpClient *http.Client
-}
-
-// newSpecFetcher creates a specFetcher
-func newSpecFetcher(basePath string) (*specFetcher, error) {
-	// Create xiao-spec cache directory under basePath/third/xiao-spec
-	// This is consistent with homekit which uses basePath/third/homekit-spec
-	cacheDir := ""
-	if basePath != "" {
-		cacheDir = filepath.Join(basePath, "xiao-spec")
-	}
-
-	var fileCache *data.FileCache
-	var err error
-	if cacheDir != "" {
-		fileCache, err = data.NewFileCache(data.FileCacheConfig{
-			CacheDir:  cacheDir,
-			TTL:       specCacheEffectiveTime,
-			EncodeKey: true,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create file cache: %w", err)
-		}
-	}
-
-	return &specFetcher{
-		fileCache:  fileCache,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-	}, nil
-}
-
-// getSpec retrieves spec JSON from cache or cloud
-func (f *specFetcher) getSpec(urn string) (string, error) {
-	if urn == "" {
-		return "", fmt.Errorf("urn is empty")
-	}
-
-	// Check cache first (if cache is available)
-	if f.fileCache != nil {
-		if data, err := f.fileCache.GetAsString(urn); err == nil && data != "" {
-			return data, nil
-		}
-	}
-
-	// Fetch from cloud
-	url := fmt.Sprintf("%s?type=%s", specInstanceURL, urn)
-	resp, err := f.httpClient.Get(url)
-	if err != nil {
-		return "", fmt.Errorf("fetch spec from cloud failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("http status: %d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	// Save to cache (if cache is available)
-	if f.fileCache != nil {
-		_ = f.fileCache.SetString(urn, string(data))
-	}
-
-	return string(data), nil
-}
-
-// saveProcessedSpec saves processed spec JSON
-func (f *specFetcher) saveProcessedSpec(urn string, mode string, processedJSON string) error {
-	if urn == "" {
-		return fmt.Errorf("urn is empty")
-	}
-	if f.fileCache == nil {
-		return nil // No cache available, skip silently
-	}
-	return f.fileCache.SetString(urn+"_"+mode+"_new", processedJSON)
-}
-
-// getProcessedSpec retrieves processed spec JSON from cache
-func (f *specFetcher) getProcessedSpec(urn string, mode string) (string, error) {
-	if urn == "" {
-		return "", fmt.Errorf("urn is empty")
-	}
-	if f.fileCache == nil {
-		return "", fmt.Errorf("file cache not available")
-	}
-	data, err := f.fileCache.GetAsString(urn + "_" + mode + "_new")
-	if err != nil {
-		return "", fmt.Errorf("processed spec not found in cache: %w", err)
-	}
-	if data == "" {
-		return "", fmt.Errorf("processed spec is empty")
-	}
-	return data, nil
+	cloud   *xiaomi.Cloud
+	baseURL string
+	country string // region code (cn, de, ru, sg, i2, us, etc.)
 }
 
 // NewMiClient creates a new MiClient instance.
-func NewMiClient(cloud *xiaomi.Cloud, country, workspace string, deviceStore MiDeviceStore, homeStore MiHomeStore) *MiClient {
+func NewMiClient(cloud *xiaomi.Cloud, country string) *MiClient {
 	if country == "" {
 		country = "cn"
 	}
 
-	var fetcher *specFetcher
-	if f, err := newSpecFetcher(workspace); err == nil {
-		fetcher = f
-	}
-
 	return &MiClient{
-		cloud:       cloud,
-		specFetcher: fetcher,
-		deviceStore: deviceStore,
-		homeStore:   homeStore,
-		baseURL:     getBaseURL(country),
-		country:     country,
+		cloud:   cloud,
+		baseURL: getBaseURL(country),
+		country: country,
 	}
 }
 
@@ -341,9 +225,7 @@ func (c *MiClient) GetHomes() ([]*third.HomeInfo, error) {
 			ID:   h.HomeID,
 			Name: h.HomeName,
 		})
-		if c.homeStore != nil {
-			_ = c.homeStore.Save(&h)
-		}
+
 	}
 
 	return homes, nil
@@ -366,9 +248,6 @@ func (c *MiClient) GetRooms(homeID string) ([]*data.Space, error) {
 
 	var rooms []*data.Space
 	for _, home := range resp.Homelist {
-		if c.homeStore != nil {
-			_ = c.homeStore.Save(&home)
-		}
 		// If homeID is specified, filter by it
 		if homeID != "" && home.HomeID != homeID {
 			continue
@@ -400,7 +279,7 @@ func (c *MiClient) GetDevices(homeID string) ([]*data.Device, error) {
 	}
 
 	// Fetch devices with pagination
-	devices := make(map[string]*DeviceInfo)
+	allDevices := make([]DeviceInfo, 0)
 	startDID := ""
 	hasMore := true
 
@@ -431,83 +310,21 @@ func (c *MiClient) GetDevices(homeID string) ([]*data.Device, error) {
 		}
 
 		// Collect devices
-		for i := range resp.List {
-			d := &resp.List[i]
-			devices[d.DID] = d
-		}
+		allDevices = append(allDevices, resp.List...)
 
 		// Pagination: continue if has_more and max_did is not empty
 		startDID = resp.MaxDID
 		hasMore = resp.HasMore && startDID != ""
 	}
 
-	// Build DID -> RoomName map from homeStore
-	didRoomMap := make(map[string]string)
-	if c.homeStore != nil {
-		homes, _ := c.homeStore.GetAll()
-		for _, home := range homes {
-			for _, room := range home.Rooms {
-				for _, did := range room.DIDs {
-					didRoomMap[did] = room.Name
-				}
-			}
-		}
-	}
-
 	// Convert to data.Device
 	var result []*data.Device
-	var specErrors []string
-	for _, d := range devices {
-		// Set RoomName from didRoomMap
-		if roomName, ok := didRoomMap[d.DID]; ok {
-			d.RoomName = roomName
-		}
-		if c.deviceStore != nil {
-			_ = c.deviceStore.Save(d)
-		}
+	for _, d := range allDevices {
 		if !d.IsOnline {
 			continue
 		}
-		if d == nil || d.SpecType == "" {
+		if d.SpecType == "" {
 			continue
-		}
-		// Get spec for this device
-		spec, err := c.GetSpec(d.DID)
-		if err != nil {
-			specErrors = append(specErrors, fmt.Sprintf("%s: %v", d.Name, err))
-			continue
-		}
-		// Parse and process spec using spec_parser
-		parsedSpec, err := util.ParseSpecJSON(spec.Raw)
-		if err != nil {
-			specErrors = append(specErrors, fmt.Sprintf("%s: parse error - %v", d.Name, err))
-			continue
-		}
-		// Generate device commands (write operations: SetProp and Action)
-		commands := parsedSpec.GenerateDeviceCommands(d.DID)
-
-		// Extract actions (Method="Action")
-		var actions []string
-		for _, cmd := range commands {
-			if cmd.Method == "Action" || cmd.Method == "SetProp" {
-				actions = append(actions, cmd.Desc)
-			}
-		}
-
-		// Generate status commands (GetProp) and extract descriptions (read operations)
-		statusCommands := parsedSpec.GenerateStatusCommands(d.DID)
-		var status []string
-		for _, cmd := range statusCommands {
-			status = append(status, cmd.Desc)
-		}
-
-		// Save processed specs for write and read modes
-		if c.specFetcher != nil && d.SpecType != "" {
-			writeJSON, _ := json.Marshal(commands)
-			_ = c.specFetcher.saveProcessedSpec(d.SpecType, "write", string(writeJSON))
-
-			readJSON, _ := json.Marshal(statusCommands)
-			_ = c.specFetcher.saveProcessedSpec(d.SpecType, "read", string(readJSON))
 		}
 
 		result = append(result, &data.Device{
@@ -535,10 +352,24 @@ func (c *MiClient) GetSpec(deviceID string) (*third.SpecInfo, error) {
 		return nil, fmt.Errorf("get spec: device %s has no spec URN", deviceID)
 	}
 
-	specJSON, err := c.specFetcher.getSpec(info.SpecType)
+	// Fetch from cloud
+	url := fmt.Sprintf("%s?type=%s", specInstanceURL, info.SpecType)
+	resp, err := http.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("get spec: %w", err)
+		return nil, fmt.Errorf("fetch spec from cloud failed: %w", err)
 	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http status: %d", resp.StatusCode)
+	}
+
+	specData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	specJSON := string(specData)
 
 	return &third.SpecInfo{
 		DeviceID: deviceID,
@@ -546,33 +377,6 @@ func (c *MiClient) GetSpec(deviceID string) (*third.SpecInfo, error) {
 		Raw:      specJSON,
 		Extra: map[string]any{
 			"urn": info.SpecType,
-		},
-	}, nil
-}
-
-// GetProcessedSpec retrieves the processed spec (spec_new) from cache for a device.
-// mode can be "write" or "read"
-func (c *MiClient) GetProcessedSpec(deviceID string, mode string) (*third.SpecInfo, error) {
-	info, err := c.GetDeviceInfo(deviceID)
-	if err != nil {
-		return nil, fmt.Errorf("get processed spec: %w", err)
-	}
-	if info.SpecType == "" {
-		return nil, fmt.Errorf("get processed spec: device %s has no spec URN", deviceID)
-	}
-
-	processedJSON, err := c.specFetcher.getProcessedSpec(info.SpecType, mode)
-	if err != nil {
-		return nil, fmt.Errorf("get processed spec: %w", err)
-	}
-
-	return &third.SpecInfo{
-		DeviceID: deviceID,
-		Model:    info.Model,
-		Raw:      processedJSON,
-		Extra: map[string]any{
-			"urn":  info.SpecType,
-			"mode": mode,
 		},
 	}, nil
 }
@@ -603,14 +407,6 @@ func (c *MiClient) GetRtspStr(deviceID string) (string, error) {
 // GetDeviceInfo returns the full device info for the given deviceID.
 // This is a helper method for accessing detailed device information.
 func (c *MiClient) GetDeviceInfo(deviceID string) (*DeviceInfo, error) {
-	// Try store
-	if c.deviceStore != nil {
-		info, err := c.deviceStore.GetByDID(deviceID)
-		if err == nil && info != nil {
-			return info, nil
-		}
-	}
-
 	return nil, fmt.Errorf("device %s not found", deviceID)
 }
 

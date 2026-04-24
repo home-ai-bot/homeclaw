@@ -248,6 +248,15 @@ export function XiaomiPage() {
       selectedHomeId: currentHome?.id || null,
       error: result.error || null,
     }))
+    
+    // Load devices for the selected home after sync
+    if (currentHome?.id) {
+      const devices = await loadXiaomiDevices()
+      store.set(xiaomiAtom, (prev) => ({
+        ...prev,
+        devices,
+      }))
+    }
   }
 
   const handleSelectHome = async (homeId: string) => {

@@ -153,23 +153,7 @@ func (f *ThirdFactory) GetMiClient(country string) (*miio.MiClient, error) {
 
 	cloud := f.GetCloud("xiaomiio")
 
-	deviceStore, err := f.GetMiDeviceStore()
-	if err != nil {
-		return nil, fmt.Errorf("get mi device store: %w", err)
-	}
-
-	homeStore, err := f.GetMiHomeStore()
-	if err != nil {
-		return nil, fmt.Errorf("get mi home store: %w", err)
-	}
-
-	// Use workspace/third path for xiao-spec cache (consistent with homekit-spec)
-	cacheBase := ""
-	if f.Workspace != "" {
-		cacheBase = filepath.Join(f.Workspace, "third")
-	}
-
-	f.miClient = miio.NewMiClient(cloud, country, cacheBase, deviceStore, homeStore)
+	f.miClient = miio.NewMiClient(cloud, country)
 	return f.miClient, nil
 }
 

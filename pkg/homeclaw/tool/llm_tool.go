@@ -407,30 +407,25 @@ Return ONLY a valid JSON array. Do not include any explanation or markdown forma
 }
 
 // execAnalyzeXiaomiDeviceOps analyzes Xiaomi device spec using processed spec_new and LLM.
-// It loads the spec_new (processed commands), loops through each command,
+// It loads the spec, loops through each command,
 // sends desc + method + param_desc + ops.md to LLM to get ops and value,
 // then builds the final operations array locally.
 func (t *LLMTool) execAnalyzeXiaomiDeviceOps(ctx context.Context, llmInst *llm.LLM, client third.Client, fromID string) *tools.ToolResult {
-	logger.Infof("[DeviceOps] [Xiaomi] Starting processed spec analysis for device %s", fromID)
+	logger.Infof("[DeviceOps] [Xiaomi] Starting spec analysis for device %s", fromID)
 
-	// Try to get processed spec (write mode) from cache
-	type processedSpecGetter interface {
-		GetProcessedSpec(deviceID string, mode string) (*third.SpecInfo, error)
+	// Get raw spec from client
+	specInfo, err := client.GetSpec(fromID)
+	if err != nil {
+		msg := fmt.Sprintf("get spec for device %s: %v", fromID, err)
+		return &tools.ToolResult{ForLLM: msg, IsError: true}
 	}
 
-	if getter, ok := client.(processedSpecGetter); ok {
-		specInfo, err := getter.GetProcessedSpec(fromID, "write")
-		if err != nil {
-			logger.Warnf("[DeviceOps] [Xiaomi] Processed spec not available for device %s, falling back to raw spec: %v", fromID, err)
-			// Fall back to original logic by returning and letting the caller handle it
-			// This shouldn't happen as we already checked the brand
-		} else if specInfo != nil && specInfo.Raw != "" {
-			return t.processXiaomiSpecNew(ctx, llmInst, fromID, specInfo.Raw)
-		}
+	if specInfo == nil || specInfo.Raw == "" {
+		msg := fmt.Sprintf("spec is empty for device %s", fromID)
+		return &tools.ToolResult{ForLLM: msg, IsError: true}
 	}
 
-	logger.Warnf("[DeviceOps] [Xiaomi] No processed spec found for device %s", fromID)
-	return &tools.ToolResult{ForLLM: fmt.Sprintf("no processed spec found for xiaomi device %s", fromID), IsError: true}
+	return t.processXiaomiSpecNew(ctx, llmInst, fromID, specInfo.Raw)
 }
 
 // execAnalyzeTuyaDeviceOps analyzes Tuya device spec using Thing Model and LLM.
