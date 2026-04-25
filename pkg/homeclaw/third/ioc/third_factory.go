@@ -153,7 +153,13 @@ func (f *ThirdFactory) GetMiClient(country string) (*miio.MiClient, error) {
 
 	cloud := f.GetCloud("xiaomiio")
 
-	f.miClient = miio.NewMiClient(cloud, country)
+	// Get device store for persistent device caching
+	deviceStore, err := f.GetMiDeviceStore()
+	if err != nil {
+		return nil, fmt.Errorf("get mi device store: %w", err)
+	}
+
+	f.miClient = miio.NewMiClient(cloud, country, deviceStore)
 	return f.miClient, nil
 }
 

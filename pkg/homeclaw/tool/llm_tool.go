@@ -259,27 +259,27 @@ func extractImageAsBase64(filePath string) (string, error) {
 // params: {"brand": "xiaomi"|"tuya", "from_id": "device_id"}
 func (t *LLMTool) execAnalyzeDeviceOps(ctx context.Context, llmInst *llm.LLM, params map[string]any) *tools.ToolResult {
 	if params == nil {
-		logger.Warnf("[DeviceOps] Missing params for analyzeDeviceOps")
+		logger.Debugf("[DeviceOps] Missing params for analyzeDeviceOps")
 		return &tools.ToolResult{ForLLM: "missing 'params' for analyzeDeviceOps", IsError: true}
 	}
 
 	brand, ok := params["brand"].(string)
 	if !ok || brand == "" {
-		logger.Warnf("[DeviceOps] Missing or invalid 'brand' in params")
+		logger.Debugf("[DeviceOps] Missing or invalid 'brand' in params")
 		return &tools.ToolResult{ForLLM: "missing or invalid 'brand' in params", IsError: true}
 	}
 
 	fromID, ok := params["from_id"].(string)
 	if !ok || fromID == "" {
-		logger.Warnf("[DeviceOps] Missing or invalid 'from_id' in params")
+		logger.Debugf("[DeviceOps] Missing or invalid 'from_id' in params")
 		return &tools.ToolResult{ForLLM: "missing or invalid 'from_id' in params", IsError: true}
 	}
 
-	logger.Infof("[DeviceOps] Starting analysis for device %s (brand: %s)", fromID, brand)
+	logger.Debugf("[DeviceOps] Starting analysis for device %s (brand: %s)", fromID, brand)
 
 	// Get client for the brand
 	if t.clients == nil {
-		logger.Warnf("[DeviceOps] Clients map is not initialized")
+		logger.Debugf("[DeviceOps] Clients map is not initialized")
 		return &tools.ToolResult{ForLLM: "clients map is not initialized", IsError: true}
 	}
 
@@ -289,7 +289,7 @@ func (t *LLMTool) execAnalyzeDeviceOps(ctx context.Context, llmInst *llm.LLM, pa
 		for k := range t.clients {
 			available = append(available, k)
 		}
-		logger.Warnf("[DeviceOps] Unknown brand '%s'; registered brands: %v", brand, available)
+		logger.Debugf("[DeviceOps] Unknown brand '%s'; registered brands: %v", brand, available)
 		return &tools.ToolResult{
 			ForLLM:  fmt.Sprintf("unknown brand '%s'; registered brands: %v", brand, available),
 			IsError: true,
@@ -299,7 +299,7 @@ func (t *LLMTool) execAnalyzeDeviceOps(ctx context.Context, llmInst *llm.LLM, pa
 	// Lookup device to get URN
 	deviceURN, err := t.getDeviceURN(fromID, brand)
 	if err != nil {
-		logger.Errorf("[DeviceOps] Failed to get device URN for device %s: %v", fromID, err)
+		logger.Debugf("[DeviceOps] Failed to get device URN for device %s: %v", fromID, err)
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get device URN: %v", err), IsError: true}
 	}
 
@@ -315,13 +315,13 @@ func (t *LLMTool) execAnalyzeDeviceOps(ctx context.Context, llmInst *llm.LLM, pa
 // and calls LLM to generate operations.
 func (t *LLMTool) execUnifiedDeviceOps(ctx context.Context, llmInst *llm.LLM, client third.Client, fromID, deviceURN string) *tools.ToolResult {
 	brand := client.Brand()
-	logger.Infof("[DeviceOps] [%s] Starting unified analysis for device %s (URN: %s)", brand, fromID, deviceURN)
+	logger.Debugf("[DeviceOps] [%s] Starting unified analysis for device %s (URN: %s)", brand, fromID, deviceURN)
 
 	// Check if device already has operations configured
 	if t.deviceOpStore != nil {
 		existingOps, err := t.deviceOpStore.GetOpsByURN(deviceURN, brand)
 		if err == nil && len(existingOps) > 0 {
-			logger.Infof("[DeviceOps] [%s] Device %s (URN: %s) already has %d operations configured, skipping analysis", brand, fromID, deviceURN, len(existingOps))
+			logger.Debugf("[DeviceOps] [%s] Device %s (URN: %s) already has %d operations configured, skipping analysis", brand, fromID, deviceURN, len(existingOps))
 			return &tools.ToolResult{ForLLM: fmt.Sprintf("device %s (URN: %s) already has %d operations configured: %v", fromID, deviceURN, len(existingOps), existingOps)}
 		}
 	}
@@ -329,17 +329,17 @@ func (t *LLMTool) execUnifiedDeviceOps(ctx context.Context, llmInst *llm.LLM, cl
 	// Fetch spec from client
 	specInfo, err := client.GetSpec(fromID)
 	if err != nil {
-		logger.Errorf("[DeviceOps] [%s] Failed to get spec for device %s: %v", brand, fromID, err)
+		logger.Debugf("[DeviceOps] [%s] Failed to get spec for device %s: %v", brand, fromID, err)
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get spec for device %s: %v", fromID, err), IsError: true}
 	}
 
 	// If spec is empty, mark device as NoAction
 	if specInfo == nil || specInfo.Raw == "" || specInfo.Raw == "{}" {
-		logger.Infof("[DeviceOps] [%s] Empty spec for device %s, marking as NoAction", brand, fromID)
+		logger.Debugf("[DeviceOps] [%s] Empty spec for device %s, marking as NoAction", brand, fromID)
 		return t.markDeviceAsNoAction(fromID, brand)
 	}
 
-	logger.Infof("[DeviceOps] [%s] Fetching spec for device %s (length: %d bytes)", brand, fromID, len(specInfo.Raw))
+	logger.Debugf("[DeviceOps] [%s] Fetching spec for device %s (length: %d bytes)", brand, fromID, len(specInfo.Raw))
 
 	// Validate and compact JSON
 	specRaw := specInfo.Raw
@@ -348,32 +348,32 @@ func (t *LLMTool) execUnifiedDeviceOps(ctx context.Context, llmInst *llm.LLM, cl
 		// Valid JSON - compact it
 		compacted, err := json.Marshal(jsonData)
 		if err != nil {
-			logger.Warnf("[DeviceOps] [%s] Failed to compact JSON: %v, using raw spec", brand, err)
+			logger.Debugf("[DeviceOps] [%s] Failed to compact JSON: %v, using raw spec", brand, err)
 		} else {
 			specRaw = string(compacted)
-			logger.Infof("[DeviceOps] [%s] Spec validated and compacted (%d bytes)", brand, len(specRaw))
+			logger.Debugf("[DeviceOps] [%s] Spec validated and compacted (%d bytes)", brand, len(specRaw))
 		}
 	} else {
-		logger.Warnf("[DeviceOps] [%s] Spec is not valid JSON, using as-is", brand)
+		logger.Debugf("[DeviceOps] [%s] Spec is not valid JSON, using as-is", brand)
 	}
 
 	// Load brand-specific parsing rules
-	logger.Infof("[DeviceOps] [%s] Loading parsing rules for brand '%s'", brand, brand)
+	logger.Debugf("[DeviceOps] [%s] Loading parsing rules for brand '%s'", brand, brand)
 	parsingRules, err := t.loadBrandParsingRules(brand)
 	if err != nil {
-		logger.Errorf("[DeviceOps] [%s] Failed to load parsing rules for brand '%s': %v", brand, brand, err)
+		logger.Debugf("[DeviceOps] [%s] Failed to load parsing rules for brand '%s': %v", brand, brand, err)
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to load parsing rules for brand '%s': %v", brand, err), IsError: true}
 	}
-	logger.Infof("[DeviceOps] [%s] Successfully loaded parsing rules for brand '%s' (length: %d bytes)", brand, brand, len(parsingRules))
+	logger.Debugf("[DeviceOps] [%s] Successfully loaded parsing rules for brand '%s' (length: %d bytes)", brand, brand, len(parsingRules))
 
 	// Load supported operations reference
-	logger.Infof("[DeviceOps] [%s] Loading ops reference", brand)
+	logger.Debugf("[DeviceOps] [%s] Loading ops reference", brand)
 	opsReference, err := t.loadOpsReference()
 	if err != nil {
-		logger.Warnf("[DeviceOps] [%s] Failed to load ops reference: %v (continuing without it)", brand, err)
+		logger.Debugf("[DeviceOps] [%s] Failed to load ops reference: %v (continuing without it)", brand, err)
 		opsReference = ""
 	} else {
-		logger.Infof("[DeviceOps] [%s] Successfully loaded ops reference (length: %d bytes)", brand, len(opsReference))
+		logger.Debugf("[DeviceOps] [%s] Successfully loaded ops reference (length: %d bytes)", brand, len(opsReference))
 	}
 
 	// Build unified prompt
@@ -393,36 +393,36 @@ Analyze the spec according to brand rules and return a JSON array of operations.
 Each operation must include: ops, param_type, param_value, method, method_param.
 Return ONLY valid JSON array. No explanations or markdown.`, brand, parsingRules, opsReference, specRaw)
 
-	logger.Infof("[DeviceOps] [%s] Calling LLM to analyze device %s (prompt length: %d chars)", brand, fromID, len(prompt))
+	logger.Debugf("[DeviceOps] [%s] Calling LLM to analyze device %s (prompt length: %d chars)", brand, fromID, len(prompt))
 
 	// Call LLM to analyze spec
 	startTime := time.Now()
 	result, err := llmInst.Chat(ctx, fmt.Sprintf("You are a %s smart home device specification analyzer.", brand), prompt)
 	elapsed := time.Since(startTime)
 	if err != nil {
-		logger.Errorf("[DeviceOps] [%s] LLM analysis failed for device %s after %v: %v", brand, fromID, elapsed, err)
+		logger.Debugf("[DeviceOps] [%s] LLM analysis failed for device %s after %v: %v", brand, fromID, elapsed, err)
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to analyze device spec: %v", err), IsError: true}
 	}
 
-	logger.Infof("[DeviceOps] [%s] LLM analysis completed for device %s in %v (result length: %d chars)", brand, fromID, elapsed, len(result))
+	logger.Infof("[DeviceOps] [%s] LLM analysis completed for device %s in %v", brand, fromID, elapsed)
 
 	// Parse the JSON array from LLM response
-	logger.Infof("[DeviceOps] [%s] Parsing operations array from LLM result", brand)
+	logger.Debugf("[DeviceOps] [%s] Parsing operations array from LLM result", brand)
 	opsArray, err := t.parseOpsArrayFromLLMResult(result)
 	if err != nil {
-		logger.Errorf("[DeviceOps] [%s] Failed to parse LLM result for device %s: %v", brand, fromID, err)
+		logger.Debugf("[DeviceOps] [%s] Failed to parse LLM result for device %s: %v", brand, fromID, err)
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to parse LLM result: %v\n\nRaw result: %s", err, result), IsError: true}
 	}
 
-	logger.Infof("[DeviceOps] [%s] Successfully parsed %d operations from LLM result for device %s", brand, len(opsArray), fromID)
+	logger.Debugf("[DeviceOps] [%s] Successfully parsed %d operations from LLM result for device %s", brand, len(opsArray), fromID)
 
 	if len(opsArray) == 0 {
-		logger.Infof("[DeviceOps] [%s] No operations generated for device %s, marking as NoAction", brand, fromID)
+		logger.Debugf("[DeviceOps] [%s] No operations generated for device %s, marking as NoAction", brand, fromID)
 		return t.markDeviceAsNoAction(fromID, brand)
 	}
 
-	// Save operations with URN
-	logger.Infof("[DeviceOps] [%s] Saving %d operations for URN %s", brand, len(opsArray), deviceURN)
+	// Save operations immediately for this device (URN-based storage)
+	logger.Infof("[DeviceOps] [%s] Saved %d operations for device %s (URN: %s)", brand, len(opsArray), fromID, deviceURN)
 	return t.saveDeviceOperations(deviceURN, brand, opsArray)
 }
 
@@ -517,45 +517,45 @@ func (t *LLMTool) parseOpsArrayFromLLMResult(result string) ([]map[string]any, e
 
 // markDeviceAsNoAction marks a device as non-operable.
 func (t *LLMTool) markDeviceAsNoAction(fromID, from string) *tools.ToolResult {
-	logger.Infof("[DeviceOps] Marking device %s (from: %s) as NoAction", fromID, from)
+	logger.Debugf("[DeviceOps] Marking device %s (from: %s) as NoAction", fromID, from)
 	if t.deviceStore == nil {
-		logger.Warnf("[DeviceOps] deviceStore is not initialized")
+		logger.Debugf("[DeviceOps] deviceStore is not initialized")
 		return &tools.ToolResult{ForLLM: "deviceStore is not initialized", IsError: true}
 	}
 
 	// Get all devices to find the target device
-	logger.Infof("[DeviceOps] Retrieving all devices from store")
+	logger.Debugf("[DeviceOps] Retrieving all devices from store")
 	devices, err := t.deviceStore.GetAll()
 	if err != nil {
-		logger.Errorf("[DeviceOps] Failed to get devices: %v", err)
+		logger.Debugf("[DeviceOps] Failed to get devices: %v", err)
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get devices: %v", err), IsError: true}
 	}
-	logger.Infof("[DeviceOps] Retrieved %d devices from store, searching for device %s", len(devices), fromID)
+	logger.Debugf("[DeviceOps] Retrieved %d devices from store, searching for device %s", len(devices), fromID)
 
 	// Find and update the target device
 	for _, device := range devices {
 		if device.FromID == fromID && (from == "" || device.From == from) {
-			logger.Infof("[DeviceOps] Found device %s (from: %s), setting Ops to [NoAction]", fromID, device.From)
+			logger.Debugf("[DeviceOps] Found device %s (from: %s), setting Ops to [NoAction]", fromID, device.From)
 			device.Ops = []string{"NoAction"}
 			if err := t.deviceStore.Save(device); err != nil {
-				logger.Errorf("[DeviceOps] Failed to save device %s: %v", fromID, err)
+				logger.Debugf("[DeviceOps] Failed to save device %s: %v", fromID, err)
 				return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to save device: %v", err), IsError: true}
 			}
-			logger.Infof("[DeviceOps] Successfully marked device %s (from: %s) as NoAction", fromID, device.From)
+			logger.Debugf("[DeviceOps] Successfully marked device %s (from: %s) as NoAction", fromID, device.From)
 			return tools.NewToolResult(fmt.Sprintf("device %s from %s marked as NoAction (no operations could be generated)", fromID, device.From))
 		}
 	}
 
-	logger.Warnf("[DeviceOps] Device not found: from_id=%s, from=%s", fromID, from)
+	logger.Debugf("[DeviceOps] Device not found: from_id=%s, from=%s", fromID, from)
 	return &tools.ToolResult{ForLLM: fmt.Sprintf("device not found: from_id=%s, from=%s", fromID, from), IsError: true}
 }
 
 // saveDeviceOperations saves the generated operations to the device operation store.
 // Uses URN-based storage - operations are saved per device type, not per device instance.
 func (t *LLMTool) saveDeviceOperations(urn, from string, opsArray []map[string]any) *tools.ToolResult {
-	logger.Infof("[DeviceOps] Saving operations for URN %s (from: %s), received %d operations", urn, from, len(opsArray))
+	logger.Debugf("[DeviceOps] Saving operations for URN %s (from: %s), received %d operations", urn, from, len(opsArray))
 	if t.deviceOpStore == nil {
-		logger.Warnf("[DeviceOps] deviceOpStore is not initialized")
+		logger.Debugf("[DeviceOps] deviceOpStore is not initialized")
 		return &tools.ToolResult{ForLLM: "deviceOpStore is not initialized", IsError: true}
 	}
 
@@ -571,7 +571,7 @@ func (t *LLMTool) saveDeviceOperations(urn, from string, opsArray []map[string]a
 		methodParam := entry["method_param"]
 
 		if method == "" || ops == "" || methodParam == nil {
-			logger.Warnf("[DeviceOps] Operation %d is invalid (method: '%s', ops: '%s', method_param: %v)", i+1, method, ops, methodParam != nil)
+			logger.Debugf("[DeviceOps] Operation %d is invalid (method: '%s', ops: '%s', method_param: %v)", i+1, method, ops, methodParam != nil)
 			invalidCount++
 			continue
 		}
@@ -584,7 +584,7 @@ func (t *LLMTool) saveDeviceOperations(urn, from string, opsArray []map[string]a
 			if methodParamBytes, err := json.Marshal(methodParam); err == nil {
 				methodParamJSON = string(methodParamBytes)
 			} else {
-				logger.Warnf("[DeviceOps] Failed to marshal method_param for operation %d: %v", i+1, err)
+				logger.Debugf("[DeviceOps] Failed to marshal method_param for operation %d: %v", i+1, err)
 				invalidCount++
 				continue
 			}
@@ -600,44 +600,44 @@ func (t *LLMTool) saveDeviceOperations(urn, from string, opsArray []map[string]a
 			MethodParam: methodParamJSON,
 		})
 		validCount++
-		logger.Infof("[DeviceOps] Prepared operation %d: method='%s', ops='%s', param_type='%s'", i+1, method, ops, paramType)
+		logger.Debugf("[DeviceOps] Prepared operation %d: method='%s', ops='%s', param_type='%s'", i+1, method, ops, paramType)
 	}
 
-	logger.Infof("[DeviceOps] Operations validation complete: %d valid, %d invalid out of %d total", validCount, invalidCount, len(opsArray))
+	logger.Debugf("[DeviceOps] Operations validation complete: %d valid, %d invalid out of %d total", validCount, invalidCount, len(opsArray))
 
 	if len(deviceOps) == 0 {
-		logger.Warnf("[DeviceOps] No valid operations to save for URN %s", urn)
+		logger.Debugf("[DeviceOps] No valid operations to save for URN %s", urn)
 		return &tools.ToolResult{ForLLM: "no valid operations to save", IsError: true}
 	}
 
 	// Batch save all operations
-	logger.Infof("[DeviceOps] Batch saving %d operations for URN %s (from: %s)", len(deviceOps), urn, from)
+	logger.Debugf("[DeviceOps] Batch saving %d operations for URN %s (from: %s)", len(deviceOps), urn, from)
 	if err := t.deviceOpStore.Save(deviceOps...); err != nil {
-		logger.Errorf("[DeviceOps] Failed to batch save device operations for URN %s: %v", urn, err)
+		logger.Debugf("[DeviceOps] Failed to batch save device operations for URN %s: %v", urn, err)
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to batch save device operations: %v", err), IsError: true}
 	}
 
-	logger.Infof("[DeviceOps] Successfully saved %d device operations for URN %s (from: %s)", len(deviceOps), urn, from)
+	logger.Debugf("[DeviceOps] Successfully saved %d device operations for URN %s (from: %s)", len(deviceOps), urn, from)
 	return tools.NewToolResult(fmt.Sprintf("successfully saved %d device operations for URN %s from %s", len(deviceOps), urn, from))
 }
 
 // execBatchAnalyzeDevices queries all devices with empty operations and batch analyzes them.
 // params: {} (no parameters required)
 func (t *LLMTool) execBatchAnalyzeDevices(ctx context.Context, llmInst *llm.LLM, params map[string]any) *tools.ToolResult {
-	logger.Infof("[DeviceOps] Starting batch analysis of devices")
+	logger.Debugf("[DeviceOps] Starting batch analysis of devices")
 	if t.deviceStore == nil {
-		logger.Warnf("[DeviceOps] deviceStore is not initialized")
+		logger.Debugf("[DeviceOps] deviceStore is not initialized")
 		return &tools.ToolResult{ForLLM: "deviceStore is not initialized", IsError: true}
 	}
 
 	// Get all devices
-	logger.Infof("[DeviceOps] Retrieving all devices from store")
+	logger.Debugf("[DeviceOps] Retrieving all devices from store")
 	devices, err := t.deviceStore.GetAll()
 	if err != nil {
-		logger.Errorf("[DeviceOps] Failed to get devices: %v", err)
+		logger.Debugf("[DeviceOps] Failed to get devices: %v", err)
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get devices: %v", err), IsError: true}
 	}
-	logger.Infof("[DeviceOps] Retrieved %d devices from store", len(devices))
+	logger.Debugf("[DeviceOps] Retrieved %d devices from store", len(devices))
 
 	// Filter devices with empty ops
 	var devicesWithoutOps []data.Device
@@ -648,14 +648,11 @@ func (t *LLMTool) execBatchAnalyzeDevices(ctx context.Context, llmInst *llm.LLM,
 	}
 
 	if len(devicesWithoutOps) == 0 {
-		logger.Infof("[DeviceOps] All devices already have operations configured")
+		logger.Debugf("[DeviceOps] All devices already have operations configured")
 		return tools.NewToolResult("all devices already have operations configured")
 	}
 
-	logger.Infof("[DeviceOps] Found %d devices without operations, starting batch analysis", len(devicesWithoutOps))
-	for i, device := range devicesWithoutOps {
-		logger.Infof("[DeviceOps] Device %d/%d to analyze: %s (brand: %s)", i+1, len(devicesWithoutOps), device.FromID, device.From)
-	}
+	logger.Infof("[DeviceOps] Starting batch analysis for %d devices", len(devicesWithoutOps))
 
 	// Process each device
 	var results []string
@@ -663,7 +660,7 @@ func (t *LLMTool) execBatchAnalyzeDevices(ctx context.Context, llmInst *llm.LLM,
 	failCount := 0
 
 	for i, device := range devicesWithoutOps {
-		logger.Infof("[DeviceOps] === Processing device %d/%d: %s (brand: %s) ===", i+1, len(devicesWithoutOps), device.FromID, device.From)
+		logger.Debugf("[DeviceOps] === Processing device %d/%d: %s (brand: %s) ===", i+1, len(devicesWithoutOps), device.FromID, device.From)
 
 		// Call execAnalyzeDeviceOps for this device
 		analyzeParams := map[string]any{
@@ -676,18 +673,16 @@ func (t *LLMTool) execBatchAnalyzeDevices(ctx context.Context, llmInst *llm.LLM,
 		if result.IsError {
 			failCount++
 			results = append(results, fmt.Sprintf("FAILED: %s (%s) - %s", device.FromID, device.From, result.ForLLM))
-			logger.Warnf("[DeviceOps] Failed to analyze device %d/%d: %s (%s): %s", i+1, len(devicesWithoutOps), device.FromID, device.From, result.ForLLM)
+			logger.Debugf("[DeviceOps] Failed to analyze device %d/%d: %s (%s): %s", i+1, len(devicesWithoutOps), device.FromID, device.From, result.ForLLM)
 		} else {
 			successCount++
 			results = append(results, fmt.Sprintf("SUCCESS: %s (%s) - %s", device.FromID, device.From, result.ForLLM))
-			logger.Infof("[DeviceOps] Successfully analyzed device %d/%d: %s (%s)", i+1, len(devicesWithoutOps), device.FromID, device.From)
+			logger.Debugf("[DeviceOps] Successfully analyzed and saved device %d/%d: %s (%s)", i+1, len(devicesWithoutOps), device.FromID, device.From)
 		}
 	}
 
 	// Build summary
-	logger.Infof("[DeviceOps] === Batch analysis summary ===")
-	logger.Infof("[DeviceOps] Total devices processed: %d", len(devicesWithoutOps))
-	logger.Infof("[DeviceOps] Success: %d, Failed: %d", successCount, failCount)
+	logger.Infof("[DeviceOps] Batch analysis complete: %d succeeded, %d failed out of %d devices", successCount, failCount, len(devicesWithoutOps))
 	summary := fmt.Sprintf("Batch analysis complete: %d succeeded, %d failed out of %d devices\n\nDetails:\n%s",
 		successCount, failCount, len(devicesWithoutOps), strings.Join(results, "\n"))
 
@@ -700,17 +695,17 @@ func (t *LLMTool) execBatchAnalyzeDevices(ctx context.Context, llmInst *llm.LLM,
 func (t *LLMTool) execAnalyzeDeviceOpsAsync(ctx context.Context, llmInst *llm.LLM, params map[string]any) *tools.ToolResult {
 	fromID, ok := params["from_id"].(string)
 	if !ok || fromID == "" {
-		logger.Warnf("[DeviceOps] Missing or invalid 'from_id' in async params")
+		logger.Debugf("[DeviceOps] Missing or invalid 'from_id' in async params")
 		return &tools.ToolResult{ForLLM: "missing or invalid 'from_id' in params", IsError: true}
 	}
 
 	brand, ok := params["brand"].(string)
 	if !ok || brand == "" {
-		logger.Warnf("[DeviceOps] Missing or invalid 'brand' in async params")
+		logger.Debugf("[DeviceOps] Missing or invalid 'brand' in async params")
 		return &tools.ToolResult{ForLLM: "missing or invalid 'brand' in params", IsError: true}
 	}
 
-	logger.Infof("[DeviceOps] Async analysis requested for device %s (brand: %s)", fromID, brand)
+	logger.Debugf("[DeviceOps] Async analysis requested for device %s (brand: %s)", fromID, brand)
 
 	// Create a background context independent of the turn context
 	// This ensures the async operation continues even after the tool returns
@@ -718,16 +713,16 @@ func (t *LLMTool) execAnalyzeDeviceOpsAsync(ctx context.Context, llmInst *llm.LL
 
 	// Start goroutine to perform analysis in background
 	go func() {
-		logger.Infof("[DeviceOps] === Starting async analysis for device %s (brand: %s) ===", fromID, brand)
+		logger.Debugf("[DeviceOps] === Starting async analysis for device %s (brand: %s) ===", fromID, brand)
 		result := t.execAnalyzeDeviceOps(backgroundCtx, llmInst, params)
 		if result.IsError {
-			logger.Warnf("[DeviceOps] === Async analysis FAILED for device %s (%s): %s ===", fromID, brand, result.ForLLM)
+			logger.Infof("[DeviceOps] Async analysis FAILED for device %s (%s): %s", fromID, brand, result.ForLLM)
 		} else {
-			logger.Infof("[DeviceOps] === Async analysis SUCCEEDED for device %s (%s): %s ===", fromID, brand, result.ForLLM)
+			logger.Infof("[DeviceOps] Async analysis SUCCEEDED for device %s (%s)", fromID, brand)
 		}
 	}()
 
-	logger.Infof("[DeviceOps] Async analysis dispatched for device %s, returning immediately", fromID)
+	logger.Debugf("[DeviceOps] Async analysis dispatched for device %s, returning immediately", fromID)
 	return tools.NewToolResult(fmt.Sprintf("Device %s analysis started in background", fromID))
 }
 
@@ -735,17 +730,17 @@ func (t *LLMTool) execAnalyzeDeviceOpsAsync(ctx context.Context, llmInst *llm.LL
 // This method starts the batch analysis in a goroutine and returns immediately.
 // params: {} (no parameters required)
 func (t *LLMTool) execBatchAnalyzeDevicesAsync(ctx context.Context, llmInst *llm.LLM, params map[string]any) *tools.ToolResult {
-	logger.Infof("[DeviceOps] Async batch analysis requested")
+	logger.Debugf("[DeviceOps] Async batch analysis requested")
 	if t.deviceStore == nil {
-		logger.Warnf("[DeviceOps] deviceStore is not initialized for async batch analysis")
+		logger.Debugf("[DeviceOps] deviceStore is not initialized for async batch analysis")
 		return &tools.ToolResult{ForLLM: "deviceStore is not initialized", IsError: true}
 	}
 
 	// Get device count for quick validation
-	logger.Infof("[DeviceOps] Retrieving devices for async batch analysis")
+	logger.Debugf("[DeviceOps] Retrieving devices for async batch analysis")
 	devices, err := t.deviceStore.GetAll()
 	if err != nil {
-		logger.Errorf("[DeviceOps] Failed to get devices for async batch analysis: %v", err)
+		logger.Debugf("[DeviceOps] Failed to get devices for async batch analysis: %v", err)
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get devices: %v", err), IsError: true}
 	}
 
@@ -758,11 +753,11 @@ func (t *LLMTool) execBatchAnalyzeDevicesAsync(ctx context.Context, llmInst *llm
 	}
 
 	if count == 0 {
-		logger.Infof("[DeviceOps] All devices already have operations configured for async batch analysis")
+		logger.Debugf("[DeviceOps] All devices already have operations configured for async batch analysis")
 		return tools.NewToolResult("all devices already have operations configured")
 	}
 
-	logger.Infof("[DeviceOps] Found %d devices without operations for async batch analysis", count)
+	logger.Infof("[DeviceOps] Starting async batch analysis for %d devices", count)
 
 	// Create a background context independent of the turn context
 	// This ensures the async operation continues even after the tool returns
@@ -770,16 +765,16 @@ func (t *LLMTool) execBatchAnalyzeDevicesAsync(ctx context.Context, llmInst *llm
 
 	// Start goroutine to perform batch analysis in background
 	go func() {
-		logger.Infof("[DeviceOps] === Starting async batch analysis for %d devices ===", count)
+		logger.Debugf("[DeviceOps] === Starting async batch analysis for %d devices ===", count)
 		result := t.execBatchAnalyzeDevices(backgroundCtx, llmInst, params)
 		if result.IsError {
-			logger.Warnf("[DeviceOps] === Async batch analysis FAILED: %s ===", result.ForLLM)
+			logger.Infof("[DeviceOps] Async batch analysis FAILED: %s", result.ForLLM)
 		} else {
-			logger.Infof("[DeviceOps] === Async batch analysis SUCCEEDED: %s ===", result.ForLLM)
+			logger.Infof("[DeviceOps] Async batch analysis SUCCEEDED: %d devices processed", count)
 		}
 	}()
 
-	logger.Infof("[DeviceOps] Async batch analysis dispatched for %d devices, returning immediately", count)
+	logger.Debugf("[DeviceOps] Async batch analysis dispatched for %d devices, returning immediately", count)
 	return tools.NewToolResult(fmt.Sprintf("Batch analysis started for %d devices in background", count))
 }
 

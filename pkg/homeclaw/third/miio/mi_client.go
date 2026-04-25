@@ -14,6 +14,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third"
+	"github.com/sipeed/picoclaw/pkg/logger"
 )
 
 const (
@@ -46,21 +47,23 @@ func getBaseURL(country string) string {
 
 // MiClient implements std.Client for Xiaomi/Mi Home platform.
 type MiClient struct {
-	cloud   *xiaomi.Cloud
-	baseURL string
-	country string // region code (cn, de, ru, sg, i2, us, etc.)
+	cloud       *xiaomi.Cloud
+	baseURL     string
+	country     string // region code (cn, de, ru, sg, i2, us, etc.)
+	deviceStore MiDeviceStore
 }
 
 // NewMiClient creates a new MiClient instance.
-func NewMiClient(cloud *xiaomi.Cloud, country string) *MiClient {
+func NewMiClient(cloud *xiaomi.Cloud, country string, deviceStore MiDeviceStore) *MiClient {
 	if country == "" {
 		country = "cn"
 	}
 
 	return &MiClient{
-		cloud:   cloud,
-		baseURL: getBaseURL(country),
-		country: country,
+		cloud:       cloud,
+		baseURL:     getBaseURL(country),
+		country:     country,
+		deviceStore: deviceStore,
 	}
 }
 
@@ -317,6 +320,15 @@ func (c *MiClient) GetDevices(homeID string) ([]*data.Device, error) {
 		hasMore = resp.HasMore && startDID != ""
 	}
 
+	// Save devices to store
+	if c.deviceStore != nil {
+		for _, d := range allDevices {
+			if err := c.deviceStore.Save(&d); err != nil {
+				logger.Warnf("[DeviceOps] [xiaomi] Failed to save device %s to store: %v", d.DID, err)
+			}
+		}
+	}
+
 	// Convert to data.Device
 	var result []*data.Device
 	for _, d := range allDevices {
@@ -354,6 +366,7 @@ func (c *MiClient) GetSpec(deviceID string) (*third.SpecInfo, error) {
 
 	// Fetch from cloud
 	url := fmt.Sprintf("%s?type=%s", specInstanceURL, info.SpecType)
+	logger.Infof("[DeviceOps] [xiaomi] Fetching spec for device %s from %s", deviceID, url)
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("fetch spec from cloud failed: %w", err)
@@ -370,6 +383,8 @@ func (c *MiClient) GetSpec(deviceID string) (*third.SpecInfo, error) {
 	}
 
 	specJSON := string(specData)
+
+	logger.Infof("[DeviceOps] [xiaomi] Successfully fetched spec for device %s (model: %s, URN: %s)", deviceID, info.Model, info.SpecType)
 
 	return &third.SpecInfo{
 		DeviceID: deviceID,
@@ -407,6 +422,77 @@ func (c *MiClient) GetRtspStr(deviceID string) (string, error) {
 // GetDeviceInfo returns the full device info for the given deviceID.
 // This is a helper method for accessing detailed device information.
 func (c *MiClient) GetDeviceInfo(deviceID string) (*DeviceInfo, error) {
+	// Try to get from store first
+	if c.deviceStore != nil {
+		if info, err := c.deviceStore.GetByDID(deviceID); err == nil {
+			return info, nil
+		}
+	}
+
+	// Not in store - fetch all homes and search
+	homes, err := c.GetHomes()
+	if err != nil {
+		return nil, fmt.Errorf("get homes for device lookup: %w", err)
+	}
+
+	// Search through each home's devices
+	for _, home := range homes {
+		if home.ID == "" {
+			continue
+		}
+
+		// Fetch devices with pagination
+		startDID := ""
+		hasMore := true
+
+		for hasMore {
+			userID, _ := c.cloud.UserToken()
+			reqParams := map[string]any{
+				"home_owner":         userID,
+				"home_id":            home.ID,
+				"limit":              homeDeviceLimit,
+				"start_did":          startDID,
+				"get_split_device":   false,
+				"support_smart_home": true,
+				"get_cariot_device":  true,
+				"get_third_device":   true,
+			}
+			reqJSON, err := json.Marshal(reqParams)
+			if err != nil {
+				return nil, fmt.Errorf("marshal request: %w", err)
+			}
+			result, err := c.request(apiHomeDeviceList, string(reqJSON))
+			if err != nil {
+				return nil, fmt.Errorf("get devices failed: %w", err)
+			}
+
+			var resp homeDeviceListResponse
+			if err := json.Unmarshal(result, &resp); err != nil {
+				return nil, fmt.Errorf("parse response: %w", err)
+			}
+
+			// Save all devices from this response to store
+			if c.deviceStore != nil {
+				for i := range resp.List {
+					if err := c.deviceStore.Save(&resp.List[i]); err != nil {
+						logger.Warnf("[DeviceOps] [xiaomi] Failed to save device %s to store: %v", resp.List[i].DID, err)
+					}
+				}
+			}
+
+			// Search for the target device
+			for _, d := range resp.List {
+				if d.DID == deviceID {
+					return &d, nil
+				}
+			}
+
+			// Pagination: continue if has_more and max_did is not empty
+			startDID = resp.MaxDID
+			hasMore = resp.HasMore && startDID != ""
+		}
+	}
+
 	return nil, fmt.Errorf("device %s not found", deviceID)
 }
 
