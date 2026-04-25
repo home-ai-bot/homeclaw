@@ -133,6 +133,7 @@ interface ControlProps {
   fromId: string
   from: string
   deviceName: string
+  compact?: boolean
 }
 
 /**
@@ -364,7 +365,7 @@ function StringControl({ op, fromId, from, deviceName }: ControlProps) {
  * In control: renders a simple button for action operations.
  * The param_value contains the input array, backend handles it automatically.
  */
-function InControl({ op, fromId, from, deviceName }: ControlProps) {
+function InControl({ op, fromId, from, deviceName, compact }: ControlProps) {
   const [loading, setLoading] = useState(false)
 
   const handleClick = async () => {
@@ -396,6 +397,24 @@ function InControl({ op, fromId, from, deviceName }: ControlProps) {
     }
   }
 
+  if (compact) {
+    return (
+      <Button
+        onClick={handleClick}
+        disabled={loading}
+        variant="outline"
+        size="sm"
+        className="flex items-center gap-1"
+      >
+        {loading ? (
+          <IconLoader2 className="size-3 animate-spin" />
+        ) : (
+          <span className="text-xs">{op.ops}</span>
+        )}
+      </Button>
+    )
+  }
+
   return (
     <div className="flex items-center justify-between gap-3">
       <Label className="text-sm">{op.ops}</Label>
@@ -414,31 +433,6 @@ function InControl({ op, fromId, from, deviceName }: ControlProps) {
       </Button>
     </div>
   )
-}
-
-/**
- * Renders the appropriate control based on param_type.
- */
-function OpControl(props: ControlProps) {
-  const { op } = props
-  switch (op.param_type) {
-    case "bool":
-      return <BoolControl {...props} />
-    case "int":
-      return <IntControl {...props} />
-    case "enum":
-      return <EnumControl {...props} />
-    case "string":
-      return <StringControl {...props} />
-    case "in":
-      return <InControl {...props} />
-    default:
-      return (
-        <div className="text-xs text-muted-foreground">
-          Unsupported param_type: {op.param_type}
-        </div>
-      )
-  }
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────
@@ -507,16 +501,89 @@ export function DeviceControlPage() {
                           {device.from} · {device.from_id}
                         </CardDescription>
                       </CardHeader>
-                      <CardContent className="space-y-3">
-                        {device.ops.map((op, idx) => (
-                          <OpControl
-                            key={`${op.urn}-${op.ops}-${idx}`}
-                            op={op}
-                            fromId={device.from_id}
-                            from={device.from}
-                            deviceName={device.name}
-                          />
-                        ))}
+                      <CardContent className="space-y-4">
+                        {(() => {
+                          // Group ops by param_type
+                          const inOps = device.ops.filter(op => op.param_type === "in")
+                          const boolOps = device.ops.filter(op => op.param_type === "bool")
+                          const enumOps = device.ops.filter(op => op.param_type === "enum")
+                          const intOps = device.ops.filter(op => op.param_type === "int")
+                          const stringOps = device.ops.filter(op => op.param_type === "string")
+
+                          return (
+                            <>
+                              {/* In controls: compact button row */}
+                              {inOps.length > 0 && (
+                                <div className="space-y-2">
+                                  <div className="flex flex-wrap gap-2">
+                                    {inOps.map((op, idx) => (
+                                      <InControl
+                                        key={`in-${op.urn}-${op.ops}-${idx}`}
+                                        op={op}
+                                        fromId={device.from_id}
+                                        from={device.from}
+                                        deviceName={device.name}
+                                        compact
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Bool controls: 2 units each */}
+                              {boolOps.length > 0 && (
+                                <div className="grid grid-cols-2 gap-3">
+                                  {boolOps.map((op, idx) => (
+                                    <BoolControl
+                                      key={`bool-${op.urn}-${op.ops}-${idx}`}
+                                      op={op}
+                                      fromId={device.from_id}
+                                      from={device.from}
+                                      deviceName={device.name}
+                                    />
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Enum controls: 2 units each */}
+                              {enumOps.length > 0 && (
+                                <div className="grid grid-cols-2 gap-3">
+                                  {enumOps.map((op, idx) => (
+                                    <EnumControl
+                                      key={`enum-${op.urn}-${op.ops}-${idx}`}
+                                      op={op}
+                                      fromId={device.from_id}
+                                      from={device.from}
+                                      deviceName={device.name}
+                                    />
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Int controls: full row each */}
+                              {intOps.map((op, idx) => (
+                                <IntControl
+                                  key={`int-${op.urn}-${op.ops}-${idx}`}
+                                  op={op}
+                                  fromId={device.from_id}
+                                  from={device.from}
+                                  deviceName={device.name}
+                                />
+                              ))}
+
+                              {/* String controls: full row each */}
+                              {stringOps.map((op, idx) => (
+                                <StringControl
+                                  key={`string-${op.urn}-${op.ops}-${idx}`}
+                                  op={op}
+                                  fromId={device.from_id}
+                                  from={device.from}
+                                  deviceName={device.name}
+                                />
+                              ))}
+                            </>
+                          )
+                        })()}
                       </CardContent>
                     </Card>
                   )
