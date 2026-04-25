@@ -868,7 +868,34 @@ func (t *CLITool) execExe(client third.Client, params map[string]any) *tools.Too
 	// Render the MethodParam template with device ID and optional value
 	// Handle value as any type (bool, string, number, etc.) and convert to string for template
 	var valueStr string
-	if value := params["value"]; value != nil {
+
+	// For 'in' param_type, use the param_value from DeviceOp instead of frontend value
+	if deviceOp.ParamType == "in" {
+		// Convert param_value to string for template rendering
+		// param_value for 'in' type is typically an array like [2]
+		// The template already has "in":["{{.value}}"], so we need to extract the inner value
+		if deviceOp.ParamValue != nil {
+			if arr, ok := deviceOp.ParamValue.([]any); ok && len(arr) > 0 {
+				// Extract the first element from the array for template rendering
+				// Template has "in":["{{.value}}"], so we just need the value without brackets
+				switch v := arr[0].(type) {
+				case string:
+					valueStr = v
+				case float64:
+					// JSON numbers are float64
+					if v == float64(int(v)) {
+						valueStr = fmt.Sprintf("%d", int(v))
+					} else {
+						valueStr = fmt.Sprintf("%f", v)
+					}
+				case bool:
+					valueStr = fmt.Sprintf("%t", v)
+				default:
+					valueStr = fmt.Sprintf("%v", v)
+				}
+			}
+		}
+	} else if value := params["value"]; value != nil {
 		switch v := value.(type) {
 		case bool:
 			valueStr = fmt.Sprintf("%t", v)

@@ -1,6 +1,5 @@
 import {
   IconLoader2,
-  IconWand,
 } from "@tabler/icons-react"
 import { useStore } from "jotai"
 import { useEffect, useState } from "react"
@@ -362,6 +361,62 @@ function StringControl({ op, fromId, from, deviceName }: ControlProps) {
 }
 
 /**
+ * In control: renders a simple button for action operations.
+ * The param_value contains the input array, backend handles it automatically.
+ */
+function InControl({ op, fromId, from, deviceName }: ControlProps) {
+  const [loading, setLoading] = useState(false)
+
+  const handleClick = async () => {
+    setLoading(true)
+    try {
+      // For 'in' type, we don't need to pass value from frontend
+      // The backend will use the param_value from the DeviceOp
+      await callTool(
+        {
+          toolName: "hc_cli",
+          method: "exe",
+          brand: from,
+          params: {
+            from_id: fromId,
+            from,
+            ops: op.ops,
+            // No value needed - backend uses param_value from DeviceOp
+          },
+        },
+        {
+          timeout: 60000,
+          successMessage: `${deviceName} ${op.ops}`,
+        }
+      )
+    } catch (error) {
+      console.error("Failed to execute in op:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <Label className="text-sm">{op.ops}</Label>
+      <Button
+        onClick={handleClick}
+        disabled={loading}
+        variant="outline"
+        size="sm"
+        className="flex items-center gap-1"
+      >
+        {loading ? (
+          <IconLoader2 className="size-3 animate-spin" />
+        ) : (
+          <span className="text-xs">{op.ops}</span>
+        )}
+      </Button>
+    </div>
+  )
+}
+
+/**
  * Renders the appropriate control based on param_type.
  */
 function OpControl(props: ControlProps) {
@@ -375,6 +430,8 @@ function OpControl(props: ControlProps) {
       return <EnumControl {...props} />
     case "string":
       return <StringControl {...props} />
+    case "in":
+      return <InControl {...props} />
     default:
       return (
         <div className="text-xs text-muted-foreground">
@@ -392,7 +449,6 @@ export function DeviceControlPage() {
 
   const [state, setState] = useState(store.get(deviceOpsAtom))
   const [rooms, setRooms] = useState<RoomGroup[]>([])
-  const [processingDevices, setProcessingDevices] = useState<Set<string>>(new Set())
 
   // ── Subscribe to store ───────────────────────────────────────────────────
 
@@ -419,39 +475,6 @@ export function DeviceControlPage() {
   }, [store])
 
 
-
-  // ── Action handlers ──────────────────────────────────────────────────────
-
-  const handleGenerateOps = async (fromId: string, from: string, deviceName: string) => {
-    const key = `${fromId}-${from}`
-    setProcessingDevices((prev) => new Set(prev).add(key))
-
-    try {
-      await callTool(
-        {
-          toolName: "hc_llm",
-          method: "analyzeDeviceOpsAsync",
-          brand: from,
-          params: {
-            brand: from,
-            from_id: fromId,
-          },
-        },
-        {
-          timeout: 10000,
-          successMessage: `${deviceName} 操作分析已启动，请耐心等待分析完成`,
-        }
-      )
-    } catch (error) {
-      console.error("Failed to generate ops:", error)
-    } finally {
-      setProcessingDevices((prev) => {
-        const next = new Set(prev)
-        next.delete(key)
-        return next
-      })
-    }
-  }
 
   // ── Main render ──────────────────────────────────────────────────────────
 
@@ -494,24 +517,6 @@ export function DeviceControlPage() {
                             deviceName={device.name}
                           />
                         ))}
-                        <div className="flex gap-2 pt-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={processingDevices.has(deviceKey)}
-                            onClick={() =>
-                              handleGenerateOps(device.from_id, device.from, device.name)
-                            }
-                            className="flex items-center gap-1"
-                          >
-                            {processingDevices.has(deviceKey) ? (
-                              <IconLoader2 className="size-3 animate-spin" />
-                            ) : (
-                              <IconWand className="size-3" />
-                            )}
-                            <span className="text-xs">{t("device_control_page.generateOps")}</span>
-                          </Button>
-                        </div>
                       </CardContent>
                     </Card>
                   )
