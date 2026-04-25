@@ -51,10 +51,11 @@ type MiClient struct {
 	baseURL     string
 	country     string // region code (cn, de, ru, sg, i2, us, etc.)
 	deviceStore MiDeviceStore
+	homeStore   MiHomeStore
 }
 
 // NewMiClient creates a new MiClient instance.
-func NewMiClient(cloud *xiaomi.Cloud, country string, deviceStore MiDeviceStore) *MiClient {
+func NewMiClient(cloud *xiaomi.Cloud, country string, deviceStore MiDeviceStore, homeStore MiHomeStore) *MiClient {
 	if country == "" {
 		country = "cn"
 	}
@@ -64,6 +65,7 @@ func NewMiClient(cloud *xiaomi.Cloud, country string, deviceStore MiDeviceStore)
 		baseURL:     getBaseURL(country),
 		country:     country,
 		deviceStore: deviceStore,
+		homeStore:   homeStore,
 	}
 }
 
@@ -171,6 +173,36 @@ func lower(c byte) byte {
 	return c
 }
 
+// getRoomNameByDID finds the room name for a given device ID from the home store.
+func (c *MiClient) getRoomNameByDID(did string) string {
+	if c.homeStore == nil {
+		return ""
+	}
+
+	homes, err := c.homeStore.GetAll()
+	if err != nil {
+		return ""
+	}
+
+	for _, home := range homes {
+		// Check home-level devices
+		for _, homeDID := range home.DIDs {
+			if homeDID == did {
+				return home.HomeName
+			}
+		}
+		// Check room-level devices
+		for _, room := range home.Rooms {
+			for _, roomDID := range room.DIDs {
+				if roomDID == did {
+					return room.Name
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // getAuthErrorMsg returns the standard authentication error message.
 func getAuthErrorMsg() string {
 	localIP := getLocalIP()
@@ -222,6 +254,15 @@ func (c *MiClient) GetHomes() ([]*third.HomeInfo, error) {
 		return nil, fmt.Errorf("parse homes response: %w", err)
 	}
 
+	// Save homes to store
+	if c.homeStore != nil {
+		for _, h := range resp.Homelist {
+			if err := c.homeStore.Save(&h); err != nil {
+				logger.Warnf("[DeviceOps] [xiaomi] Failed to save home %s to store: %v", h.HomeID, err)
+			}
+		}
+	}
+
 	homes := make([]*third.HomeInfo, 0, len(resp.Homelist))
 	for _, h := range resp.Homelist {
 		homes = append(homes, &third.HomeInfo{
@@ -247,6 +288,15 @@ func (c *MiClient) GetRooms(homeID string) ([]*data.Space, error) {
 	}
 	if err := json.Unmarshal(result, &resp); err != nil {
 		return nil, fmt.Errorf("parse rooms response: %w", err)
+	}
+
+	// Save homes/rooms to store
+	if c.homeStore != nil {
+		for _, h := range resp.Homelist {
+			if err := c.homeStore.Save(&h); err != nil {
+				logger.Warnf("[DeviceOps] [xiaomi] Failed to save home %s to store: %v", h.HomeID, err)
+			}
+		}
 	}
 
 	var rooms []*data.Space
@@ -339,12 +389,18 @@ func (c *MiClient) GetDevices(homeID string) ([]*data.Device, error) {
 			continue
 		}
 
+		// If RoomName is not provided by API, try to get it from homeStore
+		roomName := d.RoomName
+		if roomName == "" {
+			roomName = c.getRoomNameByDID(d.DID)
+		}
+
 		result = append(result, &data.Device{
 			FromID:    d.DID,
 			From:      BrandXiaomi,
 			Name:      d.Name,
 			Type:      d.Model,
-			SpaceName: d.RoomName,
+			SpaceName: roomName,
 			IP:        d.LocalIP,
 			Token:     d.Token,
 			URN:       d.SpecType,
@@ -425,6 +481,10 @@ func (c *MiClient) GetDeviceInfo(deviceID string) (*DeviceInfo, error) {
 	// Try to get from store first
 	if c.deviceStore != nil {
 		if info, err := c.deviceStore.GetByDID(deviceID); err == nil {
+			// If room name is missing, try to populate it from homeStore
+			if info.RoomName == "" && c.homeStore != nil {
+				info.RoomName = c.getRoomNameByDID(info.DID)
+			}
 			return info, nil
 		}
 	}
@@ -483,6 +543,10 @@ func (c *MiClient) GetDeviceInfo(deviceID string) (*DeviceInfo, error) {
 			// Search for the target device
 			for _, d := range resp.List {
 				if d.DID == deviceID {
+					// If room name is missing, try to populate it from homeStore
+					if d.RoomName == "" {
+						d.RoomName = c.getRoomNameByDID(d.DID)
+					}
 					return &d, nil
 				}
 			}

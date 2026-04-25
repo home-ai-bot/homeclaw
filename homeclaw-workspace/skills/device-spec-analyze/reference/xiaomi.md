@@ -8,13 +8,13 @@ Per action: siid←service.iid, aiid←action.iid
 
 ## Output JSON (no comments)
 ```json
-[{"ops":"turn_on","param_type":"bool","param_value":null,"method":"SetProp","method_param":{"did":"{{.deviceId}}","siid":2,"piid":1,"value":"{{.value}}"}},{"ops":"start","param_type":"in","param_value":[2],"method":"execute","method_param":{"did":"{{.deviceId}}","siid":2,"aiid":1,"in":["{{.value}}"]}}]
+[{"ops":"turn","param_type":"bool","param_value":null,"method":"SetProp","method_param":{"did":"{{.deviceId}}","siid":2,"piid":1,"value":"{{.value}}"}},{"ops":"start","param_type":"in","param_value":"[2]","method":"execute","method_param":{"did":"{{.deviceId}}","siid":2,"aiid":1,"in":["{{.value}}"]}}]
 ```
 
 ## Field Source
 | Field | Source | Rule |
 |-------|--------|------|
-| ops | service.description + property/action的type URN + description推断 | 必须在ops.md中 |
+| ops | service.description + property/action的type URN + description推断 bool类型turn、lock等 | 必须在ops.md中 |
 | param_type | property→format; action→"in" | bool/int/enum/string/in |
 | param_value | by param_type | bool→null, int→"min-max"(value-range), enum→{"1":"desc"}(value-list的value:desc), string→null, in→action.in数组(如[2]) |
 | method | property含write→SetProp; action→execute | |
