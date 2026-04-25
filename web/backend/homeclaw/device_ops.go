@@ -68,6 +68,7 @@ func (m *DeviceOpsManager) Initialize(workspacePath string) error {
 
 // RegisterRoutes binds DeviceOps API endpoints to the ServeMux
 func (m *DeviceOpsManager) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/device-ops/list", m.handleListDeviceOps)
 	mux.HandleFunc("POST /api/device-ops/execute", m.handleExecuteDeviceOp)
 }
 
@@ -140,5 +141,87 @@ func (m *DeviceOpsManager) handleExecuteDeviceOp(w http.ResponseWriter, r *http.
 		"cli_method":   "exe",
 		"command_json": string(commandJSON),
 		"message":      "Command ready to be sent to gateway via Pico channel",
+	})
+}
+
+// handleListDeviceOps returns all DeviceOp objects for a given device
+func (m *DeviceOpsManager) handleListDeviceOps(w http.ResponseWriter, r *http.Request) {
+	if err := m.Initialize(m.workspacePath); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": "Failed to initialize device ops service",
+		})
+		return
+	}
+
+	fromID := r.URL.Query().Get("from_id")
+	from := r.URL.Query().Get("from")
+
+	if fromID == "" || from == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": "Missing required parameters: from_id, from",
+		})
+		return
+	}
+
+	// Lookup the device by from_id and from to get its URN
+	devices, err := m.deviceStore.GetAll()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": "Failed to get devices",
+		})
+		return
+	}
+
+	var urn string
+	for _, device := range devices {
+		if device.FromID == fromID && device.From == from {
+			urn = device.URN
+			break
+		}
+	}
+
+	if urn == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": "Device not found",
+		})
+		return
+	}
+
+	// Get all DeviceOps and filter by URN and From
+	allOps, err := m.deviceOpStore.GetAll()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": "Failed to get device operations",
+		})
+		return
+	}
+
+	var filteredOps []data.DeviceOp
+	for _, op := range allOps {
+		if op.URN == urn && op.From == from {
+			filteredOps = append(filteredOps, op)
+		}
+	}
+
+	if filteredOps == nil {
+		filteredOps = []data.DeviceOp{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"success": true,
+		"urn":     urn,
+		"from":    from,
+		"ops":     filteredOps,
 	})
 }

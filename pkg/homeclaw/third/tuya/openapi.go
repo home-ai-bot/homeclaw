@@ -77,34 +77,48 @@ func (api *TuyaOpenAPI) SetBaseURL(baseURL string) {
 
 // doRequest performs an HTTP request and returns the result.
 func (api *TuyaOpenAPI) doRequest(method, path string, body any) (map[string]any, error) {
+	logger.Infof("[Tuya OpenAPI] doRequest - Method: %s, Path: %s", method, path)
+
 	var reqBody io.Reader
 	if body != nil {
 		jsonBody, err := json.Marshal(body)
 		if err != nil {
+			logger.Errorf("[Tuya OpenAPI] doRequest - Failed to marshal request body: %v", err)
 			return nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}
 		reqBody = bytes.NewReader(jsonBody)
+		logger.Infof("[Tuya OpenAPI] doRequest - Request body JSON: %s", string(jsonBody))
 	}
 
 	url := api.baseURL + path
+	logger.Infof("[Tuya OpenAPI] doRequest - Full URL: %s", url)
+
 	req, err := http.NewRequest(method, url, reqBody)
 	if err != nil {
+		logger.Errorf("[Tuya OpenAPI] doRequest - Failed to create request: %v", err)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+api.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
+	logger.Infof("[Tuya OpenAPI] doRequest - Sending request...")
 	resp, err := api.client.Do(req)
 	if err != nil {
+		logger.Errorf("[Tuya OpenAPI] doRequest - Request failed: %v", err)
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
+	logger.Infof("[Tuya OpenAPI] doRequest - Response status: %s", resp.Status)
+
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
+		logger.Errorf("[Tuya OpenAPI] doRequest - Failed to read response: %v", err)
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
+
+	logger.Infof("[Tuya OpenAPI] doRequest - Response body: %s", string(respBody))
 
 	var result struct {
 		Success bool            `json:"success"`
@@ -114,20 +128,26 @@ func (api *TuyaOpenAPI) doRequest(method, path string, body any) (map[string]any
 	}
 
 	if err := json.Unmarshal(respBody, &result); err != nil {
+		logger.Errorf("[Tuya OpenAPI] doRequest - Failed to parse response: %v", err)
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if !result.Success {
+		logger.Errorf("[Tuya OpenAPI] doRequest - API error: code=%d, msg=%s", result.Code, result.Msg)
 		return nil, &TuyaOpenAPIError{Code: result.Code, Msg: result.Msg}
 	}
+
+	logger.Infof("[Tuya OpenAPI] doRequest - API success, parsing result...")
 
 	var data map[string]any
 	if len(result.Result) > 0 {
 		if err := json.Unmarshal(result.Result, &data); err != nil {
 			// Result might not be a map, try raw message
+			logger.Warnf("[Tuya OpenAPI] doRequest - Result is not a map, returning raw string")
 			return map[string]any{"raw": string(result.Result)}, nil
 		}
 	}
+	logger.Infof("[Tuya OpenAPI] doRequest - Returning data: %+v", data)
 	return data, nil
 }
 
@@ -149,6 +169,10 @@ func (api *TuyaOpenAPI) GetDeviceDetail(deviceID string) (*DeviceDetail, error) 
 	if err != nil {
 		return nil, err
 	}
+
+	// Log raw response to check for product_id field
+	logger.Infof("[Tuya OpenAPI] GetDeviceDetail raw response for device %s: %+v", deviceID, result)
+
 	if result == nil {
 		return nil, nil
 	}
@@ -163,31 +187,11 @@ func (api *TuyaOpenAPI) GetDeviceDetail(deviceID string) (*DeviceDetail, error) 
 	if err := json.Unmarshal(data, &detail); err != nil {
 		return nil, err
 	}
+
+	logger.Infof("[Tuya OpenAPI] GetDeviceDetail parsed: DeviceID=%s, Category=%s, ProductName=%s",
+		detail.DeviceID, detail.Category, detail.ProductName)
+
 	return &detail, nil
-}
-
-// GetAllDevices returns all devices for the user.
-func (api *TuyaOpenAPI) GetAllDevices() ([]*DeviceInfo, error) {
-	result, err := api.doGet("/v1.0/end-user/devices/all")
-	if err != nil {
-		return nil, err
-	}
-
-	devicesRaw, ok := result["devices"]
-	if !ok {
-		return nil, nil
-	}
-
-	data, err := json.Marshal(devicesRaw)
-	if err != nil {
-		return nil, err
-	}
-
-	var devices []*DeviceInfo
-	if err := json.Unmarshal(data, &devices); err != nil {
-		return nil, err
-	}
-	return devices, nil
 }
 
 // ─── Device Control ───
@@ -223,18 +227,32 @@ func (api *TuyaOpenAPI) GetDeviceModel(deviceID string) (*ThingModel, error) {
 
 // IssueProperties sends control commands to a device.
 func (api *TuyaOpenAPI) IssueProperties(deviceID string, properties map[string]any) error {
+	// Log the input parameters
+	logger.Infof("[Tuya OpenAPI] IssueProperties START - DeviceID: %s, Properties: %+v", deviceID, properties)
+
 	// Properties must be serialized to a JSON string
 	propsJSON, err := json.Marshal(properties)
 	if err != nil {
+		logger.Errorf("[Tuya OpenAPI] IssueProperties FAILED - Failed to serialize properties: %v", err)
 		return fmt.Errorf("failed to serialize properties: %w", err)
 	}
+
+	logger.Infof("[Tuya OpenAPI] IssueProperties - Serialized properties JSON: %s", string(propsJSON))
 
 	body := map[string]any{
 		"properties": string(propsJSON),
 	}
 
-	_, err = api.doPost("/v1.0/end-user/devices/"+deviceID+"/shadow/properties/issue", body)
-	return err
+	logger.Infof("[Tuya OpenAPI] IssueProperties - Request body: %+v", body)
+
+	result, err := api.doPost("/v1.0/end-user/devices/"+deviceID+"/shadow/properties/issue", body)
+	if err != nil {
+		logger.Errorf("[Tuya OpenAPI] IssueProperties FAILED - DeviceID: %s, Error: %v", deviceID, err)
+		return err
+	}
+
+	logger.Infof("[Tuya OpenAPI] IssueProperties SUCCESS - DeviceID: %s, Response: %+v", deviceID, result)
+	return nil
 }
 
 // RenameDevice renames a device.
@@ -296,21 +314,40 @@ func (api *TuyaOpenAPI) GetHomeDevices(homeID string) ([]*DeviceInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	logger.Debugf("GetHomeDevices result: %v", result["devices"])
+
+	// Log raw API response for debugging
+	logger.Infof("[Tuya OpenAPI] GetHomeDevices raw response for home %s: %+v", homeID, result)
+
 	devicesRaw, ok := result["devices"]
 	if !ok {
+		logger.Warnf("[Tuya OpenAPI] GetHomeDevices: no 'devices' field in response")
 		return nil, nil
 	}
 
 	data, err := json.Marshal(devicesRaw)
 	if err != nil {
+		logger.Errorf("[Tuya OpenAPI] GetHomeDevices: failed to marshal devices: %v", err)
 		return nil, err
 	}
 
+	// Log raw JSON before unmarshaling
+	logger.Infof("[Tuya OpenAPI] GetHomeDevices raw devices JSON: %s", string(data))
+
 	var devices []*DeviceInfo
 	if err := json.Unmarshal(data, &devices); err != nil {
+		logger.Errorf("[Tuya OpenAPI] GetHomeDevices: failed to unmarshal devices: %v", err)
 		return nil, err
 	}
+
+	// Log parsed devices with key fields
+	logger.Infof("[Tuya OpenAPI] GetHomeDevices: parsed %d devices", len(devices))
+	for i, dev := range devices {
+		if dev != nil {
+			logger.Infof("[Tuya OpenAPI] Device[%d]: ID=%s, Name=%s, Category=%s, ProductID=%s",
+				i, dev.DeviceID, dev.Name, dev.Category, dev.ProductID)
+		}
+	}
+
 	return devices, nil
 }
 

@@ -172,7 +172,8 @@
   },
   "device_control": "Device Control",
   "device_control_page": {
-    "noDevices": "You don't have any devices yet. Please add devices first."
+    "noDevices": "You don't have any devices yet. Please add devices first.",
+    "generateOps": "Generate Operations"
   },
   "home_section": {
     "title": "Family Information",

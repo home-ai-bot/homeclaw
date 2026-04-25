@@ -7,6 +7,7 @@ import (
 
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/third"
+	"github.com/sipeed/picoclaw/pkg/logger"
 )
 
 const (
@@ -217,6 +218,8 @@ func (tc *TuyaClient) GetDevices(homeID string) ([]*data.Device, error) {
 		return nil, fmt.Errorf("failed to get devices: %w", err)
 	}
 
+	logger.Infof("[TuyaClient] GetDevices: received %d devices from OpenAPI for home %s", len(devices), homeID)
+
 	var result []*data.Device
 	for _, device := range devices {
 		spaceName := ""
@@ -225,15 +228,36 @@ func (tc *TuyaClient) GetDevices(homeID string) ([]*data.Device, error) {
 				spaceName = name
 			}
 		}
-		result = append(result, &data.Device{
+
+		// Fetch device model to get ModelID as URN
+		// Priority: ModelID > ProductID > Category
+		urn := ""
+
+		// Try to get model from cache or API
+		model, err := tc.GetDeviceModel(device.DeviceID)
+		if err != nil {
+			logger.Warnf("[TuyaClient] Failed to get model for device %s: %v", device.DeviceID, err)
+		} else if model != nil && model.ModelID != "" {
+			urn = model.ModelID
+			logger.Infof("[TuyaClient] Device %s (%s): using ModelID '%s' as URN",
+				device.DeviceID, device.Name, model.ModelID)
+		}
+		deviceData := &data.Device{
 			FromID:    device.DeviceID,
 			From:      BrandTuya,
 			Name:      device.Name,
 			Type:      device.Category,
-			URN:       device.ProductID,
+			URN:       urn,
 			SpaceName: spaceName,
-		})
+		}
+
+		logger.Infof("[TuyaClient] Converting device: FromID=%s, Name=%s, Type=%s, URN=%s, SpaceName=%s",
+			deviceData.FromID, deviceData.Name, deviceData.Type, deviceData.URN, deviceData.SpaceName)
+
+		result = append(result, deviceData)
 	}
+
+	logger.Infof("[TuyaClient] GetDevices: returning %d devices with URNs populated", len(result))
 
 	_ = tc.store.Write(key, result)
 	return result, nil
@@ -341,12 +365,16 @@ func (tc *TuyaClient) GetProps(params map[string]any) (any, error) {
 
 // SetProps sets property values on a device.
 func (tc *TuyaClient) SetProps(params map[string]any) (any, error) {
+	logger.Infof("[Tuya Client] SetProps START - Params: %+v", params)
+
 	if err := tc.checkAPI(); err != nil {
+		logger.Errorf("[Tuya Client] SetProps FAILED - API check error: %v", err)
 		return nil, err
 	}
 
 	deviceID, ok := params["device_id"].(string)
 	if !ok || deviceID == "" {
+		logger.Errorf("[Tuya Client] SetProps FAILED - device_id is required")
 		return nil, errors.New("device_id is required")
 	}
 
@@ -358,13 +386,18 @@ func (tc *TuyaClient) SetProps(params map[string]any) (any, error) {
 	}
 
 	if len(props) == 0 {
+		logger.Errorf("[Tuya Client] SetProps FAILED - no properties to set")
 		return nil, errors.New("no properties to set")
 	}
 
+	logger.Infof("[Tuya Client] SetProps - DeviceID: %s, Properties: %+v", deviceID, props)
+
 	if err := tc.openAPI.IssueProperties(deviceID, props); err != nil {
+		logger.Errorf("[Tuya Client] SetProps FAILED - IssueProperties error: %v", err)
 		return nil, fmt.Errorf("failed to set properties: %w", err)
 	}
 
+	logger.Infof("[Tuya Client] SetProps SUCCESS - DeviceID: %s", deviceID)
 	return map[string]any{"success": true}, nil
 }
 

@@ -224,7 +224,7 @@ export async function executeDeviceOperation(
 function showTooltip(message: string): void {
   toast.success(message, {
     duration: 3000,
-    position: "top-right",
+    position: "bottom-right",
   })
 }
 

@@ -22,13 +22,17 @@ type Device struct {
 	Ops       []string `json:"ops,omitempty"`
 }
 
-// DeviceOp represents an operation that a device can perform
+// DeviceOp represents an operation that a device type (URN) can perform.
+// Matches the skill output format:
+//   {"ops":"turn_on","param_type":"bool","param_value":null,"method":"SetProp","method_param":{"did":"{{.deviceId}}","siid":2,"piid":1,"value":"{{.value}}"}}
 type DeviceOp struct {
-	FromID string `json:"from_id"`
-	From   string `json:"from"`
-	Ops    string `json:"ops"`    // Operation name, e.g. "turn_on,turn_off"
-	Method string `json:"method"` // Method name, e.g. "getProps,setProps,execute"
-	Param  string `json:"param"`  // CLI tool command parameters
+	URN         string `json:"urn"`          // Device model URN — same URN = same device type
+	From        string `json:"from"`         // Brand (xiaomi, tuya)
+	Ops         string `json:"ops"`          // Operation name, e.g. "turn_on"
+	ParamType   string `json:"param_type"`   // bool/int/enum/string/in
+	ParamValue  any    `json:"param_value"`  // null, true/false, "min-max", {"1":"desc"}, or action.in array
+	Method      string `json:"method"`       // SetProp/execute/setProps/getProps
+	MethodParam string `json:"method_param"` // Go template JSON: {"did":"{{.deviceId}}","siid":2,...}
 }
 
 // Home represents a home information

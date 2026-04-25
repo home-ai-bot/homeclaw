@@ -631,5 +631,6 @@ func (f *Factory) SetCLIToolClients(clients map[string]third.Client) {
 
 	if f.cliTool != nil {
 		f.cliTool.SetClients(clients)
+		f.cliTool.SetWorkspace(f.Workspace)
 	}
 }

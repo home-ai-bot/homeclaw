@@ -172,7 +172,8 @@
   },
   "device_control": "设备控制",
   "device_control_page": {
-    "noDevices": "你还没有设备，请先去添加设备吧"
+    "noDevices": "你还没有设备，请先去添加设备吧",
+    "generateOps": "生成操作"
   },
   "home_section": {
     "title": "家庭信息",

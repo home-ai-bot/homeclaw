@@ -1,65 +1,25 @@
-# Xiaomi MIoT Parsing Rules
+# Xiaomi MIoT
 
-This document contains the parsing rules for Xiaomi MIoT device specifications.
+## Spec: services[].properties[] + services[].actions[]
+根据总体spec判断设备类型，只保留核心操作，忽略次要功能
+Skip: service.type含"device-information"|"battery"|read-only属性
+Per property: siid←service.iid, piid←property.iid
+Per action: siid←service.iid, aiid←action.iid
 
-## Spec Structure
-
-Xiaomi MIoT specs are returned as a flat array of operation definitions:
-
+## Output JSON (no comments)
 ```json
-[
-  {
-    "desc": "Light Control-Switch Status",
-    "method": "SetProp",
-    "param": {
-      "did": "",
-      "siid": 2,
-      "piid": 1,
-      "value": "$value$",
-      "param_desc": "bool"
-    },
-
-  }
-]
+[{"ops":"turn_on","param_type":"bool","param_value":null,"method":"SetProp","method_param":{"did":"{{.deviceId}}","siid":2,"piid":1,"value":"{{.value}}"}},{"ops":"start","param_type":"in","param_value":[2],"method":"execute","method_param":{"did":"{{.deviceId}}","siid":2,"aiid":1,"in":["{{.value}}"]}}]
 ```
 
-## Parsing Rules
+## Field Source
+| Field | Source | Rule |
+|-------|--------|------|
+| ops | service.description + property/action的type URN + description推断 | 必须在ops.md中 |
+| param_type | property→format; action→"in" | bool/int/enum/string/in |
+| param_value | by param_type | bool→null, int→"min-max"(value-range), enum→{"1":"desc"}(value-list的value:desc), string→null, in→action.in数组(如[2]) |
+| method | property含write→SetProp; action→execute | |
+| method_param | golang template, 仅{{.deviceId}}和{{.value}}为变量, siid/piid/aiid填spec实际值 | → templates below |
 
-For each JSON object in the input spec array, parse it according to these rules:
-
-1. **method**: Extract directly from `method`
-2. **ops**: Use the `method` and `desc` to choose ALL matching operations from ## Supported Operations Reference:
-3. **param**: Extract from `param` with the following modifications:
-   - Change `did` value to `<from_id>` (the target device ID)
-   - Change `value` to the appropriate value based on `param_desc`
-   - If `value` is not a single fixed value, keep it as `"$value$"`
-
-**LLM Input**: For each command, only send `desc`, `method`, `param_desc` + ops.md reference
-
-**LLM Output Format**: A JSON array of objects, where each object contains two fields: `ops` and `value`
-
-Example LLM response for a "Light Control-Switch Status" command:
-```json
-[{"ops": "turn_on", "value": true}, {"ops": "turn_off", "value": false}]
-```
-
-**Final Output Format**: An array of JSON objects, where each object contains three fields: `method`, `ops`, and `param`
-
-## output example
-[
-  {
-    "method": "SetProp",
-    "ops": "turn_on",
-    "param": {"did": "12345", "siid": 2, "piid": 1, "value": true, "param_desc": "bool"}
-  },
-  {
-    "method": "SetProp",
-    "ops": "turn_off",
-    "param": {"did": "12345", "siid": 2, "piid": 1, "value": false, "param_desc": "bool"}
-  },
-  {
-    "method": "SetProp",
-    "ops": "set_brightness",
-    "param": {"did": "12345", "siid": 2, "piid": 2, "value": "$value$", "param_desc": "int 0-100"}
-  }
-]
+## method_param Template (golang, 仅2变量: {{.deviceId}}, {{.value}})
+SetProp: `{"did":"{{.deviceId}}","siid":<siid>,"piid":<piid>,"value":"{{.value}}"}`
+execute: `{"did":"{{.deviceId}}","siid":<siid>,"aiid":<aiid>,"in":["{{.value}}"]}`

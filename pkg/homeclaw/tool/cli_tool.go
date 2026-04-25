@@ -1,10 +1,14 @@
 package tool
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"text/template"
 
 	"github.com/sipeed/picoclaw/pkg/homeclaw/config"
 	"github.com/sipeed/picoclaw/pkg/homeclaw/data"
@@ -41,6 +45,7 @@ type CLITool struct {
 	deviceStore    data.DeviceStore
 	deviceOpStore  data.DeviceOpStore
 	authStore      data.AuthStore
+	workspace      string
 	refreshClients func() error // Optional callback to refresh brand clients after auth changes
 }
 
@@ -74,6 +79,11 @@ func (t *CLITool) RegisterClient(client third.Client) {
 // This can be called after construction to enable the analyzeAndSaveDeviceOps method.
 func (t *CLITool) SetClients(clients map[string]third.Client) {
 	t.clients = clients
+}
+
+// SetWorkspace sets the workspace path for loading reference files.
+func (t *CLITool) SetWorkspace(workspace string) {
+	t.workspace = workspace
 }
 
 // GetClients returns the map of brand clients.
@@ -139,6 +149,8 @@ func (t *CLITool) Execute(_ context.Context, args map[string]any) *tools.ToolRes
 		return t.execSaveDeviceOps(req.Params)
 	case "listDevicesWithoutOps":
 		return t.execListDevicesWithoutOps(req.Params)
+	case "listOps":
+		return t.execListOps()
 	case "markNoAction":
 		return t.execMarkNoAction(req.Params)
 	case "saveAuth":
@@ -269,23 +281,37 @@ func (t *CLITool) execSyncDevices(client third.Client, params map[string]any) *t
 		return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
 	}
 
-	// Skip devices that already exist in the store
+	// Update devices: add new ones and update existing ones if URN is missing
 	existingDevices, _ := t.deviceStore.GetAll()
-	existingSet := make(map[string]struct{}, len(existingDevices))
-	for _, ed := range existingDevices {
-		existingSet[ed.FromID+"|"+ed.From] = struct{}{}
+	existingMap := make(map[string]*data.Device, len(existingDevices))
+	for i := range existingDevices {
+		key := existingDevices[i].FromID + "|" + existingDevices[i].From
+		existingMap[key] = &existingDevices[i]
 	}
-	deviceValues := make([]data.Device, 0, len(devices))
+
+	deviceValuesToSave := make([]data.Device, 0, len(devices))
 	for _, d := range devices {
 		if d == nil {
 			continue
 		}
 		key := d.FromID + "|" + d.From
-		if _, exists := existingSet[key]; !exists {
-			deviceValues = append(deviceValues, *d)
+		if existing, exists := existingMap[key]; exists {
+			// Device exists - update URN if new device has a valid URN
+			// Always update if the new URN is non-empty (even if existing URN is not empty)
+			// This ensures URN gets corrected from old category-based URNs to model-based URNs
+			if d.URN != "" && existing.URN != d.URN {
+				existing.URN = d.URN
+				deviceValuesToSave = append(deviceValuesToSave, *existing)
+				logger.Infof("[SyncDevices] Updated URN for device %s (%s): %s -> %s", d.FromID, d.From, existing.URN, d.URN)
+			}
+		} else {
+			// New device - add it
+			deviceValuesToSave = append(deviceValuesToSave, *d)
 		}
 	}
-	t.deviceStore.Save(deviceValues...)
+	if len(deviceValuesToSave) > 0 {
+		t.deviceStore.Save(deviceValuesToSave...)
+	}
 
 	for _, d := range devices {
 
@@ -490,21 +516,23 @@ func (t *CLITool) execGetCurrentHome(params map[string]any) *tools.ToolResult {
 }
 
 // execSaveDeviceOps saves device operations analyzed by AI in batch.
-// Required params: from, from_id, ops_array (JSON string)
+// Operations are stored per device type (URN), not per device instance.
+// Required params: from, urn, ops_array (JSON string)
+// ops_array format: [{"ops":"turn_on","param_type":"bool","param_value":null,"method":"SetProp","method_param":{"did":"{{.deviceId}}","siid":2,"piid":1,"value":"{{.value}}"}}]
 func (t *CLITool) execSaveDeviceOps(params map[string]any) *tools.ToolResult {
 	if params == nil {
 		return &tools.ToolResult{ForLLM: "missing 'params' for saveDeviceOps", IsError: true}
 	}
 
-	// Extract from and from_id from top-level params
+	// Extract from and urn from top-level params
 	from, ok := params["from"].(string)
 	if !ok || from == "" {
 		return &tools.ToolResult{ForLLM: "missing required parameter: from", IsError: true}
 	}
 
-	fromID, ok := params["from_id"].(string)
-	if !ok || fromID == "" {
-		return &tools.ToolResult{ForLLM: "missing required parameter: from_id", IsError: true}
+	urn, ok := params["urn"].(string)
+	if !ok || urn == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: urn", IsError: true}
 	}
 
 	// Extract ops_array - accept both string (JSON-encoded) and array formats
@@ -524,11 +552,13 @@ func (t *CLITool) execSaveDeviceOps(params map[string]any) *tools.ToolResult {
 		return &tools.ToolResult{ForLLM: "missing required parameter: ops_array", IsError: true}
 	}
 
-	// Parse the JSON array - use json.RawMessage to avoid parsing param
+	// Parse the JSON array - use the complete skill output format
 	type opEntry struct {
-		Method string          `json:"method"`
-		Ops    string          `json:"ops"`
-		Param  json.RawMessage `json:"param"`
+		Ops         string          `json:"ops"`
+		ParamType   string          `json:"param_type"`
+		ParamValue  json.RawMessage `json:"param_value"`
+		Method      string          `json:"method"`
+		MethodParam json.RawMessage `json:"method_param"`
 	}
 
 	var opsArray []opEntry
@@ -540,24 +570,58 @@ func (t *CLITool) execSaveDeviceOps(params map[string]any) *tools.ToolResult {
 		return &tools.ToolResult{ForLLM: "ops_array is empty", IsError: true}
 	}
 
-	// Convert to DeviceOp slice - param is saved directly as JSON string without parsing
+	// Load allowed ops for validation
+	allowedOps := t.loadAllowedOps()
+	if allowedOps == nil {
+		logger.Warnf("[saveDeviceOps] ops.md not found, skipping ops validation")
+	}
+
+	// Convert to DeviceOp slice
 	deviceOps := make([]data.DeviceOp, 0, len(opsArray))
+	skippedOps := 0
 	for _, entry := range opsArray {
-		if len(entry.Param) == 0 {
+		if len(entry.MethodParam) == 0 {
 			continue
 		}
 
+		// Validate operation name against allowed ops list
+		if allowedOps != nil && !allowedOps[entry.Ops] {
+			logger.Warnf("[saveDeviceOps] skipping unknown operation '%s' (not in ops.md)", entry.Ops)
+			skippedOps++
+			continue
+		}
+
+		// Parse param_value into any type (null, bool, string, number, array, or object)
+		var paramValue any
+		if len(entry.ParamValue) > 0 {
+			if err := json.Unmarshal(entry.ParamValue, &paramValue); err != nil {
+				logger.Warnf("[saveDeviceOps] failed to parse param_value for op '%s': %v", entry.Ops, err)
+				continue
+			}
+		}
+
 		deviceOps = append(deviceOps, data.DeviceOp{
-			FromID: fromID,
-			From:   from,
-			Ops:    entry.Ops,
-			Method: entry.Method,
-			Param:  string(entry.Param),
+			URN:         urn,
+			From:        from,
+			Ops:         entry.Ops,
+			ParamType:   entry.ParamType,
+			ParamValue:  paramValue,
+			Method:      entry.Method,
+			MethodParam: string(entry.MethodParam),
 		})
 	}
 
 	if len(deviceOps) == 0 {
-		return &tools.ToolResult{ForLLM: "no valid operations to save", IsError: true}
+		// Mark all devices with the same URN as NoAction
+		if err := t.markDevicesByURNAsNoAction(urn, from); err != nil {
+			logger.Warnf("[saveDeviceOps] failed to mark devices with URN %s as NoAction: %v", urn, err)
+		}
+
+		msg := "no valid operations to save - all devices with this URN marked as NoAction"
+		if skippedOps > 0 {
+			msg = fmt.Sprintf("all %d operations were skipped (not in ops.md) - all devices with this URN marked as NoAction", skippedOps)
+		}
+		return &tools.ToolResult{ForLLM: msg, IsError: true}
 	}
 
 	// Batch save all operations
@@ -565,10 +629,161 @@ func (t *CLITool) execSaveDeviceOps(params map[string]any) *tools.ToolResult {
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to batch save device operations: %v", err), IsError: true}
 	}
 
-	return tools.NewToolResult(fmt.Sprintf("successfully saved %d device operations for device %s from %s", len(deviceOps), fromID, from))
+	result := fmt.Sprintf("successfully saved %d device operations for URN %s from %s", len(deviceOps), urn, from)
+	if skippedOps > 0 {
+		result += fmt.Sprintf(" (skipped %d invalid operations)", skippedOps)
+	}
+	return tools.NewToolResult(result)
+}
+
+// loadAllowedOps loads the supported operations list from ops.md.
+// Returns a map for O(1) lookup. If the file cannot be loaded, returns nil (validation skipped).
+func (t *CLITool) loadAllowedOps() map[string]bool {
+	if t.workspace == "" {
+		return nil
+	}
+
+	workspacePaths := []string{
+		filepath.Join(t.workspace, "skills", "device-spec-analyze", "reference"),
+	}
+
+	for _, basePath := range workspacePaths {
+		filePath := filepath.Join(basePath, "ops.md")
+		if content, err := os.ReadFile(filePath); err == nil {
+			// ops.md is a JSON array: ["op1","op2",...]
+			var ops []string
+			if err := json.Unmarshal(content, &ops); err == nil {
+				allowed := make(map[string]bool, len(ops))
+				for _, op := range ops {
+					allowed[op] = true
+				}
+				return allowed
+			}
+		}
+	}
+
+	return nil
+}
+
+// execListOps lists all devices with valid operations (ops not empty and not "NoAction").
+// Returns devices grouped by room with their operations including param_type and param_value.
+func (t *CLITool) execListOps() *tools.ToolResult {
+	// Get all devices
+	devices, err := t.deviceStore.GetAll()
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get devices: %v", err), IsError: true}
+	}
+
+	// Get all spaces for room mapping
+	spaces, err := t.spaceStore.GetAll()
+	if err != nil {
+		logger.Warnf("[listOps] failed to get spaces: %v", err)
+		spaces = nil
+	}
+
+	// Build space name set for validation
+	spaceSet := make(map[string]bool)
+	if spaces != nil {
+		for _, s := range spaces {
+			spaceSet[s.Name] = true
+		}
+	}
+
+	// Get all device operations
+	allOps, err := t.deviceOpStore.GetAll()
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get device ops: %v", err), IsError: true}
+	}
+
+	// Build URN+From -> Ops map
+	opsMap := make(map[string][]data.DeviceOp)
+	for _, op := range allOps {
+		key := op.URN + "|" + op.From
+		opsMap[key] = append(opsMap[key], op)
+	}
+
+	// Filter devices with valid ops (not empty and not NoAction)
+	// Group by room (space_name)
+	type deviceWithOps struct {
+		FromID    string          `json:"from_id"`
+		From      string          `json:"from"`
+		Name      string          `json:"name"`
+		Type      string          `json:"type"`
+		URN       string          `json:"urn"`
+		SpaceName string          `json:"space_name"`
+		Ops       []data.DeviceOp `json:"ops"`
+	}
+
+	type roomGroup struct {
+		RoomName string          `json:"room_name"`
+		Devices  []deviceWithOps `json:"devices"`
+	}
+
+	roomMap := make(map[string]*roomGroup)
+
+	for _, d := range devices {
+		// Skip devices without URN
+		if d.URN == "" {
+			continue
+		}
+
+		// Check if device has valid ops
+		key := d.URN + "|" + d.From
+		ops, exists := opsMap[key]
+		if !exists || len(ops) == 0 {
+			continue
+		}
+
+		// Skip NoAction devices
+		if len(d.Ops) == 1 && d.Ops[0] == "NoAction" {
+			continue
+		}
+
+		// Determine room name
+		roomName := d.SpaceName
+		if roomName == "" {
+			roomName = "未分类"
+		}
+
+		// Add to room group
+		if _, ok := roomMap[roomName]; !ok {
+			roomMap[roomName] = &roomGroup{
+				RoomName: roomName,
+				Devices:  []deviceWithOps{},
+			}
+		}
+
+		roomMap[roomName].Devices = append(roomMap[roomName].Devices, deviceWithOps{
+			FromID:    d.FromID,
+			From:      d.From,
+			Name:      d.Name,
+			Type:      d.Type,
+			URN:       d.URN,
+			SpaceName: roomName,
+			Ops:       ops,
+		})
+	}
+
+	// Convert map to sorted slice
+	rooms := make([]roomGroup, 0, len(roomMap))
+	for _, room := range roomMap {
+		rooms = append(rooms, *room)
+	}
+
+	if len(rooms) == 0 {
+		return tools.NewToolResult(`{"rooms":[],"message":"No devices with operations found"}`)
+	}
+
+	result, _ := json.Marshal(map[string]any{
+		"rooms": rooms,
+		"count": len(rooms),
+	})
+	return tools.NewToolResult(string(result))
 }
 
 // execListDevicesWithoutOps lists all devices that don't have any device operations saved.
+// Returns full Device objects (including URN) and deduplicates by URN.
+// Only filters devices with len(Ops) == 0 (devices with Ops[0] == "NoAction" are excluded from this list).
 func (t *CLITool) execListDevicesWithoutOps(params map[string]any) *tools.ToolResult {
 	// Get all devices
 	devices, err := t.deviceStore.GetAll()
@@ -576,26 +791,18 @@ func (t *CLITool) execListDevicesWithoutOps(params map[string]any) *tools.ToolRe
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get devices: %v", err), IsError: true}
 	}
 
-	// Filter devices without operations
-	type deviceWithoutOps struct {
-		FromID    string `json:"from_id"`
-		From      string `json:"from"`
-		Name      string `json:"name"`
-		Type      string `json:"type"`
-		SpaceName string `json:"space_name,omitempty"`
-	}
-
-	var devicesWithoutOps []deviceWithoutOps
+	// Filter devices without operations (only len(Ops) == 0, skip NoAction devices)
+	// Deduplicate by URN - same URN = same device type, only need one representative
+	seenURNs := make(map[string]bool)
+	var devicesWithoutOps []data.Device
 	for _, d := range devices {
-		// Check if ops is empty or only contains "NoAction"
-		if len(d.Ops) == 0 || (len(d.Ops) == 1 && d.Ops[0] == "NoAction") {
-			devicesWithoutOps = append(devicesWithoutOps, deviceWithoutOps{
-				FromID:    d.FromID,
-				From:      d.From,
-				Name:      d.Name,
-				Type:      d.Type,
-				SpaceName: d.SpaceName,
-			})
+		// Only include devices with completely empty ops
+		if len(d.Ops) == 0 && d.URN != "" {
+			// Deduplicate by URN
+			if !seenURNs[d.URN+"|"+d.From] {
+				seenURNs[d.URN+"|"+d.From] = true
+				devicesWithoutOps = append(devicesWithoutOps, d)
+			}
 		}
 	}
 
@@ -611,6 +818,8 @@ func (t *CLITool) execListDevicesWithoutOps(params map[string]any) *tools.ToolRe
 }
 
 // execExe executes a device operation by reading from DeviceOpStore and calling the appropriate method.
+// Uses URN-based lookup: finds device by from_id, gets its URN, then looks up DeviceOp by URN.
+// MethodParam uses Go templates: {{.deviceId}} and {{.value}} are rendered at execution time.
 func (t *CLITool) execExe(client third.Client, params map[string]any) *tools.ToolResult {
 	if params == nil {
 		return &tools.ToolResult{ForLLM: "missing 'params' for exe", IsError: true}
@@ -632,16 +841,53 @@ func (t *CLITool) execExe(client third.Client, params map[string]any) *tools.Too
 		return &tools.ToolResult{ForLLM: "missing required parameter: ops", IsError: true}
 	}
 
-	// Get the device operation from store
-	deviceOp, err := t.deviceOpStore.GetOpsCommand(fromID, from, ops)
+	// Find the device to get its URN
+	devices, err := t.deviceStore.GetAll()
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get devices: %v", err), IsError: true}
+	}
+
+	var deviceURN string
+	for _, d := range devices {
+		if d.FromID == fromID && d.From == from {
+			deviceURN = d.URN
+			break
+		}
+	}
+
+	if deviceURN == "" {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("device not found: from_id=%s, from=%s", fromID, from), IsError: true}
+	}
+
+	// Get the device operation from store by URN
+	deviceOp, err := t.deviceOpStore.GetOpsCommand(deviceURN, from, ops)
 	if err != nil {
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get device operation: %v", err), IsError: true}
 	}
 
-	// Parse the command JSON
-	var commandParams map[string]any
-	if err := json.Unmarshal([]byte(deviceOp.Param), &commandParams); err != nil {
-		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to parse command JSON: %v", err), IsError: true}
+	// Render the MethodParam template with device ID and optional value
+	// Handle value as any type (bool, string, number, etc.) and convert to string for template
+	var valueStr string
+	if value := params["value"]; value != nil {
+		switch v := value.(type) {
+		case bool:
+			valueStr = fmt.Sprintf("%t", v)
+		case string:
+			valueStr = v
+		case float64:
+			// JSON numbers are float64
+			if v == float64(int(v)) {
+				valueStr = fmt.Sprintf("%d", int(v))
+			} else {
+				valueStr = fmt.Sprintf("%f", v)
+			}
+		default:
+			valueStr = fmt.Sprintf("%v", v)
+		}
+	}
+	commandParams, err := t.renderMethodParam(deviceOp.MethodParam, fromID, valueStr)
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to render method_param template: %v", err), IsError: true}
 	}
 
 	// Execute based on the method.
@@ -671,6 +917,45 @@ func (t *CLITool) execExe(client third.Client, params map[string]any) *tools.Too
 
 	b, _ := json.Marshal(result)
 	return tools.NewToolResult(fmt.Sprintf("exe result (%s): %s", deviceOp.Method, string(b)))
+}
+
+// renderMethodParam renders a Go template string with deviceId and value variables.
+// Template format: {"did":"{{.deviceId}}","siid":2,"piid":1,"value":"{{.value}}"}
+// Special handling: If value is "true"/"false" (no quotes in template), convert to bool.
+func (t *CLITool) renderMethodParam(templateStr, deviceID, value string) (map[string]any, error) {
+	tmpl, err := template.New("method_param").Parse(templateStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse template: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, map[string]string{
+		"deviceId": deviceID,
+		"value":    value,
+	}); err != nil {
+		return nil, fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse rendered JSON: %w (JSON: %s)", err, buf.String())
+	}
+
+	// Post-process: convert string "true"/"false" to actual bool values
+	// This handles the case where template has "{{.value}}" with quotes
+	for key, val := range result {
+		if strVal, ok := val.(string); ok {
+			if strVal == "true" {
+				result[key] = true
+				logger.Debugf("[CLITool] renderMethodParam - Converted string 'true' to bool true for key: %s", key)
+			} else if strVal == "false" {
+				result[key] = false
+				logger.Debugf("[CLITool] renderMethodParam - Converted string 'false' to bool false for key: %s", key)
+			}
+		}
+	}
+
+	return result, nil
 }
 
 // execMarkNoAction marks a device as non-operable by setting its Ops to ["NoAction"].
@@ -708,6 +993,36 @@ func (t *CLITool) execMarkNoAction(params map[string]any) *tools.ToolResult {
 	}
 
 	return &tools.ToolResult{ForLLM: fmt.Sprintf("device not found: from_id=%s, from=%s", fromID, from), IsError: true}
+}
+
+// markDevicesByURNAsNoAction marks all devices with the same URN and brand as NoAction.
+func (t *CLITool) markDevicesByURNAsNoAction(urn, from string) error {
+	if t.deviceStore == nil {
+		return fmt.Errorf("deviceStore is not initialized")
+	}
+
+	// Get all devices
+	devices, err := t.deviceStore.GetAll()
+	if err != nil {
+		return fmt.Errorf("failed to get devices: %w", err)
+	}
+
+	// Find and update all devices with matching URN and brand
+	markedCount := 0
+	for _, device := range devices {
+		if device.URN == urn && device.From == from {
+			device.Ops = []string{"NoAction"}
+			if err := t.deviceStore.Save(device); err != nil {
+				logger.Warnf("[markDevicesByURNAsNoAction] failed to save device %s: %v", device.FromID, err)
+				continue
+			}
+			markedCount++
+			logger.Infof("[markDevicesByURNAsNoAction] marked device %s (URN: %s) as NoAction", device.FromID, urn)
+		}
+	}
+
+	logger.Infof("[markDevicesByURNAsNoAction] marked %d devices with URN %s from %s as NoAction", markedCount, urn, from)
+	return nil
 }
 
 // execSaveAuth stores authentication credentials (token or password) for a brand using AuthStore.

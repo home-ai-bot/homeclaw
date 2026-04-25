@@ -1,9 +1,5 @@
 import {
   IconLoader2,
-  IconPower,
-  IconSettings,
-  IconInfoCircle,
-  IconBan,
   IconWand,
 } from "@tabler/icons-react"
 import { useStore } from "jotai"
@@ -19,26 +15,373 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
+import { Slider } from "@/components/ui/slider"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   deviceOpsAtom,
-  fetchDevicesWithOps,
-  type OperationLog,
 } from "@/homeclaw/store/device-ops"
 import { callTool } from "@/homeclaw/api/device-command-executor"
 import { SmartHomeLayout } from "@/homeclaw/components/smart-home-layout"
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────
 
-const getOpIcon = (opsName: string) => {
-  const name = opsName.toLowerCase()
-  if (name.includes("turn_on") || name.includes("start") || name.includes("open"))
-    return IconPower
-  if (name.includes("set") || name.includes("configure")) return IconSettings
-  return IconInfoCircle
+/**
+ * DeviceOp matches the backend structure from pkg/homeclaw/data/types.go
+ */
+export interface DeviceOp {
+  urn: string
+  from: string
+  ops: string
+  param_type: "bool" | "int" | "enum" | "string" | "in"
+  param_value: any  // null, true/false, "min-max", {"1":"desc"}, or array
+  method: string
+  method_param: string  // Go template JSON string
 }
 
-function newLogId() {
-  return `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+interface DeviceWithOps {
+  from_id: string
+  from: string
+  name: string
+  type: string
+  urn: string
+  space_name: string
+  ops: DeviceOp[]
+}
+
+interface RoomGroup {
+  room_name: string
+  devices: DeviceWithOps[]
+}
+
+interface ListOpsResponse {
+  success: boolean
+  rooms: RoomGroup[]
+  count: number
+  message?: string
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch all devices with operations via WebSocket listOps method.
+ */
+async function fetchDevicesWithOpsViaWS(): Promise<RoomGroup[]> {
+  try {
+    const result = await callTool(
+      {
+        toolName: "hc_cli",
+        method: "listOps",
+        brand: "",
+        params: {},
+      },
+      {
+        timeout: 30000,
+      }
+    )
+
+    if (!result.success || !result.message) {
+      throw new Error(result.error || "Failed to fetch devices")
+    }
+
+    // Parse the JSON response from the tool
+    const response: ListOpsResponse = JSON.parse(result.message)
+    return response.rooms || []
+  } catch (error) {
+    console.error("Failed to fetch devices with ops:", error)
+    throw error
+  }
+}
+
+/**
+ * Parse the param_value string "min-max" into [min, max] numbers.
+ */
+function parseRange(paramValue: any): [number, number] {
+  if (typeof paramValue === "string") {
+    const parts = paramValue.split("-").map(Number)
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      return [parts[0], parts[1]]
+    }
+  }
+  return [0, 100]
+}
+
+/**
+ * Parse enum param_value JSON object into { value, label } pairs.
+ */
+function parseEnumOptions(paramValue: any): Array<{ value: string; label: string }> {
+  if (typeof paramValue === "object" && paramValue !== null) {
+    return Object.entries(paramValue).map(([value, label]) => ({
+      value,
+      label: String(label),
+    }))
+  }
+  return []
+}
+
+// ── Control Components ─────────────────────────────────────────────────────
+
+interface ControlProps {
+  op: DeviceOp
+  fromId: string
+  from: string
+  deviceName: string
+}
+
+/**
+ * Bool control: renders a toggle switch.
+ * Combines turn_on/turn_off ops into a single switch.
+ */
+function BoolControl({ op, fromId, from, deviceName }: ControlProps) {
+  const [isOn, setIsOn] = useState(op.param_value === true)
+  const [loading, setLoading] = useState(false)
+
+  const handleToggle = async (checked: boolean) => {
+    setLoading(true)
+    setIsOn(checked)
+    try {
+      await callTool(
+        {
+          toolName: "hc_cli",
+          method: "exe",
+          brand: from,
+          params: {
+            from_id: fromId,
+            from,
+            ops: op.ops,
+            value: checked,
+          },
+        },
+        {
+          timeout: 60000,
+          successMessage: `${deviceName} ${checked ? "已开启" : "已关闭"}`,
+        }
+      )
+    } catch (error) {
+      console.error("Failed to execute bool op:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <Label className="text-sm">{op.ops}</Label>
+      <Switch
+        checked={isOn}
+        onCheckedChange={handleToggle}
+        disabled={loading}
+      />
+    </div>
+  )
+}
+
+/**
+ * Int control: renders a slider with min-max range.
+ */
+function IntControl({ op, fromId, from, deviceName }: ControlProps) {
+  const [min, max] = parseRange(op.param_value)
+  const [value, setValue] = useState<number>(min)
+  const [loading, setLoading] = useState(false)
+
+  const handleCommit = async (vals: number[]) => {
+    const newVal = vals[0]
+    setValue(newVal)
+    setLoading(true)
+    try {
+      await callTool(
+        {
+          toolName: "hc_cli",
+          method: "exe",
+          brand: from,
+          params: {
+            from_id: fromId,
+            from,
+            ops: op.ops,
+            value: newVal,
+          },
+        },
+        {
+          timeout: 60000,
+          successMessage: `${deviceName} ${op.ops} → ${newVal}`,
+        }
+      )
+    } catch (error) {
+      console.error("Failed to execute int op:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label className="text-sm">{op.ops}</Label>
+        <span className="text-xs text-muted-foreground">{value}</span>
+      </div>
+      <Slider
+        min={min}
+        max={max}
+        step={1}
+        value={[value]}
+        onValueChange={handleCommit}
+        disabled={loading}
+      />
+      <div className="flex justify-between text-xs text-muted-foreground">
+        <span>{min}</span>
+        <span>{max}</span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Enum control: renders a dropdown select.
+ */
+function EnumControl({ op, fromId, from, deviceName }: ControlProps) {
+  const options = parseEnumOptions(op.param_value)
+  const [value, setValue] = useState<string>(options[0]?.value ?? "")
+  const [loading, setLoading] = useState(false)
+
+  const handleChange = async (newVal: string) => {
+    setValue(newVal)
+    setLoading(true)
+    try {
+      await callTool(
+        {
+          toolName: "hc_cli",
+          method: "exe",
+          brand: from,
+          params: {
+            from_id: fromId,
+            from,
+            ops: op.ops,
+            value: newVal,
+          },
+        },
+        {
+          timeout: 60000,
+          successMessage: `${deviceName} ${op.ops} → ${options.find(o => o.value === newVal)?.label ?? newVal}`,
+        }
+      )
+    } catch (error) {
+      console.error("Failed to execute enum op:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm">{op.ops}</Label>
+      <Select
+        value={value}
+        onValueChange={handleChange}
+        disabled={loading}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Select..." />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+/**
+ * String control: renders a text input with a submit button.
+ */
+function StringControl({ op, fromId, from, deviceName }: ControlProps) {
+  const [value, setValue] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!value.trim()) return
+    setLoading(true)
+    try {
+      await callTool(
+        {
+          toolName: "hc_cli",
+          method: "exe",
+          brand: from,
+          params: {
+            from_id: fromId,
+            from,
+            ops: op.ops,
+            value: value.trim(),
+          },
+        },
+        {
+          timeout: 60000,
+          successMessage: `${deviceName} ${op.ops} → ${value.trim()}`,
+        }
+      )
+      setValue("")
+    } catch (error) {
+      console.error("Failed to execute string op:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-2">
+      <Label className="text-sm">{op.ops}</Label>
+      <div className="flex gap-2">
+        <Input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Enter value..."
+          disabled={loading}
+        />
+        <Button
+          type="submit"
+          size="sm"
+          disabled={loading || !value.trim()}
+        >
+          {loading ? <IconLoader2 className="size-4 animate-spin" /> : "Send"}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+/**
+ * Renders the appropriate control based on param_type.
+ */
+function OpControl(props: ControlProps) {
+  const { op } = props
+  switch (op.param_type) {
+    case "bool":
+      return <BoolControl {...props} />
+    case "int":
+      return <IntControl {...props} />
+    case "enum":
+      return <EnumControl {...props} />
+    case "string":
+      return <StringControl {...props} />
+    default:
+      return (
+        <div className="text-xs text-muted-foreground">
+          Unsupported param_type: {op.param_type}
+        </div>
+      )
+  }
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────
@@ -48,23 +391,8 @@ export function DeviceControlPage() {
   const { t } = useTranslation("homeclaw")
 
   const [state, setState] = useState(store.get(deviceOpsAtom))
-  const [executingOps, setExecutingOps] = useState<Set<string>>(new Set())
+  const [rooms, setRooms] = useState<RoomGroup[]>([])
   const [processingDevices, setProcessingDevices] = useState<Set<string>>(new Set())
-
-  // Local log management for device operations
-  const appendLog = (entry: OperationLog) => {
-    store.set(deviceOpsAtom, (prev) => ({
-      ...prev,
-      logs: [...prev.logs, entry],
-    }))
-  }
-
-  const updateLog = (id: string, patch: Partial<OperationLog>) => {
-    store.set(deviceOpsAtom, (prev) => ({
-      ...prev,
-      logs: prev.logs.map((l) => (l.id === id ? { ...l, ...patch } : l)),
-    }))
-  }
 
   // ── Subscribe to store ───────────────────────────────────────────────────
 
@@ -73,159 +401,33 @@ export function DeviceControlPage() {
     return unsub
   }, [store])
 
-  // ── Load devices on mount ────────────────────────────────────────────────
-  // Always reset to loading state first to discard any stale cached data,
-  // so navigating back to this page always triggers a fresh fetch.
+  // ── Load devices with ops on mount ────────────────────────────────────────
 
   useEffect(() => {
-    store.set(deviceOpsAtom, (prev) => ({ ...prev, rooms: [], isLoading: true, error: null }))
-    const init = async () => {
-      const status = await fetchDevicesWithOps()
-      store.set(deviceOpsAtom, (prev) => ({ ...prev, ...status }))
+    const loadDevices = async () => {
+      store.set(deviceOpsAtom, (prev) => ({ ...prev, isLoading: true, error: null }))
+      try {
+        const fetchedRooms = await fetchDevicesWithOpsViaWS()
+        setRooms(fetchedRooms)
+        store.set(deviceOpsAtom, (prev) => ({ ...prev, isLoading: false, error: null }))
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : "Unknown error"
+        store.set(deviceOpsAtom, (prev) => ({ ...prev, isLoading: false, error: errorMsg }))
+      }
     }
-    void init()
+    void loadDevices()
   }, [store])
 
+
+
   // ── Action handlers ──────────────────────────────────────────────────────
-
-  const handleExecuteOp = async (
-    fromId: string,
-    from: string,
-    opsName: string,
-    deviceName: string,
-  ) => {
-    const key = `${fromId}-${from}-${opsName}`
-    setExecutingOps((prev) => new Set(prev).add(key))
-
-    const logId = newLogId()
-    appendLog({
-      id: logId,
-      timestamp: Date.now(),
-      deviceName,
-      opsName,
-      status: "pending",
-      message: "正在执行...",
-    })
-
-    try {
-      // Use callTool with successMessage for tooltip notification
-      const result = await callTool(
-        {
-          toolName: "hc_cli",
-          method: "exe",
-          brand: from,
-          params: {
-            from_id: fromId,
-            from: from,
-            ops: opsName,
-          },
-        },
-        {
-          timeout: 60000,
-          successMessage: `${deviceName} ${opsName} 成功`,
-        }
-      )
-
-      updateLog(logId, {
-        status: result.success ? "success" : "failed",
-        message: result.success
-          ? result.message || "执行成功"
-          : result.error || "未知错误",
-      })
-    } catch (error) {
-      updateLog(logId, {
-        status: "failed",
-        message: error instanceof Error ? error.message : "未知错误",
-      })
-    } finally {
-      setExecutingOps((prev) => {
-        const next = new Set(prev)
-        next.delete(key)
-        return next
-      })
-    }
-  }
-
-  const handleRefresh = async () => {
-    store.set(deviceOpsAtom, (prev) => ({ ...prev, isLoading: true, error: null }))
-    const status = await fetchDevicesWithOps()
-    store.set(deviceOpsAtom, (prev) => ({ ...prev, ...status }))
-  }
-
-  const handleMarkAsNoAction = async (fromId: string, from: string, deviceName: string) => {
-    const key = `${fromId}-${from}`
-    setProcessingDevices((prev) => new Set(prev).add(key))
-
-    const logId = newLogId()
-    appendLog({
-      id: logId,
-      timestamp: Date.now(),
-      deviceName,
-      opsName: "标记不可操作",
-      status: "pending",
-      message: "正在处理...",
-    })
-
-    try {
-      // Use callTool with hc_cli.markNoAction via WebSocket
-      const result = await callTool(
-        {
-          toolName: "hc_cli",
-          method: "markNoAction",
-          brand: from,
-          params: {
-            from_id: fromId,
-            from: from,
-          },
-        },
-        {
-          timeout: 60000,
-          successMessage: `${deviceName} 已标记为不可操作`,
-        }
-      )
-
-      updateLog(logId, {
-        status: result.success ? "success" : "failed",
-        message: result.success
-          ? result.message || "已标记为不可操作"
-          : result.error || "未知错误",
-      })
-
-      if (result.success) {
-        await handleRefresh()
-      }
-    } catch (error) {
-      updateLog(logId, {
-        status: "failed",
-        message: error instanceof Error ? error.message : "未知错误",
-      })
-    } finally {
-      setProcessingDevices((prev) => {
-        const next = new Set(prev)
-        next.delete(key)
-        return next
-      })
-    }
-  }
 
   const handleGenerateOps = async (fromId: string, from: string, deviceName: string) => {
     const key = `${fromId}-${from}`
     setProcessingDevices((prev) => new Set(prev).add(key))
 
-    const logId = newLogId()
-    appendLog({
-      id: logId,
-      timestamp: Date.now(),
-      deviceName,
-      opsName: "生成操作",
-      status: "pending",
-      message: "正在生成设备操作...",
-    })
-
     try {
-      // Call hc_llm analyzeDeviceOpsAsync to generate operations for a single device
-      // Async method starts analysis in background and returns immediately
-      const result = await callTool(
+      await callTool(
         {
           toolName: "hc_llm",
           method: "analyzeDeviceOpsAsync",
@@ -236,25 +438,12 @@ export function DeviceControlPage() {
           },
         },
         {
-          timeout: 10000, // 10 seconds is enough since it returns immediately
+          timeout: 10000,
           successMessage: `${deviceName} 操作分析已启动，请耐心等待分析完成`,
         }
       )
-
-      updateLog(logId, {
-        status: result.success ? "success" : "failed",
-        message: result.success
-          ? result.message || "操作分析已启动"
-          : result.error || "未知错误",
-      })
-
-      // Note: Device list will need to be manually refreshed after analysis completes
-      // since the analysis runs in background
     } catch (error) {
-      updateLog(logId, {
-        status: "failed",
-        message: error instanceof Error ? error.message : "未知错误",
-      })
+      console.error("Failed to generate ops:", error)
     } finally {
       setProcessingDevices((prev) => {
         const next = new Set(prev)
@@ -272,25 +461,20 @@ export function DeviceControlPage() {
       isLoading={state.isLoading}
     >
       <div className="pt-2 space-y-6">
-        {state.rooms.length === 0 ? (
+        {rooms.length === 0 && !state.isLoading ? (
           <div className="text-muted-foreground py-12 text-center">
             <p className="text-base">{t("device_control_page.noDevices")}</p>
           </div>
         ) : (
-          state.rooms.map((room) => (
+          rooms.map((room) => (
             <div key={room.room_name}>
               <h2 className="text-lg font-semibold mb-3">{room.room_name}</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {room.devices.map((device) => {
-                  const isNoAction =
-                    device.ops && device.ops.includes("NoAction")
                   const deviceKey = `${device.from_id}-${device.from}`
 
                   return (
-                    <Card
-                      key={deviceKey}
-                      className={isNoAction ? "bg-muted/50" : ""}
-                    >
+                    <Card key={deviceKey}>
                       <CardHeader className="pb-2">
                         <div className="flex items-center justify-between">
                           <CardTitle className="text-base">{device.name}</CardTitle>
@@ -300,100 +484,33 @@ export function DeviceControlPage() {
                           {device.from} · {device.from_id}
                         </CardDescription>
                       </CardHeader>
-                      <CardContent>
-                        <div className="flex flex-wrap gap-2">
-                          {isNoAction ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={processingDevices.has(deviceKey)}
-                              onClick={() =>
-                                handleGenerateOps(device.from_id, device.from, device.name)
-                              }
-                              className="flex items-center gap-1"
-                            >
-                              {processingDevices.has(deviceKey) ? (
-                                <IconLoader2 className="size-3 animate-spin" />
-                              ) : (
-                                <IconWand className="size-3" />
-                              )}
-                              <span className="text-xs">生成操作</span>
-                            </Button>
-                          ) : device.ops && device.ops.length > 0 ? (
-                            device.ops.map((op) => {
-                              const Icon = getOpIcon(op)
-                              const opKey = `${deviceKey}-${op}`
-                              const isExecuting = executingOps.has(opKey)
-
-                              return (
-                                <Button
-                                  key={op}
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={isExecuting}
-                                  onClick={() =>
-                                    handleExecuteOp(
-                                      device.from_id,
-                                      device.from,
-                                      op,
-                                      device.name,
-                                    )
-                                  }
-                                  className="flex items-center gap-1"
-                                >
-                                  {isExecuting ? (
-                                    <IconLoader2 className="size-3 animate-spin" />
-                                  ) : (
-                                    <Icon className="size-3" />
-                                  )}
-                                  <span className="text-xs">{op}</span>
-                                </Button>
-                              )
-                            })
-                          ) : (
-                            <>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={processingDevices.has(deviceKey)}
-                                onClick={() =>
-                                  handleMarkAsNoAction(
-                                    device.from_id,
-                                    device.from,
-                                    device.name,
-                                  )
-                                }
-                                className="flex items-center gap-1"
-                              >
-                                {processingDevices.has(deviceKey) ? (
-                                  <IconLoader2 className="size-3 animate-spin" />
-                                ) : (
-                                  <IconBan className="size-3" />
-                                )}
-                                <span className="text-xs">不可操作</span>
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={processingDevices.has(deviceKey)}
-                                onClick={() =>
-                                  handleGenerateOps(
-                                    device.from_id,
-                                    device.from,
-                                    device.name,
-                                  )
-                                }
-                                className="flex items-center gap-1"
-                              >
-                                {processingDevices.has(deviceKey) ? (
-                                  <IconLoader2 className="size-3 animate-spin" />
-                                ) : (
-                                  <IconWand className="size-3" />
-                                )}
-                                <span className="text-xs">生成操作</span>
-                              </Button>
-                            </>
-                          )}
+                      <CardContent className="space-y-3">
+                        {device.ops.map((op, idx) => (
+                          <OpControl
+                            key={`${op.urn}-${op.ops}-${idx}`}
+                            op={op}
+                            fromId={device.from_id}
+                            from={device.from}
+                            deviceName={device.name}
+                          />
+                        ))}
+                        <div className="flex gap-2 pt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={processingDevices.has(deviceKey)}
+                            onClick={() =>
+                              handleGenerateOps(device.from_id, device.from, device.name)
+                            }
+                            className="flex items-center gap-1"
+                          >
+                            {processingDevices.has(deviceKey) ? (
+                              <IconLoader2 className="size-3 animate-spin" />
+                            ) : (
+                              <IconWand className="size-3" />
+                            )}
+                            <span className="text-xs">{t("device_control_page.generateOps")}</span>
+                          </Button>
                         </div>
                       </CardContent>
                     </Card>
