@@ -56,6 +56,7 @@ export function TuyaPage() {
   const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
   const [isGeneratingOps, setIsGeneratingOps] = useState(false)
+  const [isClearingOps, setIsClearingOps] = useState(false)
 
   useEffect(() => {
     const unsub = store.sub(tuyaAtom, () => {
@@ -257,19 +258,49 @@ export function TuyaPage() {
           toolName: "hc_llm",
           method: "batchAnalyzeDevicesAsync",
           brand: "tuya",
-          params: {},
+          params: {
+            brand: "tuya",
+          },
         },
         {
           timeout: 10000, // 10 seconds is enough since it returns immediately
-          successMessage: "设备操作分析已启动，请耐心等待分析完成",
+          successMessage: "设备操作分析已启动,请耐心等待分析完成",
         }
       )
-
+  
       if (!result.success) {
         console.error("[TuyaPage] Failed to start batch analyze devices:", result.error)
       }
     } finally {
       setIsGeneratingOps(false)
+    }
+  }
+  
+  const handleClearOps = async () => {
+    if (!confirm("确定要清除涂鸦品牌所有设备的操作配置吗?此操作不可撤销!")) {
+      return
+    }
+    setIsClearingOps(true)
+    try {
+      const { clearDeviceOps } = await import("@/homeclaw/api/device-ops")
+      const result = await clearDeviceOps("tuya")
+        
+      // Reload devices to reflect the cleared ops
+      const devices = await loadTuyaDevices()
+      store.set(tuyaAtom, (prev) => ({
+        ...prev,
+        devices,
+      }))
+        
+      console.log("[TuyaPage] Cleared ops:", result)
+    } catch (error) {
+      console.error("[TuyaPage] Failed to clear ops:", error)
+      store.set(tuyaAtom, (prev) => ({
+        ...prev,
+        error: error instanceof Error ? error.message : "Failed to clear operations",
+      }))
+    } finally {
+      setIsClearingOps(false)
     }
   }
 
@@ -426,6 +457,8 @@ export function TuyaPage() {
         onSync={() => void handleSyncDevices()}
         onGenerateOps={() => void handleGenerateOps()}
         isGeneratingOps={isGeneratingOps}
+        onClearOps={() => void handleClearOps()}
+        isClearingOps={isClearingOps}
       />
 
       {/* Section 4: Video Settings (placeholder) */}

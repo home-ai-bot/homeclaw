@@ -159,6 +159,8 @@ func (t *CLITool) Execute(_ context.Context, args map[string]any) *tools.ToolRes
 		return t.execDeleteAuth(req.Params)
 	case "getAuthStatus":
 		return t.execGetAuthStatus(req.Params)
+	case "clearOps":
+		return t.execClearOps(req.Params)
 	}
 	if req.Brand == "" {
 		return &tools.ToolResult{ForLLM: "missing 'brand' in commandJson", IsError: true}
@@ -281,7 +283,7 @@ func (t *CLITool) execSyncDevices(client third.Client, params map[string]any) *t
 		return &tools.ToolResult{ForLLM: msg, ForUser: msg, IsError: true}
 	}
 
-	// Update devices: add new ones and update existing ones if URN is missing
+	// Update devices: add new ones and update existing ones with latest info
 	existingDevices, _ := t.deviceStore.GetAll()
 	existingMap := make(map[string]*data.Device, len(existingDevices))
 	for i := range existingDevices {
@@ -296,13 +298,37 @@ func (t *CLITool) execSyncDevices(client third.Client, params map[string]any) *t
 		}
 		key := d.FromID + "|" + d.From
 		if existing, exists := existingMap[key]; exists {
-			// Device exists - update URN if new device has a valid URN
-			// Always update if the new URN is non-empty (even if existing URN is not empty)
-			// This ensures URN gets corrected from old category-based URNs to model-based URNs
+			// Device exists - update mutable fields from synced data
+			// Always update these fields to keep them in sync with the cloud
+			updated := false
+			if d.Name != "" && existing.Name != d.Name {
+				existing.Name = d.Name
+				updated = true
+			}
+			if d.Type != "" && existing.Type != d.Type {
+				existing.Type = d.Type
+				updated = true
+			}
+			if d.Token != "" && existing.Token != d.Token {
+				existing.Token = d.Token
+				updated = true
+			}
+			if d.IP != "" && existing.IP != d.IP {
+				existing.IP = d.IP
+				updated = true
+			}
+			if d.SpaceName != "" && existing.SpaceName != d.SpaceName {
+				existing.SpaceName = d.SpaceName
+				updated = true
+			}
 			if d.URN != "" && existing.URN != d.URN {
 				existing.URN = d.URN
+				updated = true
+			}
+			if updated {
 				deviceValuesToSave = append(deviceValuesToSave, *existing)
-				logger.Infof("[SyncDevices] Updated URN for device %s (%s): %s -> %s", d.FromID, d.From, existing.URN, d.URN)
+				logger.Infof("[SyncDevices] Updated device %s (%s): name=%s, type=%s, space=%s",
+					d.FromID, d.From, existing.Name, existing.Type, existing.SpaceName)
 			}
 		} else {
 			// New device - add it
@@ -1189,4 +1215,72 @@ func (t *CLITool) execGetAuthStatus(params map[string]any) *tools.ToolResult {
 
 	b, _ := json.Marshal(result)
 	return tools.NewToolResult(string(b))
+}
+
+// execClearOps clears all device operations and device ops field for a given brand.
+// Required params: brand
+// Returns: JSON with success status and counts of cleared devices and deleted ops
+func (t *CLITool) execClearOps(params map[string]any) *tools.ToolResult {
+	if params == nil {
+		return &tools.ToolResult{ForLLM: "missing 'params' for clearOps", IsError: true}
+	}
+
+	// Extract required brand parameter
+	brand, ok := params["brand"].(string)
+	if !ok || brand == "" {
+		return &tools.ToolResult{ForLLM: "missing required parameter: brand", IsError: true}
+	}
+
+	// Get all devices and filter by brand
+	devices, err := t.deviceStore.GetAll()
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get devices: %v", err), IsError: true}
+	}
+
+	// Clear ops field from devices of this brand
+	var updatedDevices []data.Device
+	var clearedCount int
+	for _, device := range devices {
+		if device.From == brand {
+			if len(device.Ops) > 0 {
+				device.Ops = nil
+				clearedCount++
+			}
+			updatedDevices = append(updatedDevices, device)
+		}
+	}
+
+	// Save updated devices if any were modified
+	if len(updatedDevices) > 0 {
+		if err := t.deviceStore.Save(updatedDevices...); err != nil {
+			return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to save updated devices: %v", err), IsError: true}
+		}
+	}
+
+	// Get all DeviceOps and filter by brand (from field)
+	allOps, err := t.deviceOpStore.GetAll()
+	if err != nil {
+		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get device operations: %v", err), IsError: true}
+	}
+
+	// Delete all ops for this brand
+	var deletedCount int
+	for _, op := range allOps {
+		if op.From == brand {
+			if err := t.deviceOpStore.Delete(op.URN, op.From, op.Ops); err != nil {
+				logger.Warnf("[clearOps] failed to delete op %s for URN %s: %v", op.Ops, op.URN, err)
+				continue
+			}
+			deletedCount++
+		}
+	}
+
+	result, _ := json.Marshal(map[string]any{
+		"success":         true,
+		"brand":           brand,
+		"devices_cleared": clearedCount,
+		"ops_deleted":     deletedCount,
+		"message":         fmt.Sprintf("Cleared all device operations for brand: %s", brand),
+	})
+	return tools.NewToolResult(string(result))
 }

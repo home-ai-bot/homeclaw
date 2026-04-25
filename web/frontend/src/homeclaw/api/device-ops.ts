@@ -28,6 +28,14 @@ export interface ExecuteDeviceOpResponse {
   command: Record<string, any>
 }
 
+export interface ClearDeviceOpsResponse {
+  success: boolean
+  brand: string
+  devices_cleared: number
+  ops_deleted: number
+  message: string
+}
+
 const BASE_URL = ""
 
 async function request<T>(
@@ -100,4 +108,33 @@ export async function executeDeviceOp(
     },
     body: JSON.stringify(req),
   })
+}
+
+export async function clearDeviceOps(
+  brand: string,
+): Promise<ClearDeviceOpsResponse> {
+  // Use WebSocket to call hc_cli.clearOps method
+  const { callTool } = await import("@/homeclaw/api/device-command-executor")
+
+  const result = await callTool(
+    {
+      toolName: "hc_cli",
+      method: "clearOps",
+      brand: brand,
+      params: {
+        brand: brand,
+      },
+    },
+    {
+      timeout: 30000,
+    }
+  )
+
+  if (!result.success || !result.message) {
+    throw new Error(result.error || "Failed to clear device operations")
+  }
+
+  // Parse the JSON response from the tool
+  const response: ClearDeviceOpsResponse = JSON.parse(result.message)
+  return response
 }

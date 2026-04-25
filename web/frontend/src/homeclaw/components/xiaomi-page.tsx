@@ -47,6 +47,7 @@ export function XiaomiPage() {
   const [verify, setVerify] = useState("")
   const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [isGeneratingOps, setIsGeneratingOps] = useState(false)
+  const [isClearingOps, setIsClearingOps] = useState(false)
 
   const {
     wsStatus,
@@ -295,19 +296,51 @@ export function XiaomiPage() {
           toolName: "hc_llm",
           method: "batchAnalyzeDevicesAsync",
           brand: "xiaomi",
-          params: {},
+          params: {
+            brand: "xiaomi",
+          },
         },
         {
           timeout: 10000, // 10 seconds is enough since it returns immediately
-          successMessage: "设备操作分析已启动，请耐心等待分析完成",
+          successMessage: "设备操作分析已启动,请耐心等待分析完成",
         }
       )
-
+  
       if (!result.success) {
         console.error("[XiaomiPage] Failed to start batch analyze devices:", result.error)
       }
     } finally {
       setIsGeneratingOps(false)
+    }
+  }
+  
+  const handleClearOps = async () => {
+    if (!confirm("确定要清除小米品牌所有设备的操作配置吗?此操作不可撤销!")) {
+      return
+    }
+    setIsClearingOps(true)
+    try {
+      const { clearDeviceOps } = await import("@/homeclaw/api/device-ops")
+      const result = await clearDeviceOps("xiaomi")
+        
+      // Reload devices to reflect the cleared ops
+      if (state.selectedHomeId) {
+        const devices = await loadXiaomiDevices()
+        store.set(xiaomiAtom, (prev) => ({
+          ...prev,
+          devices,
+        }))
+      }
+        
+      console.log("[XiaomiPage] Cleared ops:", result)
+    } catch (error) {
+      console.error("[XiaomiPage] Failed to clear ops:", error)
+      store.set(xiaomiAtom, (prev) => ({
+        ...prev,
+        error: error instanceof Error ? error.message : "Failed to clear operations",
+      }))
+    } finally {
+      setIsClearingOps(false)
     }
   }
 
@@ -511,6 +544,8 @@ export function XiaomiPage() {
           onSync={() => void handleSyncDevices()}
           onGenerateOps={() => void handleGenerateOps()}
           isGeneratingOps={isGeneratingOps}
+          onClearOps={() => void handleClearOps()}
+          isClearingOps={isClearingOps}
           disabled={!state.selectedHomeId}
         />
       )}

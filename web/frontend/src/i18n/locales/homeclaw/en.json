@@ -190,6 +190,8 @@
     "syncingDevices": "Syncing devices...",
     "generateOps": "AI Generate Ops",
     "generatingOps": "Generating...",
+    "clearOps": "Clear Ops",
+    "clearingOps": "Clearing...",
     "noDevices": "No devices found. Please sync to fetch your devices.",
     "selectHomeFirst": "Please select a home first to view devices.",
     "online": "Online",

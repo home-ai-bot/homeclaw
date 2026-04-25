@@ -630,6 +630,14 @@ func (t *LLMTool) execBatchAnalyzeDevices(ctx context.Context, llmInst *llm.LLM,
 		return &tools.ToolResult{ForLLM: "deviceStore is not initialized", IsError: true}
 	}
 
+	// Extract optional brand parameter
+	brand := ""
+	if params != nil {
+		if b, ok := params["brand"].(string); ok && b != "" {
+			brand = b
+		}
+	}
+
 	// Get all devices
 	logger.Debugf("[DeviceOps] Retrieving all devices from store")
 	devices, err := t.deviceStore.GetAll()
@@ -639,20 +647,34 @@ func (t *LLMTool) execBatchAnalyzeDevices(ctx context.Context, llmInst *llm.LLM,
 	}
 	logger.Debugf("[DeviceOps] Retrieved %d devices from store", len(devices))
 
-	// Filter devices with empty ops
+	// Filter devices that need operation analysis, optionally filtered by brand
+	// Skip devices that already have ops configured OR are marked as NoAction
 	var devicesWithoutOps []data.Device
 	for _, device := range devices {
-		if len(device.Ops) == 0 {
+		// Skip devices marked as NoAction (already analyzed and determined as non-operable)
+		if len(device.Ops) == 1 && device.Ops[0] == "NoAction" {
+			continue
+		}
+		// Skip devices that already have ops configured
+		if len(device.Ops) > 0 {
+			continue
+		}
+		// If brand is specified, only include devices of that brand
+		if brand == "" || device.From == brand {
 			devicesWithoutOps = append(devicesWithoutOps, device)
 		}
 	}
 
 	if len(devicesWithoutOps) == 0 {
+		if brand != "" {
+			logger.Debugf("[DeviceOps] All devices of brand '%s' already have operations configured", brand)
+			return tools.NewToolResult(fmt.Sprintf("all devices of brand '%s' already have operations configured", brand))
+		}
 		logger.Debugf("[DeviceOps] All devices already have operations configured")
 		return tools.NewToolResult("all devices already have operations configured")
 	}
 
-	logger.Infof("[DeviceOps] Starting batch analysis for %d devices", len(devicesWithoutOps))
+	logger.Infof("[DeviceOps] Starting batch analysis for %d devices (brand: %s)", len(devicesWithoutOps), brand)
 
 	// Process each device
 	var results []string
@@ -736,6 +758,14 @@ func (t *LLMTool) execBatchAnalyzeDevicesAsync(ctx context.Context, llmInst *llm
 		return &tools.ToolResult{ForLLM: "deviceStore is not initialized", IsError: true}
 	}
 
+	// Extract optional brand parameter
+	brand := ""
+	if params != nil {
+		if b, ok := params["brand"].(string); ok && b != "" {
+			brand = b
+		}
+	}
+
 	// Get device count for quick validation
 	logger.Debugf("[DeviceOps] Retrieving devices for async batch analysis")
 	devices, err := t.deviceStore.GetAll()
@@ -744,20 +774,37 @@ func (t *LLMTool) execBatchAnalyzeDevicesAsync(ctx context.Context, llmInst *llm
 		return &tools.ToolResult{ForLLM: fmt.Sprintf("failed to get devices: %v", err), IsError: true}
 	}
 
-	// Count devices without ops
+	// Count devices that need analysis (empty ops and not NoAction), filtered by brand if specified
 	count := 0
 	for _, device := range devices {
-		if len(device.Ops) == 0 {
+		// Skip devices marked as NoAction
+		if len(device.Ops) == 1 && device.Ops[0] == "NoAction" {
+			continue
+		}
+		// Skip devices that already have ops configured
+		if len(device.Ops) > 0 {
+			continue
+		}
+		// Count only devices of the specified brand (or all brands if not specified)
+		if brand == "" || device.From == brand {
 			count++
 		}
 	}
 
 	if count == 0 {
+		if brand != "" {
+			logger.Debugf("[DeviceOps] All devices of brand '%s' already have operations configured for async batch analysis", brand)
+			return tools.NewToolResult(fmt.Sprintf("all devices of brand '%s' already have operations configured", brand))
+		}
 		logger.Debugf("[DeviceOps] All devices already have operations configured for async batch analysis")
 		return tools.NewToolResult("all devices already have operations configured")
 	}
 
-	logger.Infof("[DeviceOps] Starting async batch analysis for %d devices", count)
+	brandLabel := brand
+	if brandLabel == "" {
+		brandLabel = "all brands"
+	}
+	logger.Infof("[DeviceOps] Starting async batch analysis for %d devices (brand: %s)", count, brandLabel)
 
 	// Create a background context independent of the turn context
 	// This ensures the async operation continues even after the tool returns
@@ -765,7 +812,7 @@ func (t *LLMTool) execBatchAnalyzeDevicesAsync(ctx context.Context, llmInst *llm
 
 	// Start goroutine to perform batch analysis in background
 	go func() {
-		logger.Debugf("[DeviceOps] === Starting async batch analysis for %d devices ===", count)
+		logger.Debugf("[DeviceOps] === Starting async batch analysis for %d devices (brand: %s) ===", count, brandLabel)
 		result := t.execBatchAnalyzeDevices(backgroundCtx, llmInst, params)
 		if result.IsError {
 			logger.Infof("[DeviceOps] Async batch analysis FAILED: %s", result.ForLLM)
@@ -774,8 +821,8 @@ func (t *LLMTool) execBatchAnalyzeDevicesAsync(ctx context.Context, llmInst *llm
 		}
 	}()
 
-	logger.Debugf("[DeviceOps] Async batch analysis dispatched for %d devices, returning immediately", count)
-	return tools.NewToolResult(fmt.Sprintf("Batch analysis started for %d devices in background", count))
+	logger.Debugf("[DeviceOps] Async batch analysis dispatched for %d devices (brand: %s), returning immediately", count, brandLabel)
+	return tools.NewToolResult(fmt.Sprintf("Batch analysis started for %d devices of brand '%s' in background", count, brandLabel))
 }
 
 // getDeviceURN looks up a device by from_id and from, and returns its URN.

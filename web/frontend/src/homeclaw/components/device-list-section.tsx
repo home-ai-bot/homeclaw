@@ -1,4 +1,4 @@
-import { IconLoader2, IconDevices, IconRefresh, IconCircle, IconCircleOff, IconWand } from "@tabler/icons-react"
+import { IconLoader2, IconDevices, IconRefresh, IconCircle, IconCircleOff, IconWand, IconTrash } from "@tabler/icons-react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -24,6 +24,8 @@ interface DeviceListSectionProps {
   onSync: () => void
   onGenerateOps?: () => void
   isGeneratingOps?: boolean
+  onClearOps?: () => void
+  isClearingOps?: boolean
   disabled?: boolean
 }
 
@@ -34,6 +36,8 @@ export function DeviceListSection({
   onSync,
   onGenerateOps,
   isGeneratingOps,
+  onClearOps,
+  isClearingOps,
   disabled,
 }: DeviceListSectionProps) {
   const { t } = useTranslation("homeclaw")
@@ -91,6 +95,27 @@ export function DeviceListSection({
                   <>
                     <IconWand className="mr-1 size-3" />
                     {t("device_section.generateOps")}
+                  </>
+                )}
+              </Button>
+            )}
+            {onClearOps && (
+              <Button
+                onClick={onClearOps}
+                disabled={isClearingOps || disabled}
+                variant="outline"
+                size="sm"
+                className="h-8"
+              >
+                {isClearingOps ? (
+                  <>
+                    <IconLoader2 className="mr-1 size-3 animate-spin" />
+                    {t("device_section.clearingOps")}
+                  </>
+                ) : (
+                  <>
+                    <IconTrash className="mr-1 size-3" />
+                    {t("device_section.clearOps")}
                   </>
                 )}
               </Button>
