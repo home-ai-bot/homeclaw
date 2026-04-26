@@ -83,35 +83,44 @@ export function TuyaPage() {
     void loadHttpData()
   }, [store])
 
-  // Load homes and devices in parallel after WebSocket is connected
+  // Load homes and devices sequentially after WebSocket is connected
   useEffect(() => {
     if (initialized || wsStatus !== "connected") {
       return
     }
 
     const loadWsData = async () => {
-      // Load homes and devices in parallel
-      await Promise.all([
-        (async () => {
-          store.set(tuyaAtom, (prev) => ({ ...prev, isLoadingHomes: true }))
-          try {
-            const homesData = await loadTuyaHomes()
-            const currentHome = homesData.find((h) => h.current) || null
-            store.set(tuyaAtom, (prev) => ({
-              ...prev,
-              homes: homesData,
-              selectedHomeId: currentHome?.id || null,
-              isLoadingHomes: false,
-            }))
-          } catch (error) {
-            console.error("Failed to load homes:", error)
-            store.set(tuyaAtom, (prev) => ({ ...prev, isLoadingHomes: false }))
-          }
-        })(),
-        (async () => {
+      console.log('[TuyaPage] WebSocket connected, starting initialization')
+      
+      // Step 1: Check login status first (like Xiaomi does)
+      const status = await fetchTuyaStatus()
+      console.log('[TuyaPage] Login status:', status)
+      store.set(tuyaAtom, (prev) => ({
+        ...prev,
+        ...status,
+      }))
+      
+      // Step 2: Load homes
+      store.set(tuyaAtom, (prev) => ({ ...prev, isLoadingHomes: true }))
+      try {
+        const homesData = await loadTuyaHomes()
+        console.log('[TuyaPage] Loaded homes:', homesData)
+        const currentHome = homesData.find((h) => h.current) || null
+        console.log('[TuyaPage] Selected home:', currentHome)
+        store.set(tuyaAtom, (prev) => ({
+          ...prev,
+          homes: homesData,
+          selectedHomeId: currentHome?.id || null,
+          isLoadingHomes: false,
+        }))
+
+        // Step 3: Load devices only if logged in and have selected home (like Xiaomi)
+        if (status.isLoggedIn && currentHome?.id) {
+          console.log('[TuyaPage] Loading devices for home:', currentHome.id)
           store.set(tuyaAtom, (prev) => ({ ...prev, isLoadingDevices: true }))
           try {
             const devicesData = await loadTuyaDevices()
+            console.log('[TuyaPage] Loaded devices:', devicesData)
             store.set(tuyaAtom, (prev) => ({
               ...prev,
               devices: devicesData,
@@ -121,8 +130,11 @@ export function TuyaPage() {
             console.error("Failed to load devices:", error)
             store.set(tuyaAtom, (prev) => ({ ...prev, isLoadingDevices: false }))
           }
-        })(),
-      ])
+        }
+      } catch (error) {
+        console.error("Failed to load homes:", error)
+        store.set(tuyaAtom, (prev) => ({ ...prev, isLoadingHomes: false }))
+      }
 
       setInitialized(true)
     }
@@ -222,6 +234,15 @@ export function TuyaPage() {
       selectedHomeId: currentHome?.id || null,
       error: result.error || null,
     }))
+    
+    // Load devices for the selected home after sync
+    if (currentHome?.id) {
+      const devices = await loadTuyaDevices()
+      store.set(tuyaAtom, (prev) => ({
+        ...prev,
+        devices,
+      }))
+    }
   }
 
   const handleSelectHome = async (homeId: string) => {
@@ -231,7 +252,9 @@ export function TuyaPage() {
       store.set(tuyaAtom, (prev) => ({ ...prev, error: result.error || null }))
       return
     }
-    // No longer auto-load devices here - devices are loaded independently
+    // Load devices for the newly selected home
+    const devices = await loadTuyaDevices()
+    store.set(tuyaAtom, (prev) => ({ ...prev, devices }))
   }
 
   const handleSyncDevices = async () => {
@@ -459,6 +482,7 @@ export function TuyaPage() {
         isGeneratingOps={isGeneratingOps}
         onClearOps={() => void handleClearOps()}
         isClearingOps={isClearingOps}
+        disabled={!state.selectedHomeId}
       />
 
       {/* Section 4: Video Settings (placeholder) */}

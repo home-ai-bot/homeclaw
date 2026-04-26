@@ -82,7 +82,7 @@ export function XiaomiPage() {
       // Always load existing homes from backend
       const homes = await loadXiaomiHomes()
       console.log('[XiaomiPage] Loaded homes:', homes)
-      // Only select home if one is marked as current
+      // Only select home if one is marked as current (user must explicitly choose otherwise)
       const currentHome = homes.find((h) => h.current) || null
       console.log('[XiaomiPage] Selected home:', currentHome)
       store.set(xiaomiAtom, (prev) => ({

@@ -682,7 +682,7 @@ func (t *LLMTool) execBatchAnalyzeDevices(ctx context.Context, llmInst *llm.LLM,
 	failCount := 0
 
 	for i, device := range devicesWithoutOps {
-		logger.Debugf("[DeviceOps] === Processing device %d/%d: %s (brand: %s) ===", i+1, len(devicesWithoutOps), device.FromID, device.From)
+		logger.Infof("[DeviceOps] === Processing device %d/%d: %s (brand: %s) ===", i+1, len(devicesWithoutOps), device.FromID, device.From)
 
 		// Call execAnalyzeDeviceOps for this device
 		analyzeParams := map[string]any{
@@ -695,11 +695,11 @@ func (t *LLMTool) execBatchAnalyzeDevices(ctx context.Context, llmInst *llm.LLM,
 		if result.IsError {
 			failCount++
 			results = append(results, fmt.Sprintf("FAILED: %s (%s) - %s", device.FromID, device.From, result.ForLLM))
-			logger.Debugf("[DeviceOps] Failed to analyze device %d/%d: %s (%s): %s", i+1, len(devicesWithoutOps), device.FromID, device.From, result.ForLLM)
+			logger.Infof("[DeviceOps] FAILED to analyze device %d/%d: %s (%s): %s", i+1, len(devicesWithoutOps), device.FromID, device.From, result.ForLLM)
 		} else {
 			successCount++
 			results = append(results, fmt.Sprintf("SUCCESS: %s (%s) - %s", device.FromID, device.From, result.ForLLM))
-			logger.Debugf("[DeviceOps] Successfully analyzed and saved device %d/%d: %s (%s)", i+1, len(devicesWithoutOps), device.FromID, device.From)
+			logger.Infof("[DeviceOps] Successfully analyzed and saved device %d/%d: %s (%s)", i+1, len(devicesWithoutOps), device.FromID, device.From)
 		}
 	}
 
@@ -738,9 +738,9 @@ func (t *LLMTool) execAnalyzeDeviceOpsAsync(ctx context.Context, llmInst *llm.LL
 		logger.Debugf("[DeviceOps] === Starting async analysis for device %s (brand: %s) ===", fromID, brand)
 		result := t.execAnalyzeDeviceOps(backgroundCtx, llmInst, params)
 		if result.IsError {
-			logger.Infof("[DeviceOps] Async analysis FAILED for device %s (%s): %s", fromID, brand, result.ForLLM)
+			logger.Errorf("[DeviceOps] Async analysis FAILED for device %s (%s): %s", fromID, brand, result.ForLLM)
 		} else {
-			logger.Infof("[DeviceOps] Async analysis SUCCEEDED for device %s (%s)", fromID, brand)
+			logger.Infof("[DeviceOps] Async analysis completed for device %s (%s): %s", fromID, brand, result.ForLLM)
 		}
 	}()
 
@@ -815,9 +815,10 @@ func (t *LLMTool) execBatchAnalyzeDevicesAsync(ctx context.Context, llmInst *llm
 		logger.Debugf("[DeviceOps] === Starting async batch analysis for %d devices (brand: %s) ===", count, brandLabel)
 		result := t.execBatchAnalyzeDevices(backgroundCtx, llmInst, params)
 		if result.IsError {
-			logger.Infof("[DeviceOps] Async batch analysis FAILED: %s", result.ForLLM)
+			logger.Errorf("[DeviceOps] Async batch analysis FAILED: %s", result.ForLLM)
 		} else {
-			logger.Infof("[DeviceOps] Async batch analysis SUCCEEDED: %d devices processed", count)
+			// Log the detailed result which includes success/fail counts
+			logger.Infof("[DeviceOps] Async batch analysis completed: %s", result.ForLLM)
 		}
 	}()
 
