@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-//go:generate cp -r ../../../../homeclaw-workspace workspace
+//go:generate go run ../../../../scripts/copydir.go "${DOLLAR}{codespace}/homeclaw-workspace" ./workspace
 //go:embed workspace
 var embeddedFiles embed.FS
 

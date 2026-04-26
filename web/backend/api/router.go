@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/sipeed/picoclaw/pkg/config"
@@ -20,6 +21,8 @@ type Handler struct {
 	serverPort           int
 	serverPublic         bool
 	serverPublicExplicit bool
+	serverHostInput      string
+	serverHostExplicit   bool
 	serverCIDRs          []string
 	debug                bool
 	oauthMu              sync.Mutex
@@ -72,7 +75,19 @@ func (h *Handler) SetServerOptions(port int, public bool, publicExplicit bool, a
 	h.serverPort = port
 	h.serverPublic = public
 	h.serverPublicExplicit = publicExplicit
+	h.serverHostInput = ""
+	h.serverHostExplicit = false
 	h.serverCIDRs = append([]string(nil), allowedCIDRs...)
+}
+
+// SetServerBindHost stores the launcher's effective bind host.
+// When explicit is true, hostInput is the normalized -host / PICOCLAW_LAUNCHER_HOST value.
+func (h *Handler) SetServerBindHost(hostInput string, explicit bool) {
+	h.serverHostInput = strings.TrimSpace(hostInput)
+	if !explicit {
+		h.serverHostInput = ""
+	}
+	h.serverHostExplicit = explicit
 }
 
 func (h *Handler) SetDebug(debug bool) {

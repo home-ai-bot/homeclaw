@@ -39,7 +39,7 @@ type HomeClaw struct {
 func (hc *HomeClaw) InjectToolWSHandler(
 	cm *channels.Manager,
 	toolRegistry *tools.ToolRegistry,
-	picoCfg config.PicoConfig,
+	picoCfg *config.Config,
 ) {
 	if cm == nil {
 		logger.Warnf("[HomeClaw.InjectToolWSHandler] channelManager is nil, skipping")
@@ -237,7 +237,7 @@ func (hc *HomeClaw) SetClients() error {
 
 // NewToolWSHandler creates a ToolWSHandler for direct tool WebSocket execution.
 // Returns nil if HomeClaw is nil or not fully configured.
-func (hc *HomeClaw) NewToolWSHandler(toolRegistry *tools.ToolRegistry, picoConfig config.PicoConfig) ToolCallHandler {
+func (hc *HomeClaw) NewToolWSHandler(toolRegistry *tools.ToolRegistry, picoConfig *config.Config) ToolCallHandler {
 	if hc == nil || toolRegistry == nil {
 		return nil
 	}

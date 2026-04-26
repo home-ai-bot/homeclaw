@@ -3,7 +3,6 @@
 // session conflicts: the chat controller owns /pico/ws?session_id={chatId},
 // while device control uses its own connection without session_id parameter.
 
-import { getPicoToken } from "@/api/pico"
 import { getDefaultStore } from "jotai"
 import { gatewayAtom } from "@/store/gateway"
 
@@ -181,21 +180,11 @@ export class DeviceControlWebSocket {
 
     this.setStatus("connecting")
 
-    let token: string
-    try {
-      const resp = await getPicoToken()
-      token = resp.token
-      if (!token) throw new Error("empty token")
-    } catch (err) {
-      console.error("[DeviceControlWS] Failed to get token:", err)
-      this.setStatus("error")
-      this.scheduleReconnect()
-      return
-    }
-
+    // The launcher WebSocket proxy automatically injects the pico token
+    // on the server side, so we don't need to fetch it in the frontend.
     const scheme = window.location.protocol === "https:" ? "wss:" : "ws:"
     const url = `${scheme}//${window.location.host}/pico/ws-tool`
-    const socket = new WebSocket(url, [`token.${token}`])
+    const socket = new WebSocket(url)
 
     socket.onopen = () => {
       console.log("[DeviceControlWS] Connected to tool WebSocket")

@@ -100,14 +100,25 @@ type ToolWSHandler struct {
 }
 
 // NewToolWSHandler creates a new ToolWSHandler.
-func NewToolWSHandler(hc *HomeClaw, toolRegistry *tools.ToolRegistry, picoConfig config.PicoConfig) *ToolWSHandler {
-	allowOrigins := picoConfig.AllowOrigins
+func NewToolWSHandler(hc *HomeClaw, toolRegistry *tools.ToolRegistry, picoConfig *config.Config) *ToolWSHandler {
+	// Extract Pico channel settings
+	var allowOrigins []string
+	var picoToken string
+	if picoChannel, ok := picoConfig.Channels[config.ChannelPico]; ok && picoChannel != nil {
+		if decoded, err := picoChannel.GetDecoded(); err == nil && decoded != nil {
+			if picoSettings, ok := decoded.(*config.PicoSettings); ok {
+				allowOrigins = picoSettings.AllowOrigins
+				picoToken = picoSettings.Token.String()
+			}
+		}
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &ToolWSHandler{
 		homeclaw:     hc,
 		toolRegistry: toolRegistry,
-		picoToken:    picoConfig.Token.String(),
+		picoToken:    picoToken,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				if len(allowOrigins) == 0 {
